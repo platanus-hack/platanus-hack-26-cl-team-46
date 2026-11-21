@@ -10,6 +10,9 @@ export default function Home() {
       <Link className="underline" href="/deploy">
         Consola del servicio de deploy →
       </Link>
+      <Link className="underline" href="/simulate">
+        Consola de la simulación (multi-agente) →
+      </Link>
     </main>
   );
 }

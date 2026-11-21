@@ -33,6 +33,10 @@ pnpm dev                                  # backend :3001 + frontend :3000
 - El frontend recibe `NEXT_PUBLIC_API_URL` al buildear. Si cambia, hay que redesplegarlo.
 - Plan free: los servicios se duermen tras 15 minutos sin tráfico. Antes del demo, ábranlos para despertarlos, o pasen a `starter` cuando lleguen los créditos.
 
+## Simulación (multi-agente)
+
+Una vez desplegada la app, el incidente lo juegan 5 agentes (threads de un workspace de Conductor): **infra**, **hacker** (emulado por ahora), **observer**, **generator** y **coder**. Se coordinan por un timeline de eventos en el backend (`backend/src/simulations/`). La consola de prueba está en `/simulate`. La arquitectura, la API para la UI y el contrato para el motor de hacking real están en [`docs/simulation.md`](docs/simulation.md).
+
 ## Servicio de deploy
 
 **Camino optimista, con fallback a una IA.** `POST /sandboxes` con `mode: "auto"` (el default):
