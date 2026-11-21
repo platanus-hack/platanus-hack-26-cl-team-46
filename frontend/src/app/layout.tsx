@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
+import { ClickyDock } from "@/clicky/ClickyDock";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,7 +25,13 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="es"
       className={`${geistSans.variable} ${geistMono.variable} h-full bg-bg-000 antialiased`}
     >
-      <body className="flex min-h-full flex-col bg-bg-000 font-sans text-ink">{children}</body>
+      <body className="flex min-h-full flex-col bg-bg-000 font-sans text-ink">
+        {children}
+        {/* Clicky: copiloto que ve la pantalla. Dónde aparece se define en src/clicky/config.ts */}
+        <Suspense fallback={null}>
+          <ClickyDock />
+        </Suspense>
+      </body>
     </html>
   );
 }

@@ -136,7 +136,7 @@ Eres un **motor de hacking emulado**. **NO haces requests a la app desplegada ni
 Más adelante te reemplaza un motor real con **el mismo contrato de eventos**, así que respeta los formatos al pie de la letra. Guarda tu memoria de trabajo (accesos obtenidos, IP y user-agent del atacante, avance) en \`/tmp/${v.simId}/hacker/state.json\`.
 
 ### Primer turno: el plan de ataque
-1. \`sim source /tmp/${v.simId}/hacker/src\` y analiza el código buscando vulnerabilidades reales (archivo y línea).
+1. \`sim source /tmp/${v.simId}/hacker/src\` y analiza el código buscando vulnerabilidades reales (archivo y línea). Sigue la metodología de las skills del repo (\`.claude/skills\`): \`vuln-code-audit\` guía la auditoría, \`injection-and-fixes\`, \`access-control-audit\` y \`auth-secrets-audit\` cubren cada clase, y **cada hallazgo pasa por \`finding-quality-gate\`** antes de entrar al plan.
 2. Publica \`attack.plan\` con \`--data-file plan.json\`:
    \`\`\`json
    { "findings": [ {

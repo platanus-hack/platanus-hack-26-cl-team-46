@@ -2,6 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { setClickySimulation } from "@/clicky/active-sim";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
 
 /**
@@ -65,6 +66,15 @@ function SimulateConsole() {
       clearInterval(t);
     };
   }, [refresh]);
+
+  // Clicky solo responde con una simulación en curso.
+  const selectedSim = sims.find((s) => s.sim_id === selected);
+  const clickySim =
+    selectedSim && ["starting", "ready", "running", "paused"].includes(selectedSim.status) ? selectedSim.sim_id : null;
+  useEffect(() => {
+    setClickySimulation(clickySim);
+    return () => setClickySimulation(null);
+  }, [clickySim]);
 
   const key = `${selected}|${godMode}`;
   useEffect(() => {

@@ -68,6 +68,29 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+
+  // Clicky: copiloto en pantalla (src/clicky). Sin las keys, sus rutas responden 503.
+  /** Cerebro de Clicky: mira la captura y decide qué decir y qué marcar. */
+  OPENAI_API_KEY: z.string().optional(),
+  CLICKY_BRAIN_MODEL: z.string().default('gpt-6-luna'),
+  /** Voz de Clicky (texto a voz) y reconocimiento de lo que dice el usuario. */
+  ELEVENLABS_API_KEY: z.string().optional(),
+  /** Voz de la biblioteca de ElevenLabs. Default: "Norah" (español latino, cálida y clara). */
+  CLICKY_VOICE_ID: z.string().default('kcQkGnn0HAT2JRDQ4Ljp'),
+  CLICKY_TTS_MODEL: z.string().default('eleven_flash_v2_5'),
+  CLICKY_TTS_FORMAT: z.string().default('mp3_22050_32'),
+  CLICKY_STT_MODEL: z.string().default('scribe_v3'),
+  /** `true`: respuestas de ensayo, sin llamar a OpenAI ni ElevenLabs. */
+  CLICKY_MOCK: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  /** Preguntas por minuto por IP. */
+  CLICKY_RATE_LIMIT: z.coerce.number().int().min(1).default(20),
+  /** Tope de preguntas por simulación (protege el gasto si alguien abusa). */
+  CLICKY_MAX_QUESTIONS_PER_SIM: z.coerce.number().int().min(1).default(80),
+  /** Tope de caracteres de voz por simulación; al pasarlo, Clicky usa la voz del navegador. */
+  CLICKY_MAX_TTS_CHARS_PER_SIM: z.coerce.number().int().min(0).default(30000),
 });
 
 export type Env = z.infer<typeof envSchema>;
