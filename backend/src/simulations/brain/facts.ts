@@ -219,6 +219,22 @@ export const DEFAULT_DIRECTOR: DirectorOptions = {
 };
 
 /**
+ * Por qué no se puede pedir otra vuln ahora (o null si se puede). El atacante
+ * va de a una: si ya hay un ataque o una re-verificación en curso, un `next`
+ * extra solo encolaría vulns y el incidente se jugaría entero de golpe.
+ */
+export function nextBlockedReason(
+  s: Pick<SimulationRecord, 'timeline' | 'attack_plan'>,
+): string | null {
+  const f = computeFacts(s.timeline, s.attack_plan);
+  if (f.attack_in_progress)
+    return 'El atacante todavía está en una vuln: espera a que termine';
+  if (f.pending_verifies.length)
+    return 'Se está re-verificando si el atacante sigue adentro: espera el resultado';
+  return null;
+}
+
+/**
  * El ritmo de la simulación, en código. Reemplaza las reglas que antes iban en
  * prosa en el brief del observer. Es idempotente: mira el timeline y devuelve
  * solo lo que falta hacer (no repite un verify ya pedido ni un next en curso).

@@ -16,6 +16,7 @@ import { ConductorClient } from '../conductor/conductor.client.js';
 import { DatabaseProvisioner } from '../sandboxes/database.provisioner.js';
 import { SandboxEventsService } from '../sandboxes/sandbox-events.service.js';
 import { SandboxesService } from '../sandboxes/sandboxes.service.js';
+import { nextBlockedReason } from './brain/facts.js';
 import { buildSimPrompt } from './sim-prompts.js';
 import { signSimToken } from './sim-token.js';
 import { detectTools } from './tools-detector.js';
@@ -387,6 +388,10 @@ export class SimulationsService implements OnModuleInit {
     const s = this.get(id);
     if (!['running', 'paused'].includes(s.status))
       throw new ConflictException(`La simulación está ${s.status}`);
+    if (action === 'next') {
+      const blocked = nextBlockedReason(s);
+      if (blocked) throw new ConflictException(blocked);
+    }
     this.post(id, 'user', {
       type: `control.${action}`,
       title: `${action}${vulnId ? ` ${vulnId}` : ''} (developer)`,
