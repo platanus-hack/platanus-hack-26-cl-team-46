@@ -6,6 +6,7 @@
  */
 import { CATALOG } from './catalog.ts';
 import type { DiagnosisResult } from './diagnose.ts';
+import type { ReconReport } from './recon.ts';
 import type { AttackResult, EventSeverity } from './types.ts';
 
 function toEventSeverity(sev: string): EventSeverity {
@@ -15,7 +16,7 @@ function toEventSeverity(sev: string): EventSeverity {
 }
 
 /** raw del evento `attack.plan`: hallazgos ordenados (formato del analizador). */
-export function buildAttackPlan(diag: DiagnosisResult) {
+export function buildAttackPlan(diag: DiagnosisResult, recon?: ReconReport) {
   const findings = diag.results
     .map((r) => {
       const m = CATALOG[r.vuln_id];
@@ -42,7 +43,18 @@ export function buildAttackPlan(diag: DiagnosisResult) {
     severity: 'info' as EventSeverity,
     title: `Plan de ataque: ${findings.filter((f) => f.confirmed).length}/${findings.length} vulns confirmadas`,
     body: `Diagnóstico real contra ${diag.target.url}.`,
-    raw: { findings, target: diag.target.url },
+    raw: {
+      findings,
+      target: diag.target.url,
+      recon: recon
+        ? {
+            surface: recon.surface_summary,
+            tech: recon.tech,
+            jwt: recon.jwt,
+            angles: recon.findings.map((f) => ({ category: f.category, severity: f.severity, title: f.title, angle: f.angle })),
+          }
+        : undefined,
+    },
   };
 }
 

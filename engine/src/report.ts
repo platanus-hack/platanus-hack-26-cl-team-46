@@ -5,6 +5,7 @@
  */
 import { CATALOG } from './catalog.ts';
 import type { DiagnosisResult } from './diagnose.ts';
+import type { ReconReport } from './recon.ts';
 import type { AttackResult, Scenario } from './types.ts';
 
 function statusTag(r: AttackResult): string {
@@ -18,7 +19,7 @@ function fmtExchange(request: string, status?: number): string {
   return status !== undefined ? `${request} → HTTP ${status}` : request;
 }
 
-export function renderGuide(diag: DiagnosisResult, scenarios: Scenario[]): string {
+export function renderGuide(diag: DiagnosisResult, scenarios: Scenario[], recon?: ReconReport): string {
   const L: string[] = [];
   const confirmed = diag.results.filter((r) => r.confirmed);
 
@@ -45,6 +46,21 @@ export function renderGuide(diag: DiagnosisResult, scenarios: Scenario[]): strin
     L.push(`| ${m.order} | ${m.title} | ${m.severity} | ${statusTag(r)} | ${r.gained[0] ?? '—'} |`);
   }
   L.push('');
+
+  // Recon: superficie de ataque
+  if (recon) {
+    L.push('## Reconocimiento (superficie de ataque)');
+    L.push('');
+    L.push(`Barrido de ${recon.surface_summary.probed} rutas: ${recon.surface_summary.present} presentes, ${recon.surface_summary.auth_gaps} brechas de autorización, ${recon.surface_summary.injectable} puntos inyectables.`);
+    if (recon.jwt) L.push(`JWT: alg ${recon.jwt['alg']}, vida ${recon.jwt['lifetime_days']} días, claims [${(recon.jwt['claims'] as string[])?.join(', ')}].`);
+    L.push('');
+    L.push('| Severidad | Categoría | Hallazgo | Ángulo |');
+    L.push('|---|---|---|---|');
+    for (const f of [...recon.findings].sort((a, b) => sevRank(b.severity) - sevRank(a.severity))) {
+      L.push(`| ${f.severity} | ${f.category} | ${f.title} | ${f.angle ? `\`${f.angle}\`` : '—'} |`);
+    }
+    L.push('');
+  }
 
   // Cadena de ataque confirmada
   if (confirmed.length > 0) {
@@ -121,6 +137,10 @@ export function renderGuide(diag: DiagnosisResult, scenarios: Scenario[]): strin
   function order(r: AttackResult): number {
     return metaOf(scenarios, r.vuln_id).order;
   }
+}
+
+function sevRank(s: string): number {
+  return { info: 0, low: 1, medium: 2, high: 3, critical: 4 }[s] ?? 0;
 }
 
 function metaOf(scenarios: Scenario[], vulnId: string) {

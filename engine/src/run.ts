@@ -17,6 +17,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { diagnose } from './diagnose.ts';
 import { buildAttackPlan } from './events.ts';
+import { recon } from './recon.ts';
 import { renderGuide } from './report.ts';
 import { buildScenarioPack } from './scenario.ts';
 import type { TargetConfig } from './types.ts';
@@ -48,11 +49,15 @@ async function main() {
   console.log(`\n🎯 Motor de hacking → ${target.url}`);
   console.log(`   (solo se ataca este target autorizado)\n`);
 
+  // Fase 1: recon (superficie de ataque). Se puede saltar con --no-recon.
+  const reconReport = process.argv.includes('--no-recon') ? undefined : await recon(target, { log: (m) => console.log(m) });
+
+  // Fase 2: explotación real.
   const diag = await diagnose(target, { only, profile, log: (m) => console.log(m) });
 
   const scenarios = buildScenarioPack(diag);
-  const plan = buildAttackPlan(diag);
-  const guide = renderGuide(diag, scenarios);
+  const plan = buildAttackPlan(diag, reconReport);
+  const guide = renderGuide(diag, scenarios, reconReport);
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
   const outDir = path.join(outRoot!, ts);
@@ -60,6 +65,7 @@ async function main() {
 
   await writeFile(path.join(outDir, 'diagnosis.json'), JSON.stringify({ ...diag, telemetry: undefined }, null, 2));
   await writeFile(path.join(outDir, 'telemetry.json'), JSON.stringify(diag.telemetry, null, 2));
+  if (reconReport) await writeFile(path.join(outDir, 'recon.json'), JSON.stringify(reconReport, null, 2));
   await writeFile(path.join(outDir, 'attack-plan.json'), JSON.stringify(plan, null, 2));
   await writeFile(path.join(outDir, 'GUIA-DEL-HACKEO.md'), guide);
   for (const sc of scenarios) {
