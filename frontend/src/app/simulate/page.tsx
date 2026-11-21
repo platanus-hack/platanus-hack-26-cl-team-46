@@ -18,21 +18,21 @@ export default function SimulatePage() {
 }
 
 const CHANNEL_STYLE: Record<string, string> = {
-  email: "bg-blue-100 text-blue-800",
-  support: "bg-cyan-100 text-cyan-800",
-  phone: "bg-violet-100 text-violet-800",
-  sentry: "bg-purple-100 text-purple-800",
-  datadog: "bg-indigo-100 text-indigo-800",
-  posthog: "bg-amber-100 text-amber-800",
-  slack: "bg-pink-100 text-pink-800",
-  github: "bg-zinc-200 text-zinc-800",
-  render: "bg-emerald-100 text-emerald-800",
+  email: "bg-bg-300 text-ink-muted",
+  support: "bg-bg-300 text-ink-muted",
+  phone: "bg-bg-300 text-ink-muted",
+  sentry: "bg-bg-300 text-ink-muted",
+  datadog: "bg-bg-300 text-ink-muted",
+  posthog: "bg-bg-300 text-ink-muted",
+  slack: "bg-bg-300 text-ink-muted",
+  github: "bg-bg-300 text-ink-muted",
+  render: "bg-bg-300 text-ink-muted",
 };
 
 const SEVERITY_BORDER: Record<string, string> = {
-  info: "border-zinc-200",
-  warning: "border-amber-400",
-  critical: "border-red-500",
+  info: "border-line-strong",
+  warning: "border-attack-strong",
+  critical: "border-attack",
 };
 
 const CHAT_TYPES = new Set(["user.message", "coder.reply", "user.action"]);
@@ -107,7 +107,7 @@ function SimulateConsole() {
       <header className="flex flex-wrap items-center gap-2">
         <h1 className="mr-4 text-lg font-semibold">Simulación</h1>
         <select
-          className="rounded border px-2 py-1"
+          className="rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-1"
           value={selected ?? ""}
           onChange={(e) => setSelected(e.target.value || null)}
         >
@@ -130,18 +130,18 @@ function SimulateConsole() {
           }}
         >
           <input
-            className="w-80 rounded border px-2 py-1"
+            className="w-80 rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-1"
             placeholder="https://github.com/… o sbx-xxxx"
             value={repo}
             onChange={(e) => setRepo(e.target.value)}
           />
           <input
-            className="w-36 rounded border px-2 py-1"
+            className="w-36 rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-1"
             title="Herramientas activas del developer"
             value={tools}
             onChange={(e) => setTools(e.target.value)}
           />
-          <button className="rounded bg-black px-3 py-1 text-white" disabled={!repo}>
+          <button className="rounded-md bg-defense font-medium text-on-defense hover:bg-defense-strong disabled:opacity-50 px-3 py-1" disabled={!repo}>
             Nueva
           </button>
         </form>
@@ -151,10 +151,10 @@ function SimulateConsole() {
         </label>
       </header>
 
-      {error && <p className="rounded bg-red-50 px-3 py-2 text-red-700">{error}</p>}
+      {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
 
       {sim && (
-        <section className="flex flex-wrap items-center gap-3 rounded border bg-zinc-50 px-3 py-2">
+        <section className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-bg-100 px-3 py-2">
           <span className="font-mono font-semibold">{sim.status}</span>
           {sim.sandbox.deployed_url && (
             <a className="underline" href={sim.sandbox.deployed_url} target="_blank" rel="noreferrer">
@@ -166,10 +166,10 @@ function SimulateConsole() {
               workspace en Conductor
             </a>
           )}
-          <span className="text-zinc-500">
+          <span className="text-ink-muted">
             threads: {sim.threads.map((t) => `${t.role}(${t.wakes})`).join(" · ")}
           </span>
-          <span className="text-zinc-500">canales: {sim.channels.join(", ")}</span>
+          <span className="text-ink-muted">canales: {sim.channels.join(", ")}</span>
           <div className="ml-auto flex gap-2">
             {sim.status === "ready" && <Btn onClick={() => run(() => simApi.start(sim.sim_id))}>Partir</Btn>}
             {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
@@ -187,12 +187,12 @@ function SimulateConsole() {
       {sim && (
         <div className="grid min-h-0 flex-1 grid-cols-[1fr_420px] gap-3">
           {/* Panel izquierdo: el incidente en vivo */}
-          <section className="flex min-h-0 flex-col gap-2 overflow-y-auto rounded border p-3">
+          <section className="flex min-h-0 flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
             {godMode && sim.state && (
-              <div className={`rounded p-2 ${sim.state.attacker_active ? "bg-red-50" : "bg-emerald-50"}`}>
+              <div className={`rounded p-2 ${sim.state.attacker_active ? "bg-attack-soft text-attack-strong" : "bg-defense-soft text-defense"}`}>
                 <b>{sim.state.attacker_active ? "Atacante adentro" : "Atacante afuera"}</b> · fase {sim.state.phase} ·
                 vuln actual {sim.state.current_vuln ?? "—"}
-                <div className="text-zinc-600">{sim.state.summary}</div>
+                <div className="text-ink-muted">{sim.state.summary}</div>
               </div>
             )}
             {sim.debrief && <Debrief debrief={sim.debrief} />}
@@ -202,8 +202,8 @@ function SimulateConsole() {
           </section>
 
           {/* Panel derecho: chat con el agente de código + acciones */}
-          <section className="flex min-h-0 flex-col rounded border">
-            <div className="flex flex-wrap gap-1 border-b p-2">
+          <section className="flex min-h-0 flex-col rounded-md border border-line bg-bg-100">
+            <div className="flex flex-wrap gap-1 border-b border-line p-2">
               <Btn onClick={() => run(() => simApi.action(sim.sim_id, "rotate_secret", { key: "JWT_SECRET" }))}>
                 Rotar JWT_SECRET
               </Btn>
@@ -217,7 +217,7 @@ function SimulateConsole() {
               <div ref={chatEnd} />
             </div>
             <form
-              className="flex gap-2 border-t p-2"
+              className="flex gap-2 border-t border-line p-2"
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!text.trim()) return;
@@ -227,7 +227,7 @@ function SimulateConsole() {
               }}
             >
               <textarea
-                className="h-16 flex-1 resize-none rounded border px-2 py-1"
+                className="h-16 flex-1 resize-none rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-1"
                 placeholder="Pídele algo a tu agente de código…"
                 value={text}
                 onChange={(e) => setText(e.target.value)}
@@ -238,7 +238,7 @@ function SimulateConsole() {
                   }
                 }}
               />
-              <button className="rounded bg-black px-3 text-white">Enviar</button>
+              <button className="rounded-md bg-defense font-medium text-on-defense hover:bg-defense-strong disabled:opacity-50 px-3">Enviar</button>
             </form>
           </section>
         </div>
@@ -249,7 +249,7 @@ function SimulateConsole() {
 
 function Btn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" className="rounded border bg-white px-2 py-1 hover:bg-zinc-100" onClick={onClick}>
+    <button type="button" className="rounded-md border border-line-strong px-2 py-1 hover:bg-bg-200" onClick={onClick}>
       {children}
     </button>
   );
@@ -260,14 +260,14 @@ function FeedItem({ e }: { e: TimelineEvent }) {
   if (e.type === "notify") {
     const from = typeof e.raw.from === "string" ? e.raw.from : null;
     return (
-      <article className={`rounded border-l-4 bg-white p-2 shadow-sm ${SEVERITY_BORDER[e.severity]}`}>
+      <article className={`rounded-sm border-l-4 bg-bg-200 p-2 ${SEVERITY_BORDER[e.severity]}`}>
         <div className="mb-1 flex items-center gap-2 text-xs">
-          <span className={`rounded px-1.5 py-0.5 font-medium ${CHANNEL_STYLE[e.source] ?? "bg-zinc-100"}`}>{e.source}</span>
-          {from && <span className="text-zinc-600">{from}</span>}
-          <span className="ml-auto text-zinc-400">{time}</span>
+          <span className={`rounded px-1.5 py-0.5 font-medium ${CHANNEL_STYLE[e.source] ?? "bg-bg-300 text-ink-muted"}`}>{e.source}</span>
+          {from && <span className="text-ink-muted">{from}</span>}
+          <span className="ml-auto text-ink-faint">{time}</span>
         </div>
         <div className="font-medium">{e.title}</div>
-        {e.body && <p className="whitespace-pre-wrap text-zinc-700">{e.body}</p>}
+        {e.body && <p className="whitespace-pre-wrap text-ink">{e.body}</p>}
       </article>
     );
   }
@@ -275,9 +275,9 @@ function FeedItem({ e }: { e: TimelineEvent }) {
   const attack = e.type.startsWith("attack.");
   return (
     <div
-      className={`rounded px-2 py-1 text-xs ${attack ? "bg-red-50 text-red-900" : internal ? "bg-zinc-100 text-zinc-600" : "text-zinc-500"}`}
+      className={`rounded px-2 py-1 text-xs ${attack ? "bg-attack-soft text-attack-strong" : internal ? "bg-bg-200 text-ink-muted" : "text-ink-muted"}`}
     >
-      <span className="text-zinc-400">{time}</span> <span className="font-mono">{e.actor}</span>{" "}
+      <span className="text-ink-faint">{time}</span> <span className="font-mono">{e.actor}</span>{" "}
       <span className="font-mono">{e.type}</span>
       {e.vuln_id && <span className="font-mono"> [{e.vuln_id}]</span>} — {e.title}
     </div>
@@ -287,31 +287,31 @@ function FeedItem({ e }: { e: TimelineEvent }) {
 function ChatItem({ e }: { e: TimelineEvent }) {
   if (e.type === "user.message" || e.type === "user.action") {
     return (
-      <div className="ml-8 self-end rounded-lg bg-black px-3 py-2 text-white">
+      <div className="ml-8 self-end rounded-lg bg-bg-300 px-3 py-2 text-ink">
         {e.type === "user.action" ? <i>⚡ {e.title}</i> : <span className="whitespace-pre-wrap">{e.body || e.title}</span>}
       </div>
     );
   }
   if (e.type === "coder.reply") {
-    return <div className="mr-8 whitespace-pre-wrap rounded-lg bg-zinc-100 px-3 py-2">{e.body || e.title}</div>;
+    return <div className="mr-8 whitespace-pre-wrap rounded-lg bg-bg-200 px-3 py-2">{e.body || e.title}</div>;
   }
-  return <div className="text-center text-xs text-zinc-500">{e.title}</div>;
+  return <div className="text-center text-xs text-ink-muted">{e.title}</div>;
 }
 
 function Debrief({ debrief }: { debrief: Record<string, unknown> }) {
   const perVuln = (debrief.per_vuln as { vuln_id: string; verdict: string; what_you_did: string; correct_fix: string; real_case: string }[]) ?? [];
   return (
-    <div className="rounded border-2 border-black p-3">
+    <div className="rounded-md border-2 border-line-strong bg-bg-100 p-3">
       <h2 className="text-base font-semibold">
         Debrief · {String(debrief.outcome ?? "")} · puntaje {String(debrief.score ?? "—")}
       </h2>
-      <p className="mb-2 text-zinc-700">{String(debrief.summary ?? "")}</p>
+      <p className="mb-2 text-ink">{String(debrief.summary ?? "")}</p>
       {perVuln.map((v) => (
         <div key={v.vuln_id} className="mb-2">
           <b className="font-mono">{v.vuln_id}</b> · <span>{v.verdict}</span>
-          <div className="text-zinc-600">Hiciste: {v.what_you_did}</div>
-          <div className="text-zinc-600">Lo correcto: {v.correct_fix}</div>
-          <div className="text-zinc-500">Caso real: {v.real_case}</div>
+          <div className="text-ink-muted">Hiciste: {v.what_you_did}</div>
+          <div className="text-ink-muted">Lo correcto: {v.correct_fix}</div>
+          <div className="text-ink-muted">Caso real: {v.real_case}</div>
         </div>
       ))}
     </div>
