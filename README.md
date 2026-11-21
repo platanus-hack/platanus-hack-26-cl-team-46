@@ -24,10 +24,11 @@ pnpm dev                                  # backend :3001 + frontend :3000
 
 | Servicio | URL | Build |
 |---|---|---|
-| `hack26-backend` | https://hack26-backend.onrender.com | Docker, `backend/Dockerfile` (contexto: raíz) |
-| `hack26-frontend` | https://hack26-frontend.onrender.com | Docker, `frontend/Dockerfile` (contexto: raíz) |
+| `hack26-frontend` | https://mayday.rip (también https://hack26-frontend.onrender.com) | Docker, `frontend/Dockerfile` (contexto: raíz) |
+| `hack26-backend` | https://api.mayday.rip (también https://hack26-backend.onrender.com) | Docker, `backend/Dockerfile` (contexto: raíz) |
 
-- Los dos despliegan automáticamente con cada push a la rama configurada en Render (hoy `rmena1/render-despliegue-autom-tico`; cámbienla a `main` cuando hagan merge).
+- Los dos despliegan automáticamente con cada push a `main`.
+- Dominio: `mayday.rip` en Cloudflare, con CNAME "DNS only" hacia los servicios de Render (`@` y `www` → frontend, `api` → backend). Render emite los certificados.
 - El backend guarda el estado en la base `hack26_backend`, dentro de la instancia compartida `hack26-shared-pg` (`DATABASE_URL`), porque el disco de Render es efímero.
 - Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, que es a la que llaman los agentes.
 - El frontend recibe `NEXT_PUBLIC_API_URL` al buildear. Si cambia, hay que redesplegarlo.
