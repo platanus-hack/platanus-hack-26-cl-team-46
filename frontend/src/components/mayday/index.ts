@@ -8,3 +8,5 @@ export { Logo } from "./Logo";
 export { PixelTransition } from "./PixelTransition";
 export { readToken, readPx } from "./tokens";
 export { AttackTerminal, type TerminalLine } from "./AttackTerminal";
+export { QuestionCard, type QuestionOption } from "./QuestionCard";
+export { useReducedMotion } from "./useReducedMotion";

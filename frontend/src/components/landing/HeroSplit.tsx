@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties, type ReactNode, type Ref } from "react";
-import { Hud, Logo, StatusChip, type HudItem } from "@/components/mayday";
+import { Hud, Logo, StatusChip, useReducedMotion, type HudItem } from "@/components/mayday";
 import { CALM, HERO, UNDER_ATTACK, type LogRow } from "./content";
 
 /**
@@ -78,11 +78,12 @@ function CalmPanel() {
 /** El contador de intentos sube solo: 1.204, 1.206, 1.209… */
 function AttackPanel() {
   const [attempts, setAttempts] = useState(UNDER_ATTACK.loginAttemptsStart);
+  const reduced = useReducedMotion();
   useEffect(() => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (reduced) return;
     const id = setInterval(() => setAttempts((n) => n + 1 + Math.floor(Math.random() * 3)), 420);
     return () => clearInterval(id);
-  }, []);
+  }, [reduced]);
 
   const [first, ...rest] = UNDER_ATTACK.hud;
   return (

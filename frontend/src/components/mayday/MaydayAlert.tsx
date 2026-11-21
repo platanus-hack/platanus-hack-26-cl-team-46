@@ -6,9 +6,11 @@ import type { ReactNode } from "react";
  * - solid: ámbar completo en marquesina. Solo en el arranque de la landing.
  * Siempre dice que es un simulacro. Solo parpadea el pixel de la izquierda.
  */
+const DEFAULT_MESSAGE = "Mayday · Mayday · Mayday — simulacro en curso";
+
 export function MaydayAlert({
   solid = false,
-  message = "Mayday · Mayday · Mayday — simulacro en curso",
+  message = DEFAULT_MESSAGE,
   right,
 }: {
   solid?: boolean;
@@ -31,7 +33,16 @@ export function MaydayAlert({
 
   return (
     <div className="md-alert" role="status">
-      <span className="md-alert__call">{message}</span>
+      <span className="md-alert__call">
+        {message === DEFAULT_MESSAGE ? (
+          // En pantallas chicas va un solo "Mayday" para que la banda no salte a dos líneas.
+          <span>
+            <span className="max-md:hidden">Mayday · Mayday · </span>Mayday — simulacro en curso
+          </span>
+        ) : (
+          message
+        )}
+      </span>
       {right}
     </div>
   );

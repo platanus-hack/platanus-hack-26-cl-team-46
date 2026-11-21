@@ -5,8 +5,8 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
-import { AttackTerminal, MaydayAlert, Stopwatch } from "@/components/mayday";
-import { ATTACK_SCRIPT } from "./content";
+import { AttackTerminal, MaydayAlert, QuestionCard, Stopwatch, type QuestionOption } from "@/components/mayday";
+import { ATTACK_SCRIPT, QUESTION, type OptionId } from "./content";
 import { CurtainPixels, type CurtainHandle } from "./CurtainPixels";
 import { HeroSplit } from "./HeroSplit";
 
@@ -29,11 +29,16 @@ gsap.registerPlugin(ScrollTrigger, useGSAP);
 const CARD_READY = 0.62;
 
 export function Landing() {
+  // Cuándo arrancó el simulacro (cronómetro y tiempo de respuesta). Se fija en el cliente al cargar.
   const [startedAt, setStartedAt] = useState<number>();
-  useEffect(() => setStartedAt(Date.now()), []);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setStartedAt(Date.now()));
+    return () => cancelAnimationFrame(id);
+  }, []);
 
   const [alertSolid, setAlertSolid] = useState(true);
   const [cardActive, setCardActive] = useState(false);
+  const [answer, setAnswer] = useState<{ option: QuestionOption<OptionId>; seconds: number }>();
 
   const mainRef = useRef<HTMLElement>(null);
   const stageRef = useRef<HTMLElement>(null);
@@ -130,10 +135,26 @@ export function Landing() {
           >
             <AttackTerminal lines={ATTACK_SCRIPT} className="absolute! inset-0" />
             <SceneSlot ref={cardRef}>
-              <div className="md-question w-full max-w-[720px]">
-                <span className="md-index">INCIDENTE · APUNTES</span>
-                <p className="md-question__title">La pregunta va aquí.</p>
-              </div>
+              <QuestionCard
+                className="w-full max-w-[720px]"
+                label={QUESTION.label}
+                title={QUESTION.title}
+                context={QUESTION.context}
+                code={QUESTION.code.map((line) => (
+                  <div key={line.time}>
+                    <span className="text-ink-faint">{line.time}</span>
+                    {"  "}
+                    {line.text}
+                    {line.mark && <mark>{line.mark}</mark>}
+                  </div>
+                ))}
+                options={QUESTION.options}
+                active={cardActive}
+                onAnswer={(option) =>
+                  setAnswer({ option, seconds: Math.round((Date.now() - (startedAt ?? Date.now())) / 1000) })
+                }
+                footer={<span className="md-index">{answer ? "BAJA PARA VER TU RESULTADO ↓" : ""}</span>}
+              />
             </SceneSlot>
           </div>
         </div>

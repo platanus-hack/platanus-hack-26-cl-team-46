@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useReducedMotion } from "./useReducedMotion";
 
 /**
  * El código del ataque corriendo infinito (DESIGN.md › AttackTerminal). Es ambiente:
@@ -47,13 +48,10 @@ export function AttackTerminal({
 /** Teclea los comandos uno a uno, con cursor de bloque. Con reduced-motion queda fijo. */
 function LivePrompt({ commands }: { commands: string[] }) {
   const [state, setState] = useState({ cmd: 0, chars: 0 });
+  const reduced = useReducedMotion();
 
   useEffect(() => {
-    if (!commands.length) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setState({ cmd: 0, chars: commands[0].length });
-      return;
-    }
+    if (!commands.length || reduced) return;
     let pause = 0;
     const id = setInterval(() => {
       if (pause > 0) {
@@ -68,9 +66,9 @@ function LivePrompt({ commands }: { commands: string[] }) {
       });
     }, 55);
     return () => clearInterval(id);
-  }, [commands]);
+  }, [commands, reduced]);
 
-  const text = commands[state.cmd]?.slice(0, state.chars) ?? "";
+  const text = (reduced ? commands[0] : commands[state.cmd]?.slice(0, state.chars)) ?? "";
   return (
     <div className="md-attack-term__live">
       {text}
