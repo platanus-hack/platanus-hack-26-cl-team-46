@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Clicky kit vendorizado (JS sin dependencias); se mantiene igual al original.
+    "src/clicky/kit/**",
   ]),
 ]);
 
