@@ -21,7 +21,7 @@ Scripts del monorepo (raíz): `pnpm dev`, `pnpm build`, `pnpm lint`, `pnpm typec
 | `/projects` | 3. Elegir repo | `src/app/(app)/projects/page.tsx` |
 | `/projects/[id]/analysis` | 4. Análisis (+ preguntas opcionales) | `src/app/(app)/projects/[projectId]/analysis/page.tsx` |
 | `/projects/[id]/preview` | 5. Previsualización | `src/app/(app)/projects/[projectId]/preview/page.tsx` |
-| `/projects/[id]/simulation` | 6–7. Cuenta regresiva + simulacro | `src/app/(simulation)/projects/[projectId]/simulation/page.tsx` |
+| `/projects/[id]/simulation` | 6–7. Simulacro (vacía, por implementar) | `src/app/(simulation)/projects/[projectId]/simulation/page.tsx` |
 | `/projects/[id]/report` | 8. Feedback por dimensiones | `src/app/(app)/projects/[projectId]/report/page.tsx` |
 | `/dev/components` | Playground de componentes | `src/app/dev/components/page.tsx` |
 
