@@ -304,7 +304,7 @@ function SimulateConsole() {
             </div>
             <section className="flex min-h-0 flex-[2] flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
               <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Historial de sucesos</h2>
-              {godMode && <InternalPanel sim={sim} />}
+              {godMode && <InternalPanel sim={sim} run={run} />}
               {sim.debrief && <Debrief debrief={sim.debrief} />}
               {[...feed].reverse().map((e) => (
                 <FeedItem key={e.seq} e={e} />
@@ -386,7 +386,6 @@ function FlowControls({
       )}
       {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
       {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
-      {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Siguiente vuln</Btn>}
       {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>}
       {(sim.status === "finished" || sim.status === "failed" || sim.status === "stopped") && (
         <Btn onClick={onNewRun}>Nuevo simulacro</Btn>
@@ -404,7 +403,8 @@ function FlowControls({
 }
 
 /** Solo en vista interna: estado del incidente y de los agentes. */
-function InternalPanel({ sim }: { sim: Simulation }) {
+function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<unknown>) => void }) {
+  const live = sim.status === "running" || sim.status === "paused";
   return (
     <div className="flex flex-col gap-2 rounded-md border border-dashed border-line-strong p-2 text-xs text-ink-muted">
       {sim.state && (
@@ -437,6 +437,10 @@ function InternalPanel({ sim }: { sim: Simulation }) {
             .join(" · ")}
         </span>
         <span>canales: {sim.channels.join(", ")}</span>
+        {/* Debug: el director escala solo. El backend rechaza el next si el atacante sigue en una vuln. */}
+        {live && (
+          <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Forzar siguiente vuln</Btn>
+        )}
       </div>
     </div>
   );
