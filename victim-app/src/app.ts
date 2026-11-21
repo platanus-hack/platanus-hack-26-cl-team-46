@@ -1,5 +1,6 @@
 import path from 'path';
 import express from 'express';
+import * as Sentry from '@sentry/node';
 import cookieParser from 'cookie-parser';
 import { pool } from './db/pool';
 import { attachUser } from './middleware/auth';
@@ -50,6 +51,7 @@ export function createApp() {
   app.use('/', webRouter);
 
   app.use(notFound);
+  Sentry.setupExpressErrorHandler(app);
   app.use(errorHandler);
 
   return app;

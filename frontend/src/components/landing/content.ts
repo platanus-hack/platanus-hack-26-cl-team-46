@@ -8,7 +8,9 @@ import type { DeployLogRow } from "@/components/mayday";
 
 export const HERO = {
   title: "Ensaya el hackeo antes de que pase",
-  scrollHint: "BAJA PARA EMPEZAR",
+  scrollHint: "O BAJA PARA EMPEZAR",
+  /** Secundario (el único primario de la landing es Entra con GitHub). */
+  simulate: { label: "Ir al simulacro", href: "/simulate" },
   project: "apuntes.dev",
 };
 
@@ -166,9 +168,6 @@ export const RESULT = {
     "Mayday es un simulacro: nunca tocamos tu producción. Leemos tu repo en modo solo lectura, lo atacamos en una copia aislada que se borra al terminar, y nunca te pedimos claves ni credenciales.",
   ctaTitle: "Haz el simulacro con tu repo",
   ctaLine: "Encontramos los vectores de tu proyecto, lo atacamos en una copia aislada y tú respondes contra el reloj.",
-  ctaButton: "Entra con GitHub",
-  /** No hay login con GitHub en la repo todavía: ruta placeholder. */
-  ctaHref: "/login",
 };
 
 /**

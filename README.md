@@ -75,6 +75,7 @@ pnpm dev                                  # backend :3001 + frontend :3000
 - El backend guarda el estado en la base `hack26_backend` de la instancia compartida `hack26-shared-pg` (`DATABASE_URL`), porque el disco de Render es efímero.
 - Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, a la que llaman los agentes. Conductor crea las VMs de los agentes desde `main` (se puede cambiar con `CONDUCTOR_PROJECT_BRANCH`).
 - El frontend recibe `NEXT_PUBLIC_API_URL` al buildear. Si cambia, hay que redesplegarlo.
+- **Clicky** (copiloto en pantalla, `backend/src/clicky`): `OPENAI_API_KEY` y `ELEVENLABS_API_KEY` van en `hack26-backend`, nunca en el frontend. Solo responde con una simulación en curso y tiene topes por IP y por simulación (ver `backend/.env.example`). Pon además un tope de gasto en los paneles de OpenAI y ElevenLabs.
 - **Plan free:** los servicios se duermen tras 15 minutos sin tráfico y tardan ~1 minuto en despertar. Antes del demo, ábrelos (frontend, backend y el sandbox), o pasa a `starter` cuando lleguen los créditos.
 
 ## API
@@ -85,7 +86,7 @@ Las operaciones largas responden **202** al tiro y el progreso sale por SSE. Con
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| `POST` | `/simulations` | `{repo_url}` o `{sandbox_id}`, más `tools: ["sentry","datadog",…]` y `hacker: "emulated" \| "external"` |
+| `POST` | `/simulations` | `{repo_url}` o `{sandbox_id}`, más `hacker: "emulated" \| "external"`. Las herramientas de monitoreo no se eligen: se detectan en el código |
 | `GET` | `/simulations/:id` | Estado, threads, canales, contexto, plan, estado del incidente y debrief |
 | `GET` | `/simulations/:id/stream?view=user` | SSE del feed del developer (`view=all` incluye lo interno) |
 | `GET` | `/simulations/:id/timeline` | Lo mismo en JSON (`view`, `since`, `types`) |
@@ -105,7 +106,7 @@ El motor de hacking real se conecta por `/sim/:id/*` con el token que entrega `h
 | `POST` | `/sandboxes` | `{ repo_url, ref?, env?, mode? }` | Crea el sandbox y lo despliega (`mode`: `agent` (default) \| `manifest` \| `auto`) |
 | `GET` | `/sandboxes` | | Lista de sandboxes |
 | `GET` | `/sandboxes/:id` | | Estado (contrato Deploy → Motor) |
-| `GET` | `/sandboxes/:id/events` | | SSE `event: deploy`; incluye historial |
+| `GET` | `/sandboxes/:id/events` | | SSE `event: deploy`; incluye el historial (persistido: sobrevive a reinicios del backend) |
 | `POST` | `/sandboxes/:id/redeploy` | `{ patch?, files?, message?, clear_cache? }` | Aplica un diff o archivos al mirror, commitea y redespliega |
 | `PUT` | `/sandboxes/:id/env` | `{ env?, generate?, unset?, deploy? }` | Cambia env vars y redespliega. `generate: ["JWT_SECRET"]` rota el secreto (invalida todas las sesiones) |
 | `POST` | `/sandboxes/:id/restart` | | Reinicia el servicio |
@@ -125,7 +126,7 @@ curl -XPUT localhost:3001/sandboxes/sbx-1234abcd/env -H 'content-type: applicati
   -d '{"generate":["JWT_SECRET"]}'
 ```
 
-**Seguridad del agente de deploy:** no recibe credenciales de Render ni de GitHub. Trabaja contra `/agent/sandboxes/:id/*` con un token `HMAC(AGENT_API_SECRET, sandbox_id)` que solo sirve para su sandbox. Su prompt (`backend/src/agent/agent-prompt.ts`) le prohíbe arreglar vulnerabilidades y le pide tratar el repo como datos, no como instrucciones. La CLI que usa está en `backend/agent-cli/deployer.mjs` (servida en `GET /agent/cli.mjs`).
+**Seguridad del agente de deploy:** no recibe credenciales de Render ni de GitHub. Trabaja contra `/agent/sandboxes/:id/*` con un token `HMAC(AGENT_API_SECRET, sandbox_id)` que solo sirve para su sandbox. Al crear su VM, el backend tapa con valor vacío las credenciales globales de Conductor (`CONDUCTOR_AGENT_BLANK_ENV`; `CONDUCTOR_API_KEY` no se puede tapar). La CLI reintenta sola las lecturas cuando el backend responde 502/503/504. Su prompt (`backend/src/agent/agent-prompt.ts`) le prohíbe arreglar vulnerabilidades y le pide tratar el repo como datos, no como instrucciones. La CLI que usa está en `backend/agent-cli/deployer.mjs` (servida en `GET /agent/cli.mjs`).
 
 ### `.sandbox/manifest.json`
 

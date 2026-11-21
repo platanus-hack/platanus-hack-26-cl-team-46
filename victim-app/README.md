@@ -31,6 +31,8 @@ Al arrancar la app crea las tablas y carga datos de ejemplo si no existen.
 | `JWT_SECRET` | Secreto para firmar las sesiones (obligatorio) |
 | `JWT_EXPIRES_IN` | Duración de la sesión (default `30d`) |
 | `SEED_RESET` | `true` para borrar y recrear los datos al arrancar |
+| `SENTRY_DSN` | Errores a Sentry (`src/instrument.ts`). Opcional |
+| `POSTHOG_API_KEY` / `POSTHOG_HOST` | Eventos de producto a PostHog (`src/lib/analytics.ts`). Opcional |
 
 ## API
 

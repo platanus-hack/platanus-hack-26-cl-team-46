@@ -25,8 +25,8 @@
 
 Dos paneles:
 
-- **Izquierda, el incidente en vivo:** un feed tipo chat de notificaciones simuladas, todas dentro de nuestra UI: correos de clientes, tickets de soporte, llamadas, alertas de Sentry, PostHog, Datadog, Render, Slack o GitHub. Solo se usan los canales de las herramientas que el repo realmente tiene; correo, soporte, teléfono y Render van siempre. Si el repo no tiene monitoreo, el developer se entera por un cliente enojado, y el debrief se lo explica.
-- **Derecha, el chat con "su Claude Code":** el developer pide cambios de código, de datos (SQL), de variables de entorno, reinicios o cambios de arquitectura. Además hay **botones rápidos** deterministas que no pasan por un LLM (rotar `JWT_SECRET`, reiniciar, etc.).
+- **Izquierda, el incidente en vivo:** un feed tipo chat de notificaciones simuladas, todas dentro de nuestra UI: correos de clientes, tickets de soporte, llamadas, alertas de Sentry, PostHog, Datadog, Render, Slack o GitHub. Solo se usan los canales de las herramientas que el repo realmente tiene configuradas en el código (las detecta el backend; el developer no las elige); correo, soporte, teléfono y Render van siempre. Si el repo no tiene monitoreo, el developer se entera por un cliente enojado, y el debrief se lo explica.
+- **Derecha, el chat con "su Claude Code":** el developer pide cambios de código, de datos (SQL), de variables de entorno, reinicios o cambios de arquitectura. Es la única forma de actuar: los botones rápidos (rotar `JWT_SECRET`, reiniciar, cerrar sesiones) se sacaron de la consola porque regalaban la respuesta; `POST /actions` sigue en la API.
 
 Reglas del storytelling:
 
@@ -119,11 +119,24 @@ Monorepo pnpm: `backend/` (NestJS 12, TypeScript ESM), `frontend/` (Next.js 16 +
 
 Código: `backend/src/sandboxes`, `render/`, `git/`, `agent/`, `conductor/`. CLI del agente: `backend/agent-cli/deployer.mjs`. API completa en el README.
 
-**Flujo `POST /sandboxes` (`mode: auto`, default):**
+**Flujo `POST /sandboxes` (`mode: agent`, default desde el PR #5):**
 
-1. Clona el repo y crea un **mirror privado** `hack26-sandboxes/<sandbox_id>`. Render despliega desde el mirror y todos los parches se commitean ahí; el repo del usuario nunca se toca y el `commit_sha` queda fijo.
-2. **Camino determinista:** si hay `.sandbox/manifest.json` o se puede inferir (Dockerfile o package.json), crea la base (si hace falta) y el web service, y despliega. Con la app víctima tarda ~35 s.
-3. **Fallback agéntico:** si no se puede inferir o el deploy falla, crea un **workspace de Conductor** (una VM) con un agente de Claude que analiza el código, escribe Dockerfile/manifest en el mirror, lanza hasta `AGENT_MAX_PLANS` (6) intentos leyendo los logs, y **pide al usuario los secretos que no puede inventar** (estado `needs_input`; el dashboard muestra un formulario y el agente nunca ve los valores).
+```
+POST /sandboxes ─▶ clone ─▶ mirror privado ─▶ VM de Conductor con el agente ─▶ deployer plan ─▶ applyPlan
+  (202 + SSE)               hack26-sandboxes/                (analiza, push de                 (Postgres + web service
+                            sbx-xxxx                          Dockerfile/manifest)              en Render, poll, health)
+                                                                     │
+                            ready ◀── deployer report ◀── verifica: tablas (deployer db), rutas sin 5xx, usuarios de prueba
+```
+
+1. Clona el repo y crea un **mirror privado** `hack26-sandboxes/<sandbox_id>` (un solo commit, sin `.github/workflows`). Render despliega desde el mirror y todos los parches se commitean ahí; el repo del usuario nunca se toca y el `commit_sha` queda fijo. El token de GitHub solo se usa para clonar repos de nuestra org (la app víctima es privada); los demás se clonan sin credenciales y los mirrors `sbx-*` se rechazan como fuente.
+2. **Agente de deploy (siempre):** crea un **workspace de Conductor** (una VM) con un agente de Claude. El agente baja el código con `deployer source`, revisa la config de otras plataformas (`railway.toml`, `Procfile`, `fly.toml`…), el ORM y las migraciones, sube lo mínimo para desplegar (`deployer push`) y lanza hasta `AGENT_MAX_PLANS` (6) planes con `deployer plan`. Si el repo trae `.sandbox/manifest.json`, lo usa como punto de partida.
+3. **El backend ejecuta cada plan** (`applyPlan`): crea la base en la Postgres compartida si hace falta, crea o actualiza el web service (`autoDeployTrigger: off`), sigue el deploy y espera el healthcheck.
+4. **Verificación obligatoria antes de `report deployed`:** tablas creadas (`deployer db`), rutas clave sin 5xx y usuarios de prueba registrados (`deployer users`) para el atacante.
+5. **Secretos que no se pueden inventar:** el agente los pide con `deployer ask`; el sandbox pasa a `needs_input`, el dashboard muestra un formulario y el agente nunca ve los valores.
+6. Un monitor revisa la sesión cada 20 s: si la VM no arranca o el agente queda quieto sin reportar, insiste una vez y después cierra el sandbox (`ready` si la app quedó arriba, `failed` si no).
+
+`mode: manifest` (determinista, sin IA) y `mode: auto` (determinista con la IA de respaldo, el flujo original) siguen disponibles para scripts.
 
 **Verificado de punta a punta (local y en producción):**
 
@@ -310,10 +323,10 @@ Pregunta abierta del ADR 0007 (PR #2): los eventos `attack.*` del timeline son `
 
 **Decisiones abiertas**
 
-8. **¿Qué tan proactivo es el coder en seguridad?** En la prueba advirtió "esto no cierra la sesión del atacante", que es lo que haría un Claude Code real pero le quita la lección al usuario.
+8. **¿Qué tan proactivo es el coder en seguridad?** En la prueba advirtió "esto no cierra la sesión del atacante", que es lo que haría un Claude Code real pero le quita la lección al usuario. **Ajustado (21-nov):** el brief del coder ahora le pide no adelantar el plan de contención si el developer no lo pregunta.
 9. **Ajustes de briefs sin re-probar en corrida completa:** el observer pasaba a la siguiente vuln apenas terminaba cada ataque, y el coder arregló la SQLi sin que se lo pidieran.
-10. **Canales vs herramientas reales:** si la simulación habilita `sentry`/`datadog` pero el repo no los usa, el generator puede inventar alertas de herramientas que el developer no tiene. Definir si se respeta el perfil detectado o lo que eligió el usuario.
-11. **Aislamiento de credenciales en Conductor:** las variables globales de Conductor se inyectan en **todas** las VMs, incluidas las de agentes. `AGENT_API_SECRET` debe vivir solo en el backend. Plan: un workspace/org de Conductor sin credenciales solo para los agentes de la app.
+10. ~~**Canales vs herramientas reales**~~ **Resuelto (21-nov):** los canales salen solo de las herramientas detectadas en el código por el backend (`backend/src/simulations/tools-detector.ts`); se sacó el parámetro `tools`. Apuntes trae Sentry y PostHog configurados (sin DSN/key no envían nada), así que su simulación tiene esos dos canales.
+11. **Aislamiento de credenciales en Conductor (mitigado el 21-nov):** las variables globales de Conductor se inyectan en **todas** las VMs. Ahora el backend las tapa con valor vacío al crear las VMs de los agentes (`CONDUCTOR_AGENT_BLANK_ENV`; probado: las variables del workspace pisan a las globales). **Queda abierto:** `CONDUCTOR_API_KEY` no se puede tapar porque Conductor la fija en cada VM. La solución completa sigue siendo un workspace u org de Conductor sin credenciales solo para los agentes.
 
 ---
 

@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 import { ShieldCheck } from "lucide-react";
-import { ButtonLink, GitHubIcon } from "./Button";
 
 /**
  * El cierre de la landing (DESIGN.md › ResultSplit). Pantalla dividida 50/50 (apilada en mobile).
@@ -17,8 +16,7 @@ export function ResultSplit({
   disclaimer,
   ctaTitle,
   ctaLine,
-  ctaLabel,
-  ctaHref,
+  cta,
   className,
 }: {
   /** Volver al paso anterior (BackButton), arriba a la izquierda. */
@@ -32,8 +30,8 @@ export function ResultSplit({
   disclaimer: ReactNode;
   ctaTitle: ReactNode;
   ctaLine: ReactNode;
-  ctaLabel: ReactNode;
-  ctaHref: string;
+  /** El único botón primario de la pantalla (en la landing: Entra con GitHub). */
+  cta: ReactNode;
   className?: string;
 }) {
   return (
@@ -56,11 +54,7 @@ export function ResultSplit({
           {ctaTitle}
         </h2>
         <p className="max-w-[40ch] text-[18px] leading-7 text-ink-muted">{ctaLine}</p>
-        <div className="pt-2">
-          <ButtonLink href={ctaHref} variant="primary" size="lg" icon={<GitHubIcon />}>
-            {ctaLabel}
-          </ButtonLink>
-        </div>
+        <div className="pt-2">{cta}</div>
       </div>
     </div>
   );

@@ -1,8 +1,9 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { api, type Sandbox, type SandboxMode, type SimEvent } from "@/lib/api";
+import { simApi, type SimStatus, type Simulation } from "@/lib/sim-api";
 
 /**
  * Consola de desarrollo del servicio de deploy. No es la UI del simulador:
@@ -21,6 +22,7 @@ function DeployConsole() {
   const [repoUrl, setRepoUrl] = useState("");
   const [mode, setMode] = useState<SandboxMode>("agent");
   const [sandboxes, setSandboxes] = useState<Sandbox[]>([]);
+  const [sims, setSims] = useState<Simulation[]>([]);
   // ?sandbox=<id> preselecciona un sandbox (para enlazar directo desde otras pantallas).
   const [selected, setSelected] = useState<string | null>(() => searchParams.get("sandbox"));
   const [eventLog, setEventLog] = useState<{ id: string | null; list: SimEvent[] }>({ id: null, list: [] });
@@ -29,7 +31,13 @@ function DeployConsole() {
 
   const refresh = useCallback(async () => {
     try {
-      setSandboxes(await api.listSandboxes());
+      const [sbxs, simList] = await Promise.all([
+        api.listSandboxes(),
+        // Si /simulations falla, la consola de deploy sigue funcionando: solo no sabemos qué sims existen.
+        simApi.list().catch(() => null),
+      ]);
+      setSandboxes(sbxs);
+      if (simList) setSims(simList);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -160,6 +168,10 @@ function DeployConsole() {
                 )}
               </dl>
               <div className="mt-4 flex flex-wrap gap-2">
+                <SimulateButton
+                  sandbox={current}
+                  sim={sims.find((s) => s.sandbox.sandbox_id === current.sandbox_id && ACTIVE_SIM.includes(s.status))}
+                />
                 <Action disabled={busy} onClick={() => run(() => api.restart(current.sandbox_id))}>Restart</Action>
                 <Action disabled={busy} onClick={() => run(() => api.redeploy(current.sandbox_id))}>Redeploy</Action>
                 <Action disabled={busy} onClick={() => run(() => api.setEnv(current.sandbox_id, { generate: ["JWT_SECRET"] }))}>
@@ -273,5 +285,48 @@ function Action(props: { onClick: () => void; disabled?: boolean; children: Reac
     >
       {props.children}
     </button>
+  );
+}
+
+/** Estados en que una simulación sigue viva (igual que ACTIVE en backend/src/simulations). */
+const ACTIVE_SIM: SimStatus[] = ["starting", "ready", "running", "paused"];
+
+/**
+ * Puente al simulacro: se habilita cuando el despliegue terminó (sandbox ready).
+ * Si el sandbox ya tiene una simulación viva, la abre; si no, la crea y abre /simulate?sim=…
+ * (crear una simulación levanta un workspace de Conductor, así que no se duplica).
+ */
+function SimulateButton({ sandbox, sim }: { sandbox: Sandbox; sim?: Simulation }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const ready = sandbox.status === "ready";
+
+  const go = async () => {
+    if (sim) return router.push(`/simulate?sim=${sim.sim_id}`);
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await simApi.create({ sandbox_id: sandbox.sandbox_id });
+      router.push(`/simulate?sim=${created.sim_id}`);
+    } catch (e) {
+      setError((e as Error).message);
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <button
+        onClick={go}
+        disabled={!ready || busy}
+        title={ready ? undefined : "Se habilita cuando el despliegue termina"}
+        className="rounded-md bg-defense px-3 py-1 text-sm font-medium text-on-defense hover:bg-defense-strong disabled:cursor-not-allowed disabled:bg-bg-300 disabled:text-ink-faint"
+      >
+        {busy ? "Creando simulación…" : sim ? `Ir al simulacro (${sim.sim_id})` : "Ir al simulacro"}
+      </button>
+      {!ready && <span className="self-center text-xs text-ink-faint">Se habilita al terminar el despliegue</span>}
+      {error && <span className="w-full text-xs text-attack-strong">No pudimos crear la simulación: {error}</span>}
+    </>
   );
 }

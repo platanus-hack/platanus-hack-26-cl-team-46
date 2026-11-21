@@ -21,6 +21,7 @@ import {
 } from "@/components/mayday";
 import { ATTACK_SCRIPT, QUESTION, RESULT, type OptionId } from "./content";
 import { CurtainPixels, type CurtainHandle } from "./CurtainPixels";
+import { StartCta } from "@/components/onboarding/StartCta";
 import { HeroSplit } from "./HeroSplit";
 import { IntroHack } from "./intro/IntroHack";
 import { useIntroGate } from "./intro/useIntroGate";
@@ -293,8 +294,7 @@ export function Landing() {
               disclaimer={RESULT.disclaimer}
               ctaTitle={RESULT.ctaTitle}
               ctaLine={RESULT.ctaLine}
-              ctaLabel={RESULT.ctaButton}
-              ctaHref={RESULT.ctaHref}
+              cta={<StartCta />}
             >
               <p>{ok ? RESULT.ok.why : RESULT.fail.why[answer.option.id]}</p>
               <p>
@@ -326,6 +326,9 @@ function TeamFooter({ onReplayIntro }: { onReplayIntro: () => void }) {
   return (
     <footer className="flex flex-wrap items-center gap-6 border-t border-line px-4 py-6 md:px-12">
       <span className="md-index">EQUIPO</span>
+      <Link className="text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline" href="/start">
+        Onboarding: tu repo → sandbox →
+      </Link>
       <Link className="text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline" href="/deploy">
         Consola del servicio de deploy →
       </Link>

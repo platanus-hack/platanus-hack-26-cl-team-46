@@ -23,5 +23,6 @@ import { TimelineService } from './timeline.service.js';
     SimulationDispatcher,
     SimTokenGuard,
   ],
+  exports: [SimulationsService],
 })
 export class SimulationsModule {}
