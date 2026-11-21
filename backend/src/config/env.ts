@@ -59,6 +59,23 @@ export const envSchema = z.object({
     .string()
     .default('250d6454-3b06-4b69-bc80-f0c6e7307a34'),
   CONDUCTOR_PROJECT_BRANCH: z.string().optional(),
+  /**
+   * Variables globales de Conductor que se tapan (con valor vacío) en las VMs
+   * de los agentes. Conductor inyecta sus variables globales en todos los
+   * workspaces, y los agentes leen código ajeno: no deben tener credenciales.
+   * CONDUCTOR_API_KEY no se puede tapar (Conductor la fija en cada VM).
+   */
+  CONDUCTOR_AGENT_BLANK_ENV: z
+    .string()
+    .default(
+      'RENDER_API_KEY,GITHUB_TOKEN,GITHUB_HACK26_ORG_TOKEN,AGENT_API_SECRET,OPENAI_API_KEY,ELEVENLABS_API_KEY,CLOUDFLARE_API_TOKEN,DATABASE_URL',
+    )
+    .transform((v) =>
+      v
+        .split(',')
+        .map((k) => k.trim())
+        .filter((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k)),
+    ),
   AGENT_MODEL: z.string().default('opus-5-5-1m'),
   AGENT_EFFORT: z.string().default('medium'),
   /** Máximo de planes de deploy que puede intentar un agente. */
@@ -68,6 +85,40 @@ export const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
+
+  // Clicky: copiloto en pantalla (src/clicky). Sin las keys, sus rutas responden 503.
+  /** Cerebro de Clicky: mira la captura y decide qué decir y qué marcar. */
+  OPENAI_API_KEY: z.string().optional(),
+  CLICKY_BRAIN_MODEL: z.string().default('gpt-6-luna'),
+  /**
+   * Cuánto razona el cerebro antes de responder. gpt-6-luna razona "medium" si no se
+   * le dice nada, y eso se nota en la espera: "low" responde mucho antes y alcanza para
+   * leer la pantalla. "none" es aún más rápido; "default" no manda el parámetro.
+   */
+  CLICKY_BRAIN_EFFORT: z
+    .enum(['default', 'none', 'low', 'medium', 'high'])
+    .default('low'),
+  /** Voz de Clicky (texto a voz) y reconocimiento de lo que dice el usuario. */
+  ELEVENLABS_API_KEY: z.string().optional(),
+  /** Voz de la biblioteca de ElevenLabs. Default: "Norah" (español latino, cálida y clara). */
+  CLICKY_VOICE_ID: z.string().default('kcQkGnn0HAT2JRDQ4Ljp'),
+  CLICKY_TTS_MODEL: z.string().default('eleven_flash_v2_5'),
+  CLICKY_TTS_FORMAT: z.string().default('mp3_22050_32'),
+  /** Transcripción de respaldo (se sube el audio entero al soltar espacio). */
+  CLICKY_STT_MODEL: z.string().default('scribe_v3'),
+  /** Transcripción en vivo mientras el usuario habla (WebSocket con token de un solo uso). */
+  CLICKY_STT_LIVE_MODEL: z.string().default('scribe_v3_live'),
+  /** `true`: respuestas de ensayo, sin llamar a OpenAI ni ElevenLabs. */
+  CLICKY_MOCK: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  /** Preguntas por minuto por IP. */
+  CLICKY_RATE_LIMIT: z.coerce.number().int().min(1).default(20),
+  /** Tope de preguntas por simulación (protege el gasto si alguien abusa). */
+  CLICKY_MAX_QUESTIONS_PER_SIM: z.coerce.number().int().min(1).default(80),
+  /** Tope de caracteres de voz por simulación; al pasarlo, Clicky usa la voz del navegador. */
+  CLICKY_MAX_TTS_CHARS_PER_SIM: z.coerce.number().int().min(0).default(30000),
 });
 
 export type Env = z.infer<typeof envSchema>;

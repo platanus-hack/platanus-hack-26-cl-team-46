@@ -41,7 +41,10 @@ export class ConductorClient {
       agent: 'claude',
       model: this.config.get('AGENT_MODEL', { infer: true }),
       effort: this.config.get('AGENT_EFFORT', { infer: true }),
-      env: input.env,
+      env: agentEnv(
+        this.config.get('CONDUCTOR_AGENT_BLANK_ENV', { infer: true }),
+        input.env,
+      ),
       message: input.message,
     });
   }
@@ -62,9 +65,7 @@ export class ConductorClient {
     });
   }
 
-  sessionStatus(
-    sessionId: string,
-  ): Promise<{
+  sessionStatus(sessionId: string): Promise<{
     status: ConductorSessionStatus;
     errorMessage?: string;
     lastError?: string;
@@ -118,4 +119,19 @@ export class ConductorClient {
       throw new Error(`Conductor ${method} ${path} → ${res.status}: ${text}`);
     return (text ? JSON.parse(text) : undefined) as T;
   }
+}
+
+/**
+ * Env de la VM de un agente: las credenciales globales de Conductor quedan
+ * vacías (las variables del workspace pisan a las globales) y encima van las
+ * variables propias del agente.
+ */
+export function agentEnv(
+  blank: string[],
+  env: Record<string, string>,
+): Record<string, string> {
+  return {
+    ...Object.fromEntries(blank.map((k) => [k, ''])),
+    ...env,
+  };
 }

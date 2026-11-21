@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -10,7 +11,11 @@ import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { AgentOrchestrator } from '../agent/agent.orchestrator.js';
 import type { Env } from '../config/env.js';
-import { GitService, type FileChange } from '../git/git.service.js';
+import {
+  classifySourceRepo,
+  GitService,
+  type FileChange,
+} from '../git/git.service.js';
 import { RenderApiError, RenderClient } from '../render/render.client.js';
 import {
   DEPLOY_FAILED_STATUSES,
@@ -183,6 +188,11 @@ export class SandboxesService implements OnModuleInit {
 
   create(input: CreateSandboxInput): SandboxRecord {
     const mode = input.mode ?? 'agent';
+    if (classifySourceRepo(input.repo_url, this.git.org) === 'mirror') {
+      throw new BadRequestException(
+        'Ese repo es el mirror de otro sandbox: entrega el repo original',
+      );
+    }
     if (!this.git.mirrorsEnabled && mode !== 'manifest') {
       throw new ConflictException(
         'Los modos auto y agent necesitan GITHUB_TOKEN (mirrors) configurado',
@@ -572,6 +582,14 @@ export class SandboxesService implements OnModuleInit {
     if (!s.mirror_repo)
       throw new ConflictException('Este sandbox no tiene mirror');
     return this.git.archive(id, s.mirror_repo);
+  }
+
+  /** Directorio local con el código actual del mirror (lo usa la detección de herramientas). */
+  sourceDir(id: string): Promise<string> {
+    const s = this.get(id);
+    if (!s.mirror_repo)
+      throw new ConflictException('Este sandbox no tiene mirror');
+    return this.git.snapshotDir(id, s.mirror_repo);
   }
 
   /** Commitea cambios al mirror (sin desplegar). Lo usan el agente y redeploy. */

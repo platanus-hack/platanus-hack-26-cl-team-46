@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
+import { ClickyModule } from './clicky/clicky.module.js';
 import { validateEnv } from './config/env.js';
 import { SandboxesModule } from './sandboxes/sandboxes.module.js';
 import { SimulationsModule } from './simulations/simulations.module.js';
@@ -23,6 +24,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     }),
     SandboxesModule,
     SimulationsModule,
+    ClickyModule,
   ],
   controllers: [AppController],
 })

@@ -1,8 +1,4 @@
-import {
-  EVENT_TYPES,
-  NOTIFY_CHANNELS,
-  type SimRole,
-} from './simulation.types.js';
+import { EVENT_TYPES, type SimRole } from './simulation.types.js';
 
 /** Ids del catálogo de vulnerabilidades (§6.3). El motor real usará los mismos. */
 export const VULN_CATALOG = [
@@ -114,13 +110,12 @@ Te encargas del sandbox en Render: el deploy, la arquitectura y el **paquete de 
      "summary": "Qué es la app, para quién, qué datos maneja (2-4 frases)",
      "stack": "Express 5 + TypeScript + Postgres + EJS",
      "architecture": "servicios, base de datos, auth (JWT/cookies/sesiones), dónde están las rutas",
-     "tools_detected": ["sentry", "posthog", "datadog", "slack", "github"],
      "personas": [{ "name": "Martín Soto", "email": "martin.soto@example.com", "role": "user", "notes": "cliente frecuente" }],
      "endpoints": ["POST /api/auth/login", "GET /api/notes/:id"],
      "notes": "lo que otro agente debería saber"
    }
    \`\`\`
-   - **tools_detected:** solo lo que de verdad aparece en el código o en las dependencias. Por ejemplo: \`@sentry/*\` → sentry, \`posthog-*\` → posthog, \`dd-trace\` o \`datadog\` → datadog, webhooks de Slack → slack. Los canales válidos son: ${NOTIFY_CHANNELS.join(', ')}.
+   - **Herramientas de monitoreo:** no las pongas. El backend las detecta en el código (dependencias e inicialización de Sentry, PostHog, Datadog…) y define los \`channels\` de la simulación. Las ves en \`sim context\`.
    - **personas:** usuarios seed y datos ficticios del repo. Los usa el generador para escribir correos creíbles.
 4. Termina el turno.
 
@@ -141,7 +136,7 @@ Eres un **motor de hacking emulado**. **NO haces requests a la app desplegada ni
 Más adelante te reemplaza un motor real con **el mismo contrato de eventos**, así que respeta los formatos al pie de la letra. Guarda tu memoria de trabajo (accesos obtenidos, IP y user-agent del atacante, avance) en \`/tmp/${v.simId}/hacker/state.json\`.
 
 ### Primer turno: el plan de ataque
-1. \`sim source /tmp/${v.simId}/hacker/src\` y analiza el código buscando vulnerabilidades reales (archivo y línea).
+1. \`sim source /tmp/${v.simId}/hacker/src\` y analiza el código buscando vulnerabilidades reales (archivo y línea). Sigue la metodología de las skills del repo (\`.claude/skills\`): \`vuln-code-audit\` guía la auditoría, \`injection-and-fixes\`, \`access-control-audit\` y \`auth-secrets-audit\` cubren cada clase, y **cada hallazgo pasa por \`finding-quality-gate\`** antes de entrar al plan.
 2. Publica \`attack.plan\` con \`--data-file plan.json\`:
    \`\`\`json
    { "findings": [ {
@@ -241,7 +236,7 @@ Ejemplos de síntomas:
 - Un cliente que llama porque alguien tiene sus datos.
 
 ### Canales
-Usa **solo** los de \`channels\` en \`sim context\` (dependen de las herramientas del repo y de lo que configuró el developer). Si el repo no tiene monitoreo, el developer se entera por sus clientes. Eso también es parte de la lección.
+Usa **solo** los de \`channels\` en \`sim context\` (salen de las herramientas que el repo tiene configuradas en el código). Si el repo no tiene monitoreo, el developer se entera por sus clientes. Eso también es parte de la lección.
 
 ### Cómo publicar
 \`sim notify <canal> "<título>" "<cuerpo>" [--from "Nombre <email>"] [--severity info|warning|critical] [--vuln <vuln_id>] [--data '<json extra>']\`
@@ -264,6 +259,7 @@ Usa **solo** los de \`channels\` en \`sim context\` (dependen de las herramienta
 Eres el agente de código del developer, como Claude Code, trabajando sobre **su** app. Él te escribe (\`user.message\`) y tú le contestas con \`sim reply "<texto>"\`. Eres sus manos: ejecutas lo que pide, explicas lo que haces y puedes aconsejar como lo haría un buen ingeniero.
 - **No sabes lo que hace el atacante.** Solo ves lo mismo que el developer: \`sim timeline\` te muestra únicamente los eventos visibles para él.
 - **Haz solo lo que te pidieron.** Si ves otro problema (otra vuln, otro bug), menciónalo y ofrece arreglarlo, pero no lo arregles sin permiso: las decisiones del incidente son del developer y se evalúan.
+- **No te adelantes al developer.** Responde lo que te preguntó, sin agregar el plan de contención (rotar secretos, cerrar sesiones, cambiar contraseñas, revisar otras vulns) si no lo pidió. Descubrir esos pasos es la lección del simulador. Si te pregunta directamente "¿qué más debería hacer?", ahí sí aconseja como un buen ingeniero.
 - Si un pedido es ambiguo o destructivo (borrar datos, botar la app), confirma antes.
 - Si te pide analizar algo (logs, código), hazlo y responde con hallazgos concretos.
 

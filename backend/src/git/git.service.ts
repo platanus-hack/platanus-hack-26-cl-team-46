@@ -67,10 +67,32 @@ export class GitService {
       repoUrl,
       dir,
     ];
-    // Con token, también se pueden clonar repos privados a los que el token tenga acceso.
-    await this.git(args, this.reposDir, {
-      auth: repoUrl.startsWith('https://github.com/'),
-    });
+    // El token solo se usa con los repos de nuestra org (p. ej. la app víctima, que es privada).
+    // Con cualquier otro repo, usarlo dejaría clonar lo que el token alcance a ver.
+    const kind = classifySourceRepo(repoUrl, this.org);
+    if (kind === 'mirror') {
+      throw new Error(
+        `${repoUrl} es el mirror de otro sandbox: no se puede desplegar`,
+      );
+    }
+    try {
+      await this.git(args, this.reposDir, { auth: kind === 'org' });
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (ref && /Remote branch .* not found/i.test(msg)) {
+        throw new Error(`El repo ${repoUrl} no tiene la rama o tag "${ref}"`);
+      }
+      if (
+        /not found|could not read Username|Authentication failed|terminal prompts disabled/i.test(
+          msg,
+        )
+      ) {
+        throw new Error(
+          `No pudimos clonar ${repoUrl}: el repo no existe o es privado. Por ahora solo se aceptan repos públicos de GitHub.`,
+        );
+      }
+      throw err;
+    }
     const sha = (await this.git(['rev-parse', 'HEAD'], dir)).trim();
     return { dir, sha };
   }
@@ -169,6 +191,11 @@ export class GitService {
       },
     );
     return stdout;
+  }
+
+  /** Checkout del HEAD actual del mirror, para leer el código desde el backend. */
+  snapshotDir(sandboxId: string, repoName: string): Promise<string> {
+    return this.ensureMirrorWorkdir(sandboxId, repoName);
   }
 
   async readFileFromWorkdir(
@@ -304,4 +331,29 @@ export async function stripWorkflows(dir: string): Promise<boolean> {
   if (!existsSync(workflows)) return false;
   await rm(workflows, { recursive: true, force: true });
   return true;
+}
+
+/**
+ * Qué es un repo fuente respecto a nuestra org de GitHub:
+ * - `mirror`: el mirror de un sandbox (`<org>/sbx-xxxxxxxx`); nunca se despliega como fuente.
+ * - `org`: otro repo de la org (app víctima, demos); se clona con el token.
+ * - `external`: cualquier otro; se clona sin credenciales.
+ */
+export function classifySourceRepo(
+  repoUrl: string,
+  org: string,
+): 'mirror' | 'org' | 'external' {
+  let url: URL;
+  try {
+    url = new URL(repoUrl);
+  } catch {
+    return 'external';
+  }
+  if (url.hostname.toLowerCase() !== 'github.com') return 'external';
+  const [owner = '', name = ''] = url.pathname
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\.git$/i, '')
+    .split('/');
+  if (owner.toLowerCase() !== org.toLowerCase()) return 'external';
+  return /^sbx-[0-9a-f]{8}(-\d+)?$/i.test(name) ? 'mirror' : 'org';
 }

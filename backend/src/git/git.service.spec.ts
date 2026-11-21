@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { stripWorkflows } from './git.service.js';
+import { classifySourceRepo, stripWorkflows } from './git.service.js';
 
 describe('stripWorkflows', () => {
   let dir: string;
@@ -27,5 +27,40 @@ describe('stripWorkflows', () => {
 
   it('no hace nada si no hay workflows', async () => {
     expect(await stripWorkflows(dir)).toBe(false);
+  });
+});
+
+describe('classifySourceRepo', () => {
+  const org = 'hack26-sandboxes';
+
+  it('reconoce los mirrors de sandboxes (sin importar mayúsculas)', () => {
+    expect(
+      classifySourceRepo(`https://github.com/${org}/sbx-1a2b3c4d`, org),
+    ).toBe('mirror');
+    expect(
+      classifySourceRepo(
+        'https://github.com/Hack26-Sandboxes/SBX-1A2B3C4D.git',
+        org,
+      ),
+    ).toBe('mirror');
+  });
+
+  it('trata los demás repos de la org como propios', () => {
+    expect(classifySourceRepo(`https://github.com/${org}/apuntes`, org)).toBe(
+      'org',
+    );
+    expect(classifySourceRepo(`https://github.com/${org}/sbx-demo`, org)).toBe(
+      'org',
+    );
+  });
+
+  it('trata repos de otros dueños o de otros hosts como externos', () => {
+    expect(classifySourceRepo('https://github.com/rmena1/wallit', org)).toBe(
+      'external',
+    );
+    expect(
+      classifySourceRepo(`https://gitlab.com/${org}/sbx-1a2b3c4d`, org),
+    ).toBe('external');
+    expect(classifySourceRepo('no es una url', org)).toBe('external');
   });
 });

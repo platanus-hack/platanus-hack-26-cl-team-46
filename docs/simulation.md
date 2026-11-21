@@ -43,15 +43,15 @@ Una **simulación** es un sandbox desplegado más **un workspace de Conductor** 
 
 ## Ciclo de vida
 
-1. `POST /simulations {repo_url | sandbox_id, tools?}`: crea el sandbox (o reusa uno), el workspace y los 5 threads. Estado `starting`.
-2. **infra** espera el deploy y publica `context.ready`: stack, herramientas detectadas y personas. Al mismo tiempo, **hacker** analiza el código y publica `attack.plan`.
-3. Con la app arriba y el plan listo, el estado pasa a `ready`.
+1. `POST /simulations {repo_url | sandbox_id}`: crea el sandbox (o reusa uno), el workspace y los 5 threads. Estado `starting`.
+2. Con el deploy listo, el **backend** escanea el código del mirror (`tools-detector.ts`) y fija `tools_detected`: solo las herramientas con evidencia de setup (dependencia del SDK o su inicialización: `@sentry/*`, `posthog-*`, `dd-trace`, `@slack/*`, `.github/dependabot.yml`…). Los canales de la simulación son esas herramientas más los base (email, soporte, teléfono, Render). El developer no las elige y ningún LLM las agrega. En paralelo, **infra** publica `context.ready` (stack, arquitectura, personas) y **hacker** analiza el código y publica `attack.plan`.
+3. Con la app arriba, las herramientas detectadas y el plan listo, el estado pasa a `ready`.
 4. `POST /simulations/:id/start` → `control.start`. El hacker ataca una vuln y publica `attack.step`, `attack.success` y `attack.done`. Después:
    - el **observer** actualiza `state.update`,
-   - el **generator** manda `notify` (correos, Sentry, Datadog…).
+   - el **generator** manda `notify` solo por los canales activos (correos y, si el repo los tiene, Sentry, PostHog…).
 5. El developer actúa:
    - **Chat:** `POST /messages`. El **coder** ejecuta y emite `change.commit`, `change.env` o `change.db`, y después llega `change.deployed`.
-   - **Botones:** `POST /actions`, por ejemplo para rotar un secreto o reiniciar.
+   - **Acciones directas por API:** `POST /actions` (rotar un secreto, reiniciar). La consola no las muestra como botones porque regalan la respuesta: el developer actúa solo a través del chat.
 6. Con cada cambio desplegado, el **observer** pide `control.verify <vuln>`. El hacker responde `attack.verify {still_exploitable, attacker_active}` y el observer evalúa la acción (`assessments`). El observer decide cuándo hacer `control.next`.
 7. `POST /control {action:"finish"}`, o cuando todo queda contenido: el observer publica `sim.finished` con el **debrief**.
 
@@ -59,7 +59,7 @@ Una **simulación** es un sandbox desplegado más **un workspace de Conductor** 
 
 | Método | Ruta | Para qué |
 |---|---|---|
-| `POST` | `/simulations` | `{repo_url}` o `{sandbox_id}`, más `tools: ["sentry","datadog",…]` y `hacker: "emulated" \| "external"` |
+| `POST` | `/simulations` | `{repo_url}` o `{sandbox_id}`, más `hacker: "emulated" \| "external"`. Las herramientas de monitoreo no se eligen: se detectan en el código |
 | `GET` | `/simulations/:id` | Estado, threads, canales, contexto, plan, estado del incidente y debrief |
 | `GET` | `/simulations/:id/stream?view=user` | SSE con el panel de eventos. Con `view=all` incluye lo interno |
 | `GET` | `/simulations/:id/timeline?view=all&since=N&types=notify,attack.*` | Lo mismo, en JSON |

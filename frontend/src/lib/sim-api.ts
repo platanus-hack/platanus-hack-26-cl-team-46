@@ -57,7 +57,7 @@ const post = <T>(path: string, body: unknown = {}) => request<T>(path, { method:
 export const simApi = {
   list: () => request<Simulation[]>("/simulations"),
   get: (id: string) => request<Simulation>(`/simulations/${id}`),
-  create: (body: { repo_url?: string; sandbox_id?: string; tools?: string[] }) => post<Simulation>("/simulations", body),
+  create: (body: { repo_url?: string; sandbox_id?: string }) => post<Simulation>("/simulations", body),
   start: (id: string) => post<Simulation>(`/simulations/${id}/start`),
   control: (id: string, action: "next" | "pause" | "resume" | "finish", vuln_id?: string) =>
     post<Simulation>(`/simulations/${id}/control`, { action, vuln_id }),
