@@ -213,6 +213,38 @@ export const INTRO = {
     text: "Si no fuiste tú, revisa tu cuenta.",
     icon: "A",
   },
-  tabsFrom: 3,
-  tabsTo: 17,
+  /** Teléfono: alertas de permisos que se aprietan solas; cada una enciende un permiso detrás. */
+  phoneScreen: "Privacidad",
+  phoneAlerts: [
+    {
+      permission: "Contraseñas",
+      title: "“Apuntes” quiere usar tus contraseñas",
+      text: "Se completarán solas las claves guardadas de apuntes.dev.",
+      deny: "No permitir",
+      allow: "Permitir",
+    },
+    {
+      permission: "Contactos",
+      title: "“Apuntes” quiere acceder a tus contactos",
+      text: "Podrá ver nombres, teléfonos y correos de 312 contactos.",
+      deny: "No permitir",
+      allow: "Permitir acceso total",
+    },
+    {
+      permission: "Fotos",
+      title: "“Apuntes” quiere acceder a tus fotos",
+      text: "Incluye capturas de pantalla y documentos escaneados.",
+      deny: "Seleccionar fotos",
+      allow: "Permitir acceso total",
+    },
+    {
+      permission: "Face ID y código",
+      title: "¿Usar Face ID para iniciar sesión?",
+      text: "admin@apuntes.dev · llavero del sistema",
+      deny: "Cancelar",
+      allow: "Continuar",
+    },
+  ],
+  /** Permiso que queda apagado: no todo cae, y así se nota que los otros se encendieron solos. */
+  phoneUntouched: "Ubicación",
 };

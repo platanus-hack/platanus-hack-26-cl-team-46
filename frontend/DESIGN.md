@@ -86,7 +86,7 @@ Español de Chile neutro, con los términos técnicos en inglés como los dice u
 
 ## La landing, escena por escena
 
-0. **Intro "te están hackeando"** (~2,5 s al abrir, una vez por sesión; `/#intro` la fuerza): en computador se abren ventanas de la capa simulada con el ataque y un cursor fantasma ámbar; en teléfono se abren pestañas solas y bajan notificaciones. Termina con la transición de pixeles y deja el hero. Siempre con chip "Simulacro" y botón "Saltar" (clic, toque o Esc). Sin intro con `prefers-reduced-motion`.
+0. **Intro "te están hackeando"** (~2,5 s al abrir, una vez por sesión; `/#intro` la fuerza): en computador se abren ventanas de la capa simulada con el ataque y un cursor fantasma ámbar; en teléfono aparecen alertas de permisos del sistema (contraseñas, contactos, fotos, Face ID) que se aprietan solas con un dedo fantasma ámbar, mientras detrás se encienden esos permisos en ámbar, y bajan notificaciones. Termina con la transición de pixeles y deja el hero. Siempre con chip "Simulacro" y botón "Saltar" (clic, toque o Esc). Sin intro con `prefers-reduced-motion`.
 1. **Llegada:** arranca el simulacro. MaydayAlert sólida en marquesina, el logo y el cronómetro T+00:00 que empieza a correr. Titular en `display-xl`.
 2. **Scroll:** transición de pixeles a pantalla completa. Se abre la pregunta (QuestionCard) con el AttackTerminal corriendo infinito detrás.
 3. **Respuesta:** eliges entre 3 opciones. Pixeles sobre el panel (`pixel-sm`) y se revela qué estaba bien (cian) y qué no (ámbar).
@@ -154,6 +154,13 @@ Acción del usuario. El primario es cian sólido (`defense`) con texto `on-defen
 - Verbo primero, en español, con mayúscula solo inicial: "Entra con GitHub", "Revoca la key".
 - Tamaños: 40px (escritorio, paneles) y 52px `md-btn--lg` (landing).
 - Hover del primario: `defense-strong` + `glow-defense`. Foco: anillo `focus-ring`.
+
+### BackButton
+
+Volver al paso anterior en la landing. Es sutil a propósito: label mono en `ink-faint` (`ink` al pasar el mouse), flecha Lucide, sin borde ni relleno, para no competir con el único primario.
+
+- Verbo primero y corto: "Vuelve al inicio" (en la pregunta, dentro del panel junto al label) y "Revisa la pregunta" (arriba del resultado).
+- Vuelve con scroll suave (las cortinas se cierran solas); con `prefers-reduced-motion`, salto directo.
 
 ### StatusChip
 

@@ -9,6 +9,7 @@ import { ButtonLink, GitHubIcon } from "./Button";
  * - Derecha (bg-100): siempre igual. Título, una línea de apoyo y el único botón primario.
  */
 export function ResultSplit({
+  back,
   outcome,
   verdict,
   hud,
@@ -20,6 +21,8 @@ export function ResultSplit({
   ctaHref,
   className,
 }: {
+  /** Volver al paso anterior (BackButton), arriba a la izquierda. */
+  back?: ReactNode;
   outcome: "ok" | "fail";
   verdict: ReactNode;
   /** Lecturas tipo cabina sobre el veredicto (p. ej. <Hud />). */
@@ -36,6 +39,7 @@ export function ResultSplit({
   return (
     <div className={`md-result ${className ?? ""}`}>
       <div className="md-result__side">
+        {back && <div>{back}</div>}
         <div className="flex flex-1 flex-col justify-center gap-6">
           {hud}
           <h2 className={`md-result__verdict md-result__verdict--${outcome}`}>{verdict}</h2>

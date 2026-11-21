@@ -111,7 +111,12 @@ export function IntroHack({
       </div>
 
       {playing && (
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between p-4">
+        // En teléfono van abajo: arriba está la barra de estado, y "Saltar" queda a mano del pulgar.
+        <div
+          className={`pointer-events-none absolute inset-x-0 z-10 flex items-center justify-between p-4 ${
+            device === "mobile" ? "bottom-0 pb-[max(var(--space-4),env(safe-area-inset-bottom))]" : "top-0"
+          }`}
+        >
           <StatusChip tone="attack">{INTRO.chip}</StatusChip>
           <Button className="pointer-events-auto bg-bg-000!" onClick={() => doneRef.current()}>
             {INTRO.skip}

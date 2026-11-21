@@ -8,6 +8,7 @@ import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
 import {
   AttackTerminal,
+  BackButton,
   Button,
   Hud,
   MaydayAlert,
@@ -70,6 +71,8 @@ export function Landing() {
   const cardRef = useRef<HTMLDivElement>(null);
   const curtain = useRef<CurtainHandle>(null);
   const resultRef = useRef<HTMLElement>(null);
+  const questionRef = useRef<HTMLDivElement>(null);
+  const pinRef = useRef<ScrollTrigger | null>(null);
 
   // Escena 4: transición a pantalla completa (pixel-lg en desktop, pixel-md en mobile).
   const [resultRun, setResultRun] = useState(0);
@@ -95,6 +98,17 @@ export function Landing() {
     setResultShown(true);
     const el = resultRef.current;
     if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY, behavior: "instant" });
+  }, []);
+
+  // Volver: al hero (las cortinas se cierran solas con el scroll) o a la pregunta (fin del pin).
+  const scrollBehavior = (): ScrollBehavior =>
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth";
+  const backToHero = useCallback(() => window.scrollTo({ top: 0, behavior: scrollBehavior() }), []);
+  const backToQuestion = useCallback(() => {
+    const pin = pinRef.current;
+    const el = questionRef.current;
+    const top = pin ? pin.end - 2 : el ? el.getBoundingClientRect().top + window.scrollY : 0;
+    window.scrollTo({ top, behavior: scrollBehavior() });
   }, []);
 
   useGSAP(
@@ -148,8 +162,10 @@ export function Landing() {
               0.4,
             )
             .to({}, { duration: 0.3 }); // la pregunta queda quieta para responder
+          pinRef.current = tl.scrollTrigger ?? null;
 
           return () => {
+            pinRef.current = null;
             curtain.current?.reset();
             setAlertSolid(true);
             setCardActive(false);
@@ -212,38 +228,42 @@ export function Landing() {
 
           {/* Capa de abajo: el AttackTerminal corriendo infinito y la pregunta encima. */}
           <div
+            ref={questionRef}
             className="absolute inset-0 z-10 motion-reduce:relative motion-reduce:min-h-svh"
             inert={!cardActive}
           >
             <AttackTerminal lines={ATTACK_SCRIPT} className="absolute! inset-0" />
             <SceneSlot ref={cardRef}>
-              <QuestionCard
-                className="w-full max-w-[720px]"
-                label={QUESTION.label}
-                title={QUESTION.title}
-                context={QUESTION.context}
-                code={QUESTION.code.map((line) => (
-                  <div key={line.time}>
-                    <span className="text-ink-faint">{line.time}</span>
-                    {"  "}
-                    {line.text}
-                    {line.mark && <mark>{line.mark}</mark>}
-                  </div>
-                ))}
-                options={QUESTION.options}
-                active={cardActive}
-                onAnswer={(option) =>
-                  setAnswer({ option, seconds: Math.round((Date.now() - (startedAt ?? Date.now())) / 1000) })
-                }
-                footer={
-                  <div className="flex flex-wrap items-center gap-4">
-                    <Button onClick={goToResult} icon={<ArrowDown strokeWidth={1.5} aria-hidden="true" />}>
-                      Ve tu resultado
-                    </Button>
-                    <span className="md-index">O SIGUE BAJANDO</span>
-                  </div>
-                }
-              />
+              <div className="flex w-full max-w-[720px] flex-col items-start gap-3">
+                <QuestionCard
+                  className="w-full"
+                  label={QUESTION.label}
+                  back={<BackButton onClick={backToHero}>Vuelve al inicio</BackButton>}
+                  title={QUESTION.title}
+                  context={QUESTION.context}
+                  code={QUESTION.code.map((line) => (
+                    <div key={line.time}>
+                      <span className="text-ink-faint">{line.time}</span>
+                      {"  "}
+                      {line.text}
+                      {line.mark && <mark>{line.mark}</mark>}
+                    </div>
+                  ))}
+                  options={QUESTION.options}
+                  active={cardActive}
+                  onAnswer={(option) =>
+                    setAnswer({ option, seconds: Math.round((Date.now() - (startedAt ?? Date.now())) / 1000) })
+                  }
+                  footer={
+                    <div className="flex flex-wrap items-center gap-4">
+                      <Button onClick={goToResult} icon={<ArrowDown strokeWidth={1.5} aria-hidden="true" />}>
+                        Ve tu resultado
+                      </Button>
+                      <span className="md-index">O SIGUE BAJANDO</span>
+                    </div>
+                  }
+                />
+              </div>
             </SceneSlot>
           </div>
         </div>
@@ -254,13 +274,18 @@ export function Landing() {
           <section ref={resultRef} aria-label="Tu resultado" className={resultShown ? "" : "invisible"}>
             <ResultSplit
               className="min-h-svh!"
+              back={<BackButton onClick={backToQuestion}>Revisa la pregunta</BackButton>}
               outcome={ok ? "ok" : "fail"}
               verdict={ok ? RESULT.ok.verdict : RESULT.fail.verdict}
               hud={
                 <Hud
                   fluid
                   items={[
-                    { label: "Tiempo de respuesta", value: formatElapsed(answer.seconds), tone: ok ? "defense" : "attack" },
+                    {
+                      label: "Tiempo de respuesta",
+                      value: formatElapsed(answer.seconds),
+                      tone: ok ? "defense" : "attack",
+                    },
                     { label: "Atacante", value: ok ? "Afuera" : "Adentro", tone: ok ? "defense" : "attack" },
                   ]}
                 />

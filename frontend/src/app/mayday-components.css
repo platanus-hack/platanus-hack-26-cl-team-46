@@ -35,6 +35,13 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 }
 .md-index { font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; color: var(--ink-faint); }
 
+/* ---------- Volver (sutil): label mono, sin borde ni relleno ---------- */
+.md-back { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; background: none; border: 0; cursor: pointer; font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); transition: color .15s; }
+.md-back:hover { color: var(--ink); }
+.md-back:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 4px; border-radius: var(--radius-sm); }
+.md-back svg { width: 14px; height: 14px; flex: none; transition: transform .15s; }
+.md-back:hover svg { transform: translateX(-2px); }
+
 /* ---------- Alerta MAYDAY ---------- */
 .md-alert { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--attack-deep); border-top: 1px solid var(--attack); border-bottom: 1px solid var(--attack); color: var(--attack-strong); font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; text-transform: uppercase; }
 .md-alert__call { display: flex; align-items: center; gap: var(--space-3); }
@@ -250,9 +257,6 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 @keyframes md-intro-dim { 50% { opacity: .82; } }
 @keyframes md-intro-hide { to { opacity: 0; visibility: hidden; } }
 @keyframes md-intro-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-@keyframes md-intro-rise { from { opacity: 0; transform: translateY(48px); } to { opacity: 1; transform: none; } }
-@keyframes md-intro-out-left { to { opacity: .3; transform: translateX(-115%); } }
-@keyframes md-intro-out-right { to { opacity: .3; transform: translateX(115%); } }
 @keyframes md-intro-ghost {
   0% { transform: translate(18vw, 24vh); }
   18% { transform: translate(46vw, 30vh); }
@@ -262,6 +266,13 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
   88% { transform: translate(44vw, 70vh); }
   100% { transform: translate(84vw, 12vh); }
 }
+/* Intro teléfono: alertas del sistema que se aprietan solas. Una alerta dura 340 ms y todo va en esa escala. */
+@keyframes md-ios-alert { 0% { opacity: 0; transform: scale(1.12); } 14% { opacity: 1; transform: none; } 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: scale(.96); } }
+@keyframes md-ios-press { 0%, 58% { background: var(--sim-300); } 64%, 100% { background: var(--sim-ink-faint); } }
+@keyframes md-ios-finger { 0%, 30% { opacity: 0; transform: translate(18px, 22px); } 50% { opacity: 1; transform: none; } 62% { opacity: 1; transform: scale(.85); } 80% { opacity: 1; transform: none; } 100% { opacity: 0; transform: none; } }
+@keyframes md-ios-on { to { background: var(--attack); } }
+@keyframes md-ios-knob { to { transform: translateX(20px); } }
+@keyframes md-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes md-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 
 /* ---------- Animaciones ---------- */

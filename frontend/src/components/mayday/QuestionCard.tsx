@@ -24,6 +24,7 @@ export interface QuestionOption<Id extends string = string> {
 
 export function QuestionCard<Id extends string>({
   label,
+  back,
   title,
   context,
   code,
@@ -34,6 +35,8 @@ export function QuestionCard<Id extends string>({
   className,
 }: {
   label?: ReactNode;
+  /** Volver al paso anterior (BackButton), a la derecha del label. */
+  back?: ReactNode;
   title: ReactNode;
   context: ReactNode;
   code?: ReactNode;
@@ -86,7 +89,12 @@ export function QuestionCard<Id extends string>({
 
   return (
     <div className={`md-question relative overflow-hidden ${className ?? ""}`}>
-      {label && <span className="md-index">{label}</span>}
+      {(label || back) && (
+        <div className="flex items-center justify-between gap-4">
+          {label && <span className="md-index">{label}</span>}
+          {back}
+        </div>
+      )}
       <h2 className="md-question__title">{title}</h2>
 
       <p className="md-question__context" aria-live="polite">
