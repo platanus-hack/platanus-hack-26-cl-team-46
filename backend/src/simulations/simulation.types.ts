@@ -286,7 +286,8 @@ export const EVENT_TYPES: Record<string, EventTypeSpec> = {
   // ---- infra
   'context.ready': {
     by: ['infra'],
-    wakes: ['observer', 'generator', 'hacker'],
+    // El hacker no: arma su plan desde el código y despertarlo acá gastaba un turno sin hacer nada.
+    wakes: ['observer', 'generator'],
     visibility: 'internal',
     description: 'Paquete de contexto del repo (raw = SimContext)',
   },

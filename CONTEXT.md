@@ -229,7 +229,7 @@ Los modelos salieron de un replay de `sim-ed22258c` con los tres modelos (`pnpm 
 }
 ```
 
-`credentials.db_url` es la URL **externa** de la base del sandbox (se consulta a Render en cada request).
+`GET /sandboxes(/:id)` es público, así que **no expone secretos** (desde el 21-nov, noche): `credentials.db_url` va en `null` y `credentials.env` solo trae los nombres de las variables (valores `••••`). Los agentes llegan a la base y al entorno por sus rutas con token (`/agent/sandboxes/:id/db`, `/sim/:id/db`). Si el motor real necesita la base, hay que darle una ruta con su token.
 
 ### 7.2 Evento y acción (brief §6.2, implementados)
 
@@ -333,7 +333,7 @@ Pregunta abierta del ADR 0007 (PR #2): los eventos `attack.*` del timeline son `
 **Decisiones abiertas**
 
 8. **Director con tiempos fijos:** escalar 3 min después de que el developer actúe, u 8 min si no hace nada; cerrar al jugar 3 vulns (`SIM_MAX_INCIDENTS`). Ajustar después de ensayar el demo (`DEFAULT_DIRECTOR` en `brain/facts.ts`).
-8b. **¿Qué tan proactivo es el coder en seguridad?** En la prueba advirtió "esto no cierra la sesión del atacante", que es lo que haría un Claude Code real pero le quita la lección al usuario. **Ajustado (21-nov):** el brief del coder ahora le pide no adelantar el plan de contención si el developer no lo pregunta.
+8b. **¿Qué tan proactivo es el coder en seguridad?** En la prueba advirtió "esto no cierra la sesión del atacante", que es lo que haría un Claude Code real pero le quita la lección al usuario. **Ajustado (21-nov):** no adelanta la contención, no nombra vulns que el developer no vio, responde en ≤120 palabras con una sola propuesta, no ve las contraseñas del seed y sabe que los logs del sandbox pueden traer tráfico de otras simulaciones. Clicky sigue la misma regla mientras la simulación corre (guía con preguntas; explica todo al terminar).
 9. **Ajustes de briefs sin re-probar en corrida completa:** el observer pasaba a la siguiente vuln apenas terminaba cada ataque, y el coder arregló la SQLi sin que se lo pidieran.
 10. ~~**Canales vs herramientas reales**~~ **Resuelto (21-nov):** los canales salen solo de las herramientas detectadas en el código por el backend (`backend/src/simulations/tools-detector.ts`); se sacó el parámetro `tools`. Apuntes trae Sentry y PostHog configurados (sin DSN/key no envían nada), así que su simulación tiene esos dos canales.
 11. **Aislamiento de credenciales en Conductor (mitigado el 21-nov):** las variables globales de Conductor se inyectan en **todas** las VMs. Ahora el backend las tapa con valor vacío al crear las VMs de los agentes (`CONDUCTOR_AGENT_BLANK_ENV`; probado: las variables del workspace pisan a las globales). **Queda abierto:** `CONDUCTOR_API_KEY` no se puede tapar porque Conductor la fija en cada VM. La solución completa sigue siendo un workspace u org de Conductor sin credenciales solo para los agentes.

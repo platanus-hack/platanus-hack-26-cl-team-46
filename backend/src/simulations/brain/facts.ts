@@ -18,6 +18,8 @@ export interface VulnFacts {
   /** Primer seq en que el atacante tocó esta vuln (comando o ataque). */
   attacked_seq?: number;
   done_seq?: number;
+  /** El atacante logró algo (attack.success). Sin esto, un ataque terminado quedó bloqueado. */
+  succeeded?: boolean;
   /** Último reporte del hacker sobre si sigue adentro por esta vuln. */
   attacker_active?: boolean;
   last_verify?: {
@@ -126,6 +128,7 @@ export function computeFacts(
       case 'attack.success':
         if (id) {
           vuln(id).attacked_seq ??= e.seq;
+          vuln(id).succeeded = true;
           vuln(id).attacker_active = true;
         }
         break;
@@ -178,7 +181,9 @@ function statusOf(v: VulnFacts): VulnStatus {
   if (!v.attacked_seq) return 'pending';
   if (!v.done_seq) return 'exploiting';
   const lv = v.last_verify;
-  if (!lv || lv.seq < v.done_seq) return 'exploited';
+  if (!lv || lv.seq < v.done_seq)
+    // Un ataque que terminó sin ningún attack.success lo detuvo una defensa.
+    return v.succeeded || v.attacker_active ? 'exploited' : 'contained';
   if (!lv.still_exploitable && !lv.attacker_active) return 'fixed';
   if (lv.still_exploitable && !lv.attacker_active) return 'contained';
   return 'exploited';

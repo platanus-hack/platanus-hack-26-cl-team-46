@@ -23,21 +23,31 @@ const guard = (status: string, limit = 20) =>
 
 describe('ClickyAccessGuard', () => {
   it('deja pasar con una simulación en curso', () => {
-    expect(guard('running').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toBe(true);
+    expect(
+      guard('running').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' })),
+    ).toBe(true);
   });
 
   it('rechaza sin x-sim-id o con un id mal formado', () => {
     expect(() => guard('running').canActivate(ctx({}))).toThrow(HttpException);
-    expect(() => guard('running').canActivate(ctx({ 'x-sim-id': '../etc' }))).toThrow(HttpException);
+    expect(() =>
+      guard('running').canActivate(ctx({ 'x-sim-id': '../etc' })),
+    ).toThrow(HttpException);
   });
 
   it('deja pasar una simulación terminada, para repasarla', () => {
-    expect(guard('finished').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toBe(true);
+    expect(
+      guard('finished').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' })),
+    ).toBe(true);
   });
 
   it('rechaza una simulación fallida o detenida', () => {
-    expect(() => guard('failed').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toThrow(ConflictException);
-    expect(() => guard('stopped').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toThrow(ConflictException);
+    expect(() =>
+      guard('failed').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' })),
+    ).toThrow(ConflictException);
+    expect(() =>
+      guard('stopped').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' })),
+    ).toThrow(ConflictException);
   });
 
   it('limita las preguntas por minuto por IP', () => {
@@ -46,18 +56,28 @@ describe('ClickyAccessGuard', () => {
     g.canActivate(c);
     g.canActivate(c);
     expect(() => g.canActivate(c)).toThrow(/Demasiadas/);
-    expect(g.canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }, '5.6.7.8'))).toBe(true);
+    expect(g.canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }, '5.6.7.8'))).toBe(
+      true,
+    );
   });
 });
 
 describe('lessonSchema', () => {
   it('acepta una pregunta con captura JPEG', () => {
-    const r = lessonSchema.safeParse({ question: 'hola', screenshot: 'data:image/jpeg;base64,AAAA' });
+    const r = lessonSchema.safeParse({
+      question: 'hola',
+      screenshot: 'data:image/jpeg;base64,AAAA',
+    });
     expect(r.success).toBe(true);
   });
 
   it('rechaza capturas que no son imágenes en data URL', () => {
-    expect(lessonSchema.safeParse({ question: 'hola', screenshot: 'https://evil.example/x.png' }).success).toBe(false);
+    expect(
+      lessonSchema.safeParse({
+        question: 'hola',
+        screenshot: 'https://evil.example/x.png',
+      }).success,
+    ).toBe(false);
     expect(lessonSchema.safeParse({ question: '' }).success).toBe(false);
   });
 });
@@ -78,10 +98,23 @@ describe('wordStarts', () => {
 describe('cleanLesson', () => {
   it('descarta marcas con ids que no están en pantalla y tipos desconocidos', () => {
     const beats = cleanLesson(
-      { beats: [{ say: 'Mira aquí', marks: [{ type: 'ring', target: 'a' }, { type: 'ring', target: 'x' }, { type: 'eval', code: 'alert(1)' }] }] },
+      {
+        beats: [
+          {
+            say: 'Mira aquí',
+            marks: [
+              { type: 'ring', target: 'a' },
+              { type: 'ring', target: 'x' },
+              { type: 'eval', code: 'alert(1)' },
+            ],
+          },
+        ],
+      },
       new Set(['a']),
     );
-    expect(beats[0].marks).toEqual([{ type: 'ring', target: 'a', label: undefined, n: undefined, word: 1 }]);
+    expect(beats[0].marks).toEqual([
+      { type: 'ring', target: 'a', label: undefined, n: undefined, word: 1 },
+    ]);
   });
 
   it('ancla cada marca a la palabra que la nombra', () => {
@@ -106,7 +139,17 @@ describe('cleanLesson', () => {
 
   it('reparte a lo largo de la frase las marcas sin ancla', () => {
     const [beat] = cleanLesson(
-      { beats: [{ say: 'uno dos tres cuatro cinco seis', marks: [{ type: 'ring', target: 'a' }, { type: 'underline', target: 'a', at: 'no está' }] }] },
+      {
+        beats: [
+          {
+            say: 'uno dos tres cuatro cinco seis',
+            marks: [
+              { type: 'ring', target: 'a' },
+              { type: 'underline', target: 'a', at: 'no está' },
+            ],
+          },
+        ],
+      },
       new Set(['a']),
     );
     expect(beat.marks.map((m) => m.word)).toEqual([1, 4]);
@@ -115,23 +158,52 @@ describe('cleanLesson', () => {
 
 describe('pizarra por piezas', () => {
   const ids = new Set<string>();
-  const marks = (beats: unknown[]) => cleanLesson({ beats }, ids).map((b) => b.marks);
+  const marks = (beats: unknown[]) =>
+    cleanLesson({ beats }, ids).map((b) => b.marks);
 
   it('arma la pizarra beat a beat: abrir, cajas y flechas entre cajas ya dibujadas', () => {
     const [open, first, second] = marks([
-      { say: 'Te dibujo cómo funciona', marks: [{ type: 'board', title: 'Token', cols: 9, rows: 2 }] },
-      { say: 'Primero inicias sesión', marks: [{ type: 'node', id: 'a', text: 'Inicias sesión', col: 0, row: 0, at: 'inicias' }] },
+      {
+        say: 'Te dibujo cómo funciona',
+        marks: [{ type: 'board', title: 'Token', cols: 9, rows: 2 }],
+      },
+      {
+        say: 'Primero inicias sesión',
+        marks: [
+          {
+            type: 'node',
+            id: 'a',
+            text: 'Inicias sesión',
+            col: 0,
+            row: 0,
+            at: 'inicias',
+          },
+        ],
+      },
       {
         say: 'y recibes un token',
         marks: [
           { type: 'edge', from: 'a', to: 'b', label: 'entrega' },
-          { type: 'node', id: 'b', text: 'Token', col: 1, row: 0, at: 'un token' },
+          {
+            type: 'node',
+            id: 'b',
+            text: 'Token',
+            col: 1,
+            row: 0,
+            at: 'un token',
+          },
           { type: 'edge', from: 'a', to: 'b', label: 'entrega', at: 'recibes' },
         ],
       },
     ]);
     expect(open[0]).toMatchObject({ type: 'board', cols: 4, rows: 2 });
-    expect(first[0]).toMatchObject({ type: 'node', id: 'a', col: 0, row: 0, word: 1 });
+    expect(first[0]).toMatchObject({
+      type: 'node',
+      id: 'a',
+      col: 0,
+      row: 0,
+      word: 1,
+    });
     // la flecha antes de su caja se descarta; la que va después queda
     expect(second.map((m) => m.type)).toEqual(['node', 'edge']);
     // anclada a "recibes" (1), pero su caja "un token" va en la 2: la flecha espera a la caja
@@ -139,11 +211,21 @@ describe('pizarra por piezas', () => {
   });
 
   it('sin pizarra abierta no hay cajas, y una celda ocupada pasa a la siguiente libre', () => {
-    expect(marks([{ say: 'hola', marks: [{ type: 'node', id: 'a', text: 'x' }] }])[0]).toEqual([]);
+    expect(
+      marks([
+        { say: 'hola', marks: [{ type: 'node', id: 'a', text: 'x' }] },
+      ])[0],
+    ).toEqual([]);
     const [, , dup] = marks([
       { say: 'abro', marks: [{ type: 'board', title: 't', cols: 2, rows: 1 }] },
-      { say: 'uno', marks: [{ type: 'node', id: 'a', text: 'A', col: 0, row: 0 }] },
-      { say: 'dos', marks: [{ type: 'node', id: 'b', text: 'B', col: 0, row: 0 }] },
+      {
+        say: 'uno',
+        marks: [{ type: 'node', id: 'a', text: 'A', col: 0, row: 0 }],
+      },
+      {
+        say: 'dos',
+        marks: [{ type: 'node', id: 'b', text: 'B', col: 0, row: 0 }],
+      },
     ]);
     expect(dup[0]).toMatchObject({ id: 'b', col: 1, row: 0 });
   });
@@ -151,7 +233,20 @@ describe('pizarra por piezas', () => {
   it('una sola pizarra o chart por respuesta', () => {
     const [, second] = marks([
       { say: 'abro', marks: [{ type: 'board', title: 't' }] },
-      { say: 'otra', marks: [{ type: 'board', title: 'u' }, { type: 'chart', title: 'c', bars: [{ label: 'a', value: 1 }, { label: 'b', value: 2 }] }] },
+      {
+        say: 'otra',
+        marks: [
+          { type: 'board', title: 'u' },
+          {
+            type: 'chart',
+            title: 'c',
+            bars: [
+              { label: 'a', value: 1 },
+              { label: 'b', value: 2 },
+            ],
+          },
+        ],
+      },
     ]);
     expect(second).toEqual([]);
   });
@@ -167,10 +262,12 @@ describe('anchorWord', () => {
 
 describe('BeatScanner', () => {
   it('entrega cada beat apenas se cierra, aunque llegue en trozos', () => {
-    const json = '{"beats":[{"say":"Mira {esto}, \\"ok\\"","marks":[{"type":"ring","target":"a"}]},{"say":"dos","marks":[]}]}';
+    const json =
+      '{"beats":[{"say":"Mira {esto}, \\"ok\\"","marks":[{"type":"ring","target":"a"}]},{"say":"dos","marks":[]}]}';
     const scanner = new BeatScanner();
     const got: unknown[] = [];
-    for (let i = 0; i < json.length; i += 7) got.push(...scanner.push(json.slice(i, i + 7)));
+    for (let i = 0; i < json.length; i += 7)
+      got.push(...scanner.push(json.slice(i, i + 7)));
     expect(got).toEqual([
       { say: 'Mira {esto}, "ok"', marks: [{ type: 'ring', target: 'a' }] },
       { say: 'dos', marks: [] },
@@ -187,7 +284,9 @@ describe('BeatScanner', () => {
 describe('liveSttUrl', () => {
   it('arma la conexión en español, PCM 16 kHz, con keyterms repetidos y sin la key', () => {
     const url = new URL(liveSttUrl('scribe_v3_live', 'sutkn_x'));
-    expect(url.origin + url.pathname).toBe('wss://api.elevenlabs.io/v1/speech-to-text/realtime');
+    expect(url.origin + url.pathname).toBe(
+      'wss://api.elevenlabs.io/v1/speech-to-text/realtime',
+    );
     expect(url.searchParams.get('token')).toBe('sutkn_x');
     expect(url.searchParams.get('audio_format')).toBe('pcm_16000');
     expect(url.searchParams.get('language_code')).toBe('es');
@@ -215,15 +314,39 @@ describe('ClickyService.lesson (ensayo)', () => {
       voice: true,
     }))
       events.push(e);
-    expect(events.map((e) => e.type)).toEqual([...Array(7).fill('beat'), 'done']);
+    expect(events.map((e) => e.type)).toEqual([
+      ...Array(7).fill('beat'),
+      'done',
+    ]);
     const second = events[1] as Extract<LessonEvent, { type: 'beat' }>;
     expect(second.index).toBe(1);
-    expect(second.marks[0]).toMatchObject({ type: 'target', target: 'b', word: 1 });
+    expect(second.marks[0]).toMatchObject({
+      type: 'target',
+      target: 'b',
+      word: 1,
+    });
   });
 
   it('respeta el tope de preguntas por simulación antes de llamar al modelo', async () => {
     const s = service({ CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 0 });
-    const it = s.lesson('sim-0a1b2c3d', { question: 'x', elements: [], history: [], screenshot: null, page: { title: '', path: '' }, context: '', voice: false });
+    const it = s.lesson('sim-0a1b2c3d', {
+      question: 'x',
+      elements: [],
+      history: [],
+      screenshot: null,
+      page: { title: '', path: '' },
+      context: '',
+      voice: false,
+    });
     await expect(it.next()).rejects.toThrow(/máximo de preguntas/);
+  });
+});
+
+describe('fase de la simulación en el prompt de Clicky', () => {
+  it('en curso guía sin dar la contención; terminada explica todo', async () => {
+    const { phaseNote } = await import('./clicky.service.js');
+    expect(phaseNote('running')).toContain('no le digas qué acción tomar');
+    expect(phaseNote('paused')).toContain('no le digas qué acción tomar');
+    expect(phaseNote('finished')).toContain('Puedes explicar todo');
   });
 });
