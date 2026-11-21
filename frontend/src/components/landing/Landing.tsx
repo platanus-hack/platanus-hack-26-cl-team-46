@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Logo, MaydayAlert, SceneIndex, StatusChip, Stopwatch } from "@/components/mayday";
+import { ButtonLink, Logo, MaydayAlert, SceneIndex, StatusChip, Stopwatch } from "@/components/mayday";
 
 /**
  * Landing de Mayday (DESIGN.md › "La landing, escena por escena").
@@ -46,7 +46,12 @@ function SceneArrival() {
           Tranquilo: es un simulacro. Pero si fuera de verdad,{" "}
           <span className="text-ink">¿sabrías qué hacer en los primeros 5 minutos?</span>
         </p>
-        <span className="md-index">BAJA PARA RESPONDER ↓</span>
+        <div className="flex flex-wrap items-center gap-6">
+          <ButtonLink href="/simulate" variant="primary" size="lg">
+            Ir al simulacro
+          </ButtonLink>
+          <span className="md-index">O BAJA PARA RESPONDER ↓</span>
+        </div>
       </div>
     </section>
   );
