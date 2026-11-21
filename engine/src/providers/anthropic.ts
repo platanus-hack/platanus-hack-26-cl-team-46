@@ -8,6 +8,7 @@
  * decisión de modelos de Sebastián; la generación de módulos usa Opus 5.5.
  */
 import { llmCost, type Usage } from '../core/ledger.ts';
+import { ProviderRefusal } from './openai-compat.ts';
 import { DEFAULT_TIERS, type AnalysisProvider, type ProposedAngle, type ProviderInput, type TierConfig } from './types.ts';
 
 const API = 'https://api.anthropic.com/v1/messages';
@@ -43,6 +44,8 @@ export class AnthropicProvider implements AnalysisProvider {
     if (!res.ok) throw new Error(`Anthropic ${res.status}: ${JSON.stringify(data).slice(0, 300)}`);
     const usage: Usage = { tokensIn: data.usage?.input_tokens, tokensOut: data.usage?.output_tokens, cacheReadTokens: data.usage?.cache_read_input_tokens };
     this.onUsage?.(model, usage, llmCost(model, usage));
+    // Guard anti-ataque (refusal): gatilla el fallback de la cascada.
+    if (data.stop_reason === 'refusal') throw new ProviderRefusal(`Claude refusal (${data.stop_details?.category ?? 'guard'})`);
     const text = (data.content ?? []).filter((b: any) => b.type === 'text').map((b: any) => b.text).join('');
     return text;
   }

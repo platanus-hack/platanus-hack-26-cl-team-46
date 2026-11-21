@@ -212,3 +212,59 @@ Cada hito termina con **tests verdes** + **checkpoint de supervisión** reportad
 
 El plugin Apuntes + el fixture local siguen siendo la red de seguridad de regresión en cada hito.
 ```
+
+## 14. Modo agresivo / destructivo (M8)
+
+En un **contenedor desechable y autorizado** sí se justifica generar daño real (es
+la gracia de levantarlo). Decisión de Sebastián: el sandbox de Render compartido
+que entregó **es objeto de destrucción** (él lo rota/redeploya). Operativamente,
+una corrida destructiva deja el sandbox inservible hasta un redeploy — coordinar.
+
+Eje nuevo, independiente del sigilo: `--destructive` (default OFF) + candados:
+1. Autorización explícita en el `EngagementSpec` (`authorization`, `container.disposable`).
+2. Scope guard: solo el host autorizado.
+3. Presupuesto (DoS/LLM consumen).
+
+Taxonomía `risk: 'destructive'` (ya existe en las variantes). Módulos por categoría:
+
+- **DoS** — agotamiento **acotado** (tope de duración/concurrencia): flood, consulta
+  pesada sin paginación, ReDoS. Mide cuándo cae (latencia/errores) y si hay límite.
+- **Secrets / llavero** — **SSRF** → metadata del cloud / `localhost`, lectura de
+  env/`.env`, detección de `JWT_SECRET` y **movimiento lateral** con el secreto.
+- **Deploy / CICD** — análisis del pipeline del repo (workflow con permisos de más,
+  secrets en CI, inyección de workflow) + narrativa del artefacto envenenado en el
+  mirror del sandbox. No toca registries de terceros.
+- **Prompt injection** — se **auto-activa solo si** el discovery detecta componente
+  LLM (deps anthropic/openai): inyección directa/indirecta, exfiltración vía
+  tool-calls. Mapeo MITRE **ATLAS**.
+- **Phishing** — **simulado**: encadena open-redirect + genera el artefacto y lo
+  "entrega" a una **persona ficticia** del sim. Nunca a personas reales.
+
+Límites que no se cruzan ni en destructivo: nada fuera del contenedor autorizado;
+phishing jamás contra personas reales; sin anti-forense que borre logs (rompería
+la telemetría = la lección).
+
+## 15. Cascada de providers LLM (reliability + costo)
+
+Para el análisis/planificación con LLM, cascada con failover automático ante
+**error, refusal (guard anti-ataque) o presupuesto agotado**:
+
+1. **Claude Sonnet 4.5** (`claude-sonnet-4-5`) — primario.
+2. **DeepSeek** (API key) — fallback.
+3. **GLM** (API key) — fallback.
+
+El primero disponible/que responde gana. Cada intento se registra en el cost
+ledger (proveedor, modelo, tokens, costo). La interfaz `AnalysisProvider` ya
+abstrae esto; se agrega un `CascadeProvider` que envuelve a los tres.
+
+## 16. Despliegue del motor (otro contenedor)
+
+El motor corre **fuera** de la app diagnosticada, en su propio contenedor:
+
+- **Render** (primario): servicio Docker propio; recibe URL + repo del
+  `EngagementSpec` y corre el estudio.
+- **Modal** (fallback): función/app serverless con el mismo contenedor, para
+  cuando Render no esté disponible o se quiera cómputo bajo demanda.
+
+Artefactos: `Dockerfile` del motor, `render.yaml` del servicio, y un `modal_app.py`
+stub. El motor no necesita estado persistente (escribe a `out/` o a un bucket).

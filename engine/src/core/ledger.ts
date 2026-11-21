@@ -34,7 +34,11 @@ export interface CostEntry {
 export const PRICING: Record<string, { in: number; out: number; cacheRead: number }> = {
   'claude-opus-5-5': { in: 4, out: 20, cacheRead: 0.2 },
   'claude-sonnet-5-5': { in: 2, out: 10, cacheRead: 0.1 },
+  'claude-sonnet-4-5': { in: 3, out: 15, cacheRead: 0.3 }, // primario de la cascada
   'claude-haiku-5-5': { in: 0.1, out: 0.5, cacheRead: 0.01 }, // cacheRead estimado (~10% in)
+  // Fallbacks (precios aproximados — verificar antes de usar en serio):
+  'deepseek-chat': { in: 0.28, out: 0.42, cacheRead: 0.028 },
+  'glm-4': { in: 0.6, out: 0.6, cacheRead: 0.06 },
 };
 export const PRICE_VERSION = '2026-11-03';
 

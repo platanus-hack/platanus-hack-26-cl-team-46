@@ -1,10 +1,35 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { MockProvider } from '../src/providers/mock.ts';
+import { CascadeProvider } from '../src/providers/cascade.ts';
 import { gateArtifact } from '../src/providers/gate.ts';
+import type { AnalysisProvider } from '../src/providers/types.ts';
 import { isApproved, requireApproved } from '../src/providers/provenance.ts';
 import { runExternalTool } from '../src/providers/external.ts';
 import type { GeneratedArtifact } from '../src/providers/types.ts';
+
+function fakeProvider(id: string, behavior: 'throw' | 'ok'): AnalysisProvider {
+  return {
+    id,
+    free: false,
+    analyze: async () => {
+      if (behavior === 'throw') throw new Error(`${id} refusal/guard`);
+      return [{ title: `by ${id}`, rationale: 'x', confidence: 0.5 }];
+    },
+  };
+}
+
+test('cascada: cae al siguiente provider cuando el primero falla/lo frenan', async () => {
+  const c = new CascadeProvider([fakeProvider('claude', 'throw'), fakeProvider('deepseek', 'ok'), fakeProvider('glm', 'ok')]);
+  const angles = await c.analyze({ scopeOrigins: [] });
+  assert.equal(angles[0].title, 'by deepseek'); // claude cayó, deepseek respondió
+  assert.deepEqual(c.attempts.map((a) => `${a.provider}:${a.ok}`), ['claude:false', 'deepseek:true']);
+});
+
+test('cascada: si todos fallan, lanza', async () => {
+  const c = new CascadeProvider([fakeProvider('claude', 'throw'), fakeProvider('deepseek', 'throw')]);
+  await assert.rejects(() => c.analyze({ scopeOrigins: [] }), /todos los providers fallaron/);
+});
 
 test('MockProvider deriva ángulos de las señales del repo', async () => {
   const p = new MockProvider();

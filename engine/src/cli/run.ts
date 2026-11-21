@@ -15,7 +15,7 @@ import { buildDiagnoses, type CodeRef } from '../core/diagnosis.ts';
 import { buildAttackPlan } from '../core/events.ts';
 import { CostLedger } from '../core/ledger.ts';
 import { correlate, discoverRepo } from '../discovery/index.ts';
-import { AnthropicProvider } from '../providers/anthropic.ts';
+import { buildCascadeFromEnv } from '../providers/cascade.ts';
 import { recon } from '../core/recon.ts';
 import { renderGuide } from '../core/report.ts';
 import { buildScenarioPack } from '../core/scenario.ts';
@@ -151,24 +151,23 @@ async function main() {
   // Provider LLM (C): propone ángulos a partir del RepoModel (metadata, no el código).
   let llmAngles: unknown;
   if (flag('providers')) {
-    const key = arg('anthropic-key') ?? process.env.ANTHROPIC_API_KEY;
-    if (!key) {
-      console.log('⚠ --providers pedido pero no hay ANTHROPIC_API_KEY en el entorno: se omite el análisis LLM.');
+    const cascade = buildCascadeFromEnv(process.env, (m, u) => ledger.recordLlm('analysis', m, u));
+    if (!cascade) {
+      console.log('⚠ --providers pedido pero no hay keys (ANTHROPIC_API_KEY / DEEPSEEK_API_KEY / GLM_API_KEY): se omite el análisis LLM.');
     } else if (!repoModel) {
       console.log('⚠ --providers requiere --repo (el análisis LLM parte del RepoModel).');
     } else {
-      const provider = new AnthropicProvider({ apiKey: key, onUsage: (m, u) => ledger.recordLlm('analysis', m, u) });
       const slim = {
         stack: repoModel.stack,
         routes: repoModel.routes.map((r) => ({ method: r.method, path: r.path, auth: r.auth, source: r.source })),
         signals: repoModel.signals.map((s) => ({ kind: s.kind, ref: `${s.ref.file}:${s.ref.line ?? ''}` })),
       };
       try {
-        const angles = await provider.analyze({ repo: slim, recon: reconReport?.findings, scopeOrigins: [parsed.origin] });
+        const angles = await cascade.analyze({ repo: slim, recon: reconReport?.findings, scopeOrigins: [parsed.origin] });
         llmAngles = angles;
-        console.log(`▶ providers: ${angles.length} ángulo(s) propuesto(s) por el LLM (costo $${ledger.byPhase().analysis?.toFixed(5) ?? '0'})`);
+        console.log(`▶ providers: ${angles.length} ángulo(s) (cascada: ${cascade.attempts.map((a) => `${a.provider}${a.ok ? '✓' : '✗'}`).join('→')}, costo $${ledger.byPhase().analysis?.toFixed(5) ?? '0'})`);
       } catch (e) {
-        console.log(`⚠ provider LLM falló: ${e instanceof Error ? e.message : e}`);
+        console.log(`⚠ toda la cascada de providers falló: ${e instanceof Error ? e.message : e}`);
       }
     }
   }
