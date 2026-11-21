@@ -153,8 +153,8 @@
 
 .clicky-island .hint { flex: none; display: flex; align-items: center; gap: 8px; height: 32px; font: 400 12px/16px var(--f-ui); color: var(--ink-faint); white-space: nowrap; }
 .clicky-island .hint kbd { padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); font: 500 11px/14px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); }
-/* mientras habla o piensa, el atajo queda solo como tecla para dejarle espacio al subtítulo */
-.clicky-island:not([data-state='idle']) .hint span, .clicky-island[data-input] .hint span { display: none; }
+/* mientras escucha, piensa, habla o muestra un error, el atajo queda solo como tecla para dejarle espacio al texto */
+.clicky-island:not([data-state='idle']) .hint span, .clicky-island[data-error] .hint span { display: none; }
 
 .clicky-island input { flex: 1; min-width: 0; height: 32px; box-sizing: border-box; padding: 0 10px; background: var(--bg-200); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); outline: 0; color: var(--ink); font: 400 16px var(--f-ui); }
 .clicky-island input::placeholder { color: var(--ink-faint); }

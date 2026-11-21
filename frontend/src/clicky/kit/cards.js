@@ -16,16 +16,23 @@ export function createCards(ctx) {
 
   const regionEl = name => document.querySelector(`[data-clicky-region="${name}"]`);
   const regionRect = name => { const el = regionEl(name); return el && el.getClientRects().length ? rectOf(el) : null; };
+  // Los paneles empiezan bajo la isla para que no les tape el encabezado.
+  const belowIsland = r => {
+    const isl = layers.panels.parentElement?.querySelector('.clicky-island')?.getBoundingClientRect();
+    if (!r || !isl || !isl.height || isl.left > r.x + r.w || isl.right < r.x) return r;
+    const top = Math.max(r.y, isl.bottom + 12);
+    return { ...r, y: top, h: r.h - (top - r.y) };
+  };
 
   function sideRegion() {
-    return regionRect('stage-side') || regionRect('side') || { x: innerWidth - 360, y: 120, w: 320, h: innerHeight - 160 };
+    return belowIsland(regionRect('stage-side') || regionRect('side')) || { x: innerWidth - 360, y: 120, w: 320, h: innerHeight - 160 };
   }
 
   function boardRegion() {
-    const stage = regionRect('stage');
+    const stage = belowIsland(regionRect('stage'));
     if (stage) {
       // centrada en lo que deja libre la columna de tarjetas, para que no se tapen entre sí
-      const side = regionRect('stage-side');
+      const side = belowIsland(regionRect('stage-side'));
       const free = side && side.x > stage.x ? { ...stage, w: side.x - stage.x - GAP } : stage;
       const w = Math.min(BOARD_MAX.w, free.w - 2 * GAP), h = Math.min(BOARD_MAX.h, free.h - 2 * GAP);
       if (w >= 320 && h >= 220) return { x: Math.round(free.x + (free.w - w) / 2), y: Math.round(free.y + (free.h - h) / 2), w, h };
@@ -105,7 +112,7 @@ export function createCards(ctx) {
       const { B } = F, pad = GRID;
       const cw = (B.W - 2 * pad - (F.cols - 1) * GRID) / F.cols, ch = (B.H - B.top - pad - (F.rows - 1) * GRID) / F.rows;
       // la caja no llena la celda: deja aire para las flechas y sus etiquetas
-      const w = Math.max(96, Math.floor(Math.min(192, cw - 48) / GRID) * GRID), h = ch >= 96 ? 72 : 48;
+      const w = Math.max(96, Math.floor(Math.min(192, cw - 40) / GRID) * GRID), h = ch >= 96 ? 72 : 48;
       const x = snap(pad + col * (cw + GRID) + (cw - w) / 2), y = snap(B.top + row * (ch + GRID) + (ch - h) / 2);
       const r = { x, y, w, h };
       F.pos[id] = r;
@@ -113,7 +120,8 @@ export function createCards(ctx) {
       await pen.travel(B.r.x + x, B.r.y + y, 0.3 * s);
       const el = htmlEl('div', 'clicky-node' + (hot ? ' hot' : ''), B.el, `<span>${esc(label)}</span>`);
       Object.assign(el.style, { left: x + 'px', top: y + 'px', width: w + 'px', height: h + 'px' });
-      if (el.firstChild.scrollHeight > h - 8) el.classList.add('small');
+      const fits = () => el.firstChild.scrollHeight <= h - 8 && el.firstChild.scrollWidth <= el.firstChild.clientWidth;
+      if (!fits()) el.classList.add('small');
       await sleep(240 * Math.min(1, s));
     },
 

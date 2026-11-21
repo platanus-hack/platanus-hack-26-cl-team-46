@@ -32,11 +32,18 @@ export function createMarks(ctx) {
     return p;
   }
 
+  // Las etiquetas no salen de la columna principal (si la página la marca): nunca caen sobre el Agente.
+  function bounds() {
+    const col = document.querySelector('[data-clicky-region="column"]');
+    const r = col && col.getClientRects().length ? rectOf(col) : null;
+    return r ? { left: r.x, right: r.x + r.w } : { left: 0, right: innerWidth };
+  }
+
   function pill(x, y, text, { up = false } = {}) {
     const el = htmlEl('div', 'clicky-pill clicky-pop' + (up ? ' up' : ''), layers.panels);
     el.textContent = text;
-    const maxX = innerWidth - el.offsetWidth - 12;
-    el.style.left = Math.max(8, Math.min(x, maxX)) + 'px';
+    const { left, right } = bounds();
+    el.style.left = Math.max(left + 8, Math.min(x, right - el.offsetWidth - 8)) + 'px';
     el.style.top = y + 'px';
     ctx.items.push(el);
     return el;
@@ -51,10 +58,10 @@ export function createMarks(ctx) {
   function labelSide(b, text) {
     const side = pill(b.x + b.w + 10, b.y + b.h / 2 - 12, text);
     side.classList.add('side');
-    if (b.x + b.w + 10 + side.offsetWidth > innerWidth - 12) {
+    if (b.x + b.w + 10 + side.offsetWidth > bounds().right - 8) {
       side.classList.remove('side');
       side.classList.add('up');
-      side.style.left = b.x + 'px';
+      side.style.left = Math.max(bounds().left + 8, b.x) + 'px';
       side.style.top = b.y - 32 + 'px';
     }
   }
