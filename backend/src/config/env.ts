@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+
 /**
  * Variables de entorno del backend. Se validan al arrancar: si falta algo
  * obligatorio, la app no levanta y dice qué falta.
@@ -119,6 +121,22 @@ export const envSchema = z.object({
   CLICKY_MAX_QUESTIONS_PER_SIM: z.coerce.number().int().min(1).default(80),
   /** Tope de caracteres de voz por simulación; al pasarlo, Clicky usa la voz del navegador. */
   CLICKY_MAX_TTS_CHARS_PER_SIM: z.coerce.number().int().min(0).default(30000),
+
+  // Simulación: roles que corren en el backend con la API de Claude (SimulationBrain)
+  /** Sin key, todos los roles corren como threads de Conductor (comportamiento anterior). */
+  ANTHROPIC_API_KEY: z.string().optional(),
+  /** Roles que pasan a la API si hay key. Vacío = ninguno. Solo infra, observer y generator. */
+  SIM_API_ROLES: z.string().default('infra,observer,generator'),
+  SIM_MODEL_CONTEXT: z.string().default('claude-haiku-5-5'),
+  SIM_EFFORT_CONTEXT: effortSchema.default('low'),
+  SIM_MODEL_GENERATOR: z.string().default('claude-sonnet-5-5'),
+  SIM_EFFORT_GENERATOR: effortSchema.default('low'),
+  SIM_MODEL_OBSERVER: z.string().default('claude-sonnet-5-5'),
+  SIM_EFFORT_OBSERVER: effortSchema.default('medium'),
+  SIM_MODEL_DEBRIEF: z.string().default('claude-opus-5-5'),
+  SIM_EFFORT_DEBRIEF: effortSchema.default('high'),
+  /** Cuántas vulns se juegan antes de que el director cierre la simulación. */
+  SIM_MAX_INCIDENTS: z.coerce.number().int().min(1).default(3),
 });
 
 export type Env = z.infer<typeof envSchema>;

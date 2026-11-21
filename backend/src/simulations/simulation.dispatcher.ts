@@ -6,14 +6,16 @@ import {
 } from '@nestjs/common';
 import { ConductorClient } from '../conductor/conductor.client.js';
 import { SimulationStore } from './simulation.store.js';
-import type {
-  SimRole,
-  SimThread,
-  SimulationRecord,
-  TimelineEvent,
+import {
+  EVENT_TYPES,
+  type SimRole,
+  type SimThread,
+  type SimulationRecord,
+  type TimelineEvent,
 } from './simulation.types.js';
+import { SimulationBrain } from './brain/simulation.brain.js';
 import { SimulationsService } from './simulations.service.js';
-import { pendingFor } from './timeline.service.js';
+import { pendingFor, TimelineService } from './timeline.service.js';
 
 const TICK_MS = 4_000;
 /** No volver a despertar un thread antes de esto (la sesión tarda en pasar a "working"). */
@@ -36,19 +38,49 @@ export class SimulationDispatcher implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(SimulationDispatcher.name);
   private timer?: NodeJS.Timeout;
   private ticking = false;
+  /** Threads a los que se les está mandando un mensaje ahora (evita duplicados entre tick y evento). */
+  private readonly waking = new Set<string>();
+  private off?: () => void;
 
   constructor(
     private readonly sims: SimulationsService,
     private readonly store: SimulationStore,
     private readonly conductor: ConductorClient,
+    private readonly timeline: TimelineService,
+    private readonly brain: SimulationBrain,
   ) {}
 
   onModuleInit() {
     this.timer = setInterval(() => void this.tick(), TICK_MS);
+    // Despertar al tiro (sin esperar el tick) a los threads de Conductor que el evento despierta,
+    // p. ej. al coder cuando el developer le escribe.
+    this.off = this.timeline.onAppend((e) => {
+      const s = this.store.get(e.sim_id);
+      if (!s) return;
+      for (const t of s.threads) {
+        if (
+          t.mode === 'conductor' &&
+          t.session_id &&
+          e.actor !== t.role &&
+          EVENT_TYPES[e.type]?.wakes.includes(t.role)
+        )
+          setImmediate(() => void this.wakeNow(e.sim_id, t.role));
+      }
+    });
   }
 
   onModuleDestroy() {
     clearInterval(this.timer);
+    this.off?.();
+  }
+
+  private async wakeNow(simId: string, role: SimRole) {
+    const s = this.store.get(simId);
+    const t = s?.threads.find((x) => x.role === role);
+    if (!s || !t) return;
+    await this.maybeWake(s, t).catch((err: Error) =>
+      this.logger.warn(`[${simId}] despertar ${role}: ${err.message}`),
+    );
   }
 
   async tick() {
@@ -58,6 +90,8 @@ export class SimulationDispatcher implements OnModuleInit, OnModuleDestroy {
       for (const s of this.sims.active()) {
         try {
           this.sims.syncSandbox(s.sim_id);
+          if (s.threads.some((t) => t.mode === 'api'))
+            this.brain.tick(s.sim_id);
           if (!this.sims.launchingIds.has(s.sim_id)) {
             if (!s.workspace_id) void this.sims.launch(s.sim_id);
             else if (
@@ -91,6 +125,17 @@ export class SimulationDispatcher implements OnModuleInit, OnModuleDestroy {
 
   private async maybeWake(s: SimulationRecord, t: SimThread) {
     if (t.mode !== 'conductor' || !t.session_id) return;
+    const k = `${s.sim_id}:${t.role}`;
+    if (this.waking.has(k)) return;
+    this.waking.add(k);
+    try {
+      await this.wake(s, t);
+    } finally {
+      this.waking.delete(k);
+    }
+  }
+
+  private async wake(s: SimulationRecord, t: SimThread) {
     const pending = pendingFor(s.timeline, t.role, t.cursor);
     if (!pending.length) return;
     if (
@@ -99,12 +144,12 @@ export class SimulationDispatcher implements OnModuleInit, OnModuleDestroy {
     )
       return;
 
-    const { status } = await this.conductor.sessionStatus(t.session_id);
+    const { status } = await this.conductor.sessionStatus(t.session_id!);
     if (status === 'working') return;
 
     const batch = pending.slice(0, MAX_EVENTS_PER_WAKE);
     await this.conductor.sendMessage(
-      t.session_id,
+      t.session_id!,
       wakeMessage(s, t.role, batch, pending.length - batch.length),
     );
     this.store.update(s.sim_id, (r) => {

@@ -1,4 +1,4 @@
-import { EVENT_TYPES, type SimRole } from './simulation.types.js';
+import { EVENT_TYPES, SIM_ROLES, type SimRole } from './simulation.types.js';
 
 /** Ids del catálogo de vulnerabilidades (§6.3). El motor real usará los mismos. */
 export const VULN_CATALOG = [
@@ -26,6 +26,17 @@ export interface PromptVars {
   simId: string;
   repoUrl: string;
   role: SimRole;
+  /** Roles que corren como threads de este workspace. El resto corre en el backend. Default: todos. */
+  conductorRoles?: SimRole[];
+}
+
+function threadsText(v: PromptVars): string {
+  const here = v.conductorRoles ?? [...SIM_ROLES];
+  const backend = SIM_ROLES.filter((r) => !here.includes(r));
+  const list = (rs: readonly string[]) => rs.map((r) => `**${r}**`).join(', ');
+  return backend.length
+    ? `La simulación tiene 5 roles. En este workspace de Conductor corren como threads: ${list(here)}. Los roles ${list(backend)} corren dentro de nuestro backend, pero publican y leen el mismo timeline con los mismos tipos de evento. Ningún rol habla directamente con otro: todos se coordinan por el **timeline** de la simulación.`
+    : `Este workspace de Conductor tiene 5 threads, cada uno un agente con un rol: **infra, hacker, observer, generator y coder**. No se hablan directamente: se coordinan por el **timeline** de la simulación, que vive en nuestro backend.`;
 }
 
 const ROLE_TITLES: Record<SimRole, string> = {
@@ -59,7 +70,7 @@ Al final recibe un debrief: qué pasó, dónde estaba el error, qué hizo bien y
 
 ## Cómo nos coordinamos
 
-Este workspace de Conductor tiene 5 threads, cada uno un agente con un rol: **infra, hacker, observer, generator y coder**. No se hablan directamente: se coordinan por el **timeline** de la simulación, que vive en nuestro backend.
+${threadsText(v)}
 - Tú publicas eventos con la CLI \`sim\`.
 - El backend te **despierta con un mensaje** cuando llegan eventos que te tocan. El mensaje trae los eventos.
 - Si quieres ver qué hicieron los demás, usa \`sim timeline\` (no leas otros threads).
@@ -269,7 +280,11 @@ Eres el agente de código del developer, como Claude Code, trabajando sobre **su
 - **Servicio:** \`sim restart\`.
 - **Datos:** \`sim db "<SQL>"\` contra la base de la app (por ejemplo, revocar algo, cambiar un rol o mirar tablas). Cuida los \`UPDATE\` y \`DELETE\` sin \`WHERE\`.
 - **Logs reales de la app:** \`sim logs app 200\`.
-- **Arquitectura:** cambios que no puedes hacer tú van al thread infra con \`sim post infra.request "<pedido>"\`, y te contestan con \`infra.reply\`.
+${
+  (v.conductorRoles ?? SIM_ROLES).includes('infra')
+    ? '- **Arquitectura:** cambios que no puedes hacer tú van al thread infra con `sim post infra.request "<pedido>"`, y te contestan con `infra.reply`.'
+    : '- **Arquitectura:** los cambios de configuración de deploy (Dockerfile, `.sandbox/manifest.json`) también los haces tú con `sim push`.'
+}
 
 ### Primer turno
 Haz el setup y baja el código. Mira la estructura en un par de minutos, sin leer todo. Termina con un \`sim reply\` corto, por ejemplo: "Listo, tengo el repo cargado. ¿En qué te ayudo?".

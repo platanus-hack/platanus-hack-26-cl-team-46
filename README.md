@@ -27,8 +27,9 @@ repo del developer ──▶ Servicio de deploy ──▶ sandbox en Render (sbx
                           └─ agente de IA en una VM de Conductor: analiza, despliega,
                              verifica (tablas, rutas, usuarios de prueba) y corrige
                                               │
-Simulación: 1 workspace de Conductor con 5 threads ── se coordinan por un timeline en el backend
-  infra · hacker · observer · generator · coder
+Simulación: 5 roles que se coordinan por un timeline en el backend
+  hacker · coder              → threads en un workspace de Conductor
+  infra · observer · generator → en el backend, con la API de Claude
                                               │ SSE
 UI: feed de notificaciones + chat con el agente de código ──▶ acciones que cambian la app real
 ```
@@ -59,6 +60,7 @@ pnpm dev                                  # backend :3001 + frontend :3000
 - Tests del backend: `pnpm --filter backend test` y `pnpm --filter backend test:e2e`.
 - Lint: `pnpm --filter backend lint` y `pnpm --filter frontend lint`.
 - Sin `DATABASE_URL`, el estado se guarda en `backend/.data/`.
+- **Roles de la simulación en el backend:** `ANTHROPIC_API_KEY` activa infra, observer y generator por API (modelos en `docs/simulation.md`). Sin ella, los 5 roles corren en Conductor. `pnpm --filter backend replay` compara modelos sobre una simulación real.
 - **Agentes (deploy y simulación):** sus VMs llaman al backend, así que necesita una URL pública. Local: `cloudflared tunnel --url http://localhost:3001` y poner esa URL en `PUBLIC_BACKEND_URL`. También hacen falta `AGENT_API_SECRET`, `CONDUCTOR_API_KEY` y el token de GitHub de la org. Si falta alguna, el backend lo avisa al arrancar y solo acepta sandboxes con `mode: "manifest"`.
 - En las VMs de Conductor el puerto 3000 está ocupado: levanta el frontend en otro (`pnpm --filter frontend dev -- -p 3100`).
 - App víctima local: `cd victim-app && docker compose up --build` (ver [`docs/victim/README.md`](docs/victim/README.md)).

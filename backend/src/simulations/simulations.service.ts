@@ -144,6 +144,9 @@ export class SimulationsService implements OnModuleInit {
           wakes,
           cursor,
           create_error,
+          model,
+          last_ms,
+          last_error,
         }) => ({
           role,
           mode,
@@ -152,6 +155,9 @@ export class SimulationsService implements OnModuleInit {
           wakes,
           cursor,
           create_error: create_error ?? null,
+          model: model ?? null,
+          last_ms: last_ms ?? null,
+          last_error: last_error ?? null,
         }),
       ),
       channels: this.channels(s),
@@ -214,7 +220,9 @@ export class SimulationsService implements OnModuleInit {
         mode:
           role === 'hacker' && hackerMode === 'external'
             ? 'external'
-            : 'conductor',
+            : this.apiRoles().includes(role)
+              ? 'api'
+              : 'conductor',
         cursor: 0,
         wakes: 0,
       })),
@@ -245,15 +253,13 @@ export class SimulationsService implements OnModuleInit {
     this.launching.add(simId);
     try {
       const s = this.get(simId);
-      if (!s.workspace_id) {
+      // La VM nace con la primera sesión de Conductor (infra, o hacker si infra corre en la API).
+      const first = s.threads.find((t) => t.mode === 'conductor');
+      if (!s.workspace_id && first) {
         const ws = await this.conductor.createWorkspace({
           name: `sim ${simId}`,
-          sessionName: 'infra',
-          message: buildSimPrompt({
-            simId,
-            repoUrl: s.repo_url,
-            role: 'infra',
-          }),
+          sessionName: first.role,
+          message: buildSimPrompt(this.promptVars(s, first.role)),
           env: {
             SIM_ID: simId,
             SIM_URL: this.publicUrl(),
@@ -264,7 +270,7 @@ export class SimulationsService implements OnModuleInit {
           r.workspace_id = ws.workspaceId;
           delete r.error; // un intento anterior pudo haber fallado
           r.workspace_link = ws.deepLink.replace(/&session=.*$/, '');
-          const t = r.threads.find((x) => x.role === 'infra')!;
+          const t = r.threads.find((x) => x.role === first.role)!;
           t.session_id = ws.sessionId;
           t.deep_link = ws.deepLink;
         });
@@ -296,7 +302,7 @@ export class SimulationsService implements OnModuleInit {
         const session = await this.conductor.createSession({
           workspaceId: s.workspace_id,
           name: t.role,
-          message: buildSimPrompt({ simId, repoUrl: s.repo_url, role: t.role }),
+          message: buildSimPrompt(this.promptVars(s, t.role)),
         });
         this.store.update(simId, (r) => {
           const x = r.threads.find((y) => y.role === t.role)!;
@@ -312,6 +318,28 @@ export class SimulationsService implements OnModuleInit {
         });
       }
     }
+  }
+
+  /** Roles que corren en el backend con la API de Claude (solo si hay ANTHROPIC_API_KEY). */
+  apiRoles(): SimRole[] {
+    if (!this.config.get('ANTHROPIC_API_KEY', { infer: true })) return [];
+    const allowed: SimRole[] = ['infra', 'observer', 'generator'];
+    return this.config
+      .get('SIM_API_ROLES', { infer: true })
+      .split(',')
+      .map((r) => r.trim() as SimRole)
+      .filter((r) => allowed.includes(r));
+  }
+
+  private promptVars(s: SimulationRecord, role: SimRole) {
+    return {
+      simId: s.sim_id,
+      repoUrl: s.repo_url,
+      role,
+      conductorRoles: s.threads
+        .filter((t) => t.mode === 'conductor')
+        .map((t) => t.role),
+    };
   }
 
   get launchingIds(): ReadonlySet<string> {

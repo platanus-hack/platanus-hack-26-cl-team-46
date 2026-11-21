@@ -165,9 +165,9 @@ POST /sandboxes ─▶ clone ─▶ mirror privado ─▶ VM de Conductor con el
 
 Código: `backend/src/simulations/`. CLI de los threads: `backend/agent-cli/sim.mjs` (servida en `GET /sim/cli.mjs`). Briefs de cada rol: `backend/src/simulations/sim-prompts.ts`. Documentación completa: [`docs/simulation.md`](docs/simulation.md).
 
-**Una simulación = un sandbox desplegado + un workspace de Conductor con 5 threads:**
+**Una simulación = un sandbox desplegado + 5 roles.** Desde el 21-nov (noche), **infra, observer y generator corren en el backend con la API de Claude** (`backend/src/simulations/brain/`, ver más abajo) y el workspace de Conductor queda con 2 threads: **hacker** y **coder**. Sin `ANTHROPIC_API_KEY` vuelve al diseño original de 5 threads.
 
-| Thread | Qué hace |
+| Rol | Qué hace |
 |---|---|
 | **infra** | Espera el deploy y publica `context.ready`: stack, herramientas detectadas, endpoints y personas ficticias. Después atiende `infra.request` (cambios de arquitectura). |
 | **hacker** (emulado) | Lee el código, publica `attack.plan` y, cuando se lo piden, emula el ataque (`attack.step/success/blocked/done`). No toca la app desplegada. Atiende `start`, `next`, `pause`, `resume` y `verify`. |
@@ -183,7 +183,16 @@ Código: `backend/src/simulations/`. CLI de los threads: `backend/agent-cli/sim.
 - **Dispatcher, no polling:** cada 4 s revisa qué eventos le tocan a cada thread y, si su sesión está idle, le manda **un solo mensaje** con todos ellos. Los mensajes a un thread ocupado quedan en cola (comprobado).
 - Cada evento cumple el formato §6.2 (`t, vuln_id, source, severity, title, body, raw`) más `seq, actor, type, visibility`. El stream `view=user` solo muestra lo que vería el developer; `view=all` incluye lo interno (para el demo).
 
-**Por qué todo en threads de Conductor (MVP):** se evaluó dejar observer y generator como workers del backend llamando directo a la API de Claude (más rápidos, turnos de segundos en vez de 10–60 s). Se decidió **todo en threads de un mismo workspace para el MVP** y mover partes a API después si hace falta; la interfaz (leer el timeline y publicar eventos) es la misma.
+**Roles en el backend (SimulationBrain, 21-nov noche):** el MVP partió con todo en threads de Conductor. Se movieron a la API los roles que solo redactan o consolidan, porque cada turno de Conductor costaba 15–40 s y un aviso pasaba por dos roles en cadena (40–100 s desde el ataque):
+
+| Rol | Ahora | Modelo |
+|---|---|---|
+| infra | Una llamada al quedar arriba el deploy: `context.ready` **sin análisis de seguridad** (el contexto viejo le listaba las vulns al coder en `notes`). Los `infra.request` reciben una respuesta fija: el coder lo hace con su CLI. | Haiku 5.5 |
+| generator | Se dispara al aparecer el evento; 0–3 `notify` con canal y severidad validados por esquema. | Sonnet 5.5, effort low (2–7 s) |
+| observer | **Director en código** (`brain/facts.ts`: verify después de cada deploy, next con tiempos, cierre a los `SIM_MAX_INCIDENTS`) + `state.update` por LLM con los hechos del hacker por encima + debrief. | Sonnet 5.5 medium; debrief Opus 5.5 high |
+| hacker, coder | Siguen en Conductor (necesitan leer el repo, editar, hacer push). El coder ahora se despierta al tiro con cada mensaje. | — |
+
+Los modelos salieron de un replay de `sim-ed22258c` con los tres modelos (`pnpm replay`, ver `docs/simulation.md`). Son configurables por env (`SIM_MODEL_*`, `SIM_EFFORT_*`, `SIM_API_ROLES`).
 
 **Prueba real `sim-8d7f94b2` (~8 min, contra Apuntes en Render):**
 
@@ -302,7 +311,7 @@ Pregunta abierta del ADR 0007 (PR #2): los eventos `attack.*` del timeline son `
 | Conductor | Proyecto `hack-26` (base de las VMs de agentes, rama `CONDUCTOR_PROJECT_BRANCH=main`). VMs de agentes: `deploy sbx-…` y `sim sim-…`. |
 | Sandboxes vivos conocidos | `sbx-8e92f100` (Apuntes, usado por `sim-193e5206`). |
 
-**Variables del backend** (ver `backend/.env.example`; los valores viven en Render y en las env vars de Conductor, **nunca en el repo ni en el chat**): `RENDER_API_KEY`, `GITHUB_HACK26_ORG_TOKEN`/`GITHUB_TOKEN`, `GITHUB_ORG`, `AGENT_API_SECRET`, `PUBLIC_BACKEND_URL`, `CONDUCTOR_API_KEY`, `CONDUCTOR_PROJECT_ID`, `CONDUCTOR_PROJECT_BRANCH`, `CORS_ORIGIN`, `DATABASE_URL`, y opcionales `AGENT_MODEL`, `AGENT_EFFORT`, `AGENT_MAX_PLANS`, `RENDER_SERVICE_PLAN`, `RENDER_POSTGRES_MODE`… Frontend: `NEXT_PUBLIC_API_URL` (se incrusta al buildear; si cambia, redesplegar).
+**Variables del backend** (ver `backend/.env.example`; los valores viven en Render y en las env vars de Conductor, **nunca en el repo ni en el chat**): `RENDER_API_KEY`, `GITHUB_HACK26_ORG_TOKEN`/`GITHUB_TOKEN`, `GITHUB_ORG`, `AGENT_API_SECRET`, `PUBLIC_BACKEND_URL`, `CONDUCTOR_API_KEY`, `CONDUCTOR_PROJECT_ID`, `CONDUCTOR_PROJECT_BRANCH`, `CORS_ORIGIN`, `DATABASE_URL`, y opcionales `AGENT_MODEL`, `AGENT_EFFORT`, `AGENT_MAX_PLANS`, `RENDER_SERVICE_PLAN`, `RENDER_POSTGRES_MODE`, `ANTHROPIC_API_KEY` (roles de la simulación en el backend) y `SIM_MODEL_*`/`SIM_EFFORT_*`/`SIM_API_ROLES`/`SIM_MAX_INCIDENTS`… Frontend: `NEXT_PUBLIC_API_URL` (se incrusta al buildear; si cambia, redesplegar).
 
 ---
 
@@ -312,7 +321,7 @@ Pregunta abierta del ADR 0007 (PR #2): los eventos `attack.*` del timeline son `
 
 1. **`CONDUCTOR_API_KEY` de producción es un parche.** La key original se invalidó (las keys de workspace las rota Conductor) y se puso la de un workspace que dejará de servir al archivarse. Generar un **token personal** de Conductor y ponerlo en `hack26-backend`. Lo usan la simulación y el fallback del deploy.
 2. **Mergear la base de UI a `main`** (PRs #4 y #2, §9) y que producto trabaje sobre `main`.
-3. **Rotar credenciales después del hackathon:** las keys de Render, GitHub, Cloudflare y Conductor quedaron pegadas en chats de Conductor.
+3. **Rotar credenciales después del hackathon:** las keys de Render, GitHub, Cloudflare, Conductor y Anthropic quedaron pegadas en chats de Conductor.
 
 **Producto / integración**
 
@@ -323,7 +332,8 @@ Pregunta abierta del ADR 0007 (PR #2): los eventos `attack.*` del timeline son `
 
 **Decisiones abiertas**
 
-8. **¿Qué tan proactivo es el coder en seguridad?** En la prueba advirtió "esto no cierra la sesión del atacante", que es lo que haría un Claude Code real pero le quita la lección al usuario. **Ajustado (21-nov):** el brief del coder ahora le pide no adelantar el plan de contención si el developer no lo pregunta.
+8. **Director con tiempos fijos:** escalar 3 min después de que el developer actúe, u 8 min si no hace nada; cerrar al jugar 3 vulns (`SIM_MAX_INCIDENTS`). Ajustar después de ensayar el demo (`DEFAULT_DIRECTOR` en `brain/facts.ts`).
+8b. **¿Qué tan proactivo es el coder en seguridad?** En la prueba advirtió "esto no cierra la sesión del atacante", que es lo que haría un Claude Code real pero le quita la lección al usuario. **Ajustado (21-nov):** el brief del coder ahora le pide no adelantar el plan de contención si el developer no lo pregunta.
 9. **Ajustes de briefs sin re-probar en corrida completa:** el observer pasaba a la siguiente vuln apenas terminaba cada ataque, y el coder arregló la SQLi sin que se lo pidieran.
 10. ~~**Canales vs herramientas reales**~~ **Resuelto (21-nov):** los canales salen solo de las herramientas detectadas en el código por el backend (`backend/src/simulations/tools-detector.ts`); se sacó el parámetro `tools`. Apuntes trae Sentry y PostHog configurados (sin DSN/key no envían nada), así que su simulación tiene esos dos canales.
 11. **Aislamiento de credenciales en Conductor (mitigado el 21-nov):** las variables globales de Conductor se inyectan en **todas** las VMs. Ahora el backend las tapa con valor vacío al crear las VMs de los agentes (`CONDUCTOR_AGENT_BLANK_ENV`; probado: las variables del workspace pisan a las globales). **Queda abierto:** `CONDUCTOR_API_KEY` no se puede tapar porque Conductor la fija en cada VM. La solución completa sigue siendo un workspace u org de Conductor sin credenciales solo para los agentes.

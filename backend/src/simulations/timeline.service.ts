@@ -45,6 +45,7 @@ export function pendingFor(
 @Injectable()
 export class TimelineService {
   private readonly listeners = new Map<string, Set<Listener>>();
+  private readonly global = new Set<Listener>();
 
   constructor(private readonly store: SimulationStore) {}
 
@@ -87,7 +88,20 @@ export class TimelineService {
       s.timeline.push(event);
     });
     for (const l of this.listeners.get(simId) ?? []) l(event);
+    for (const l of this.global) {
+      try {
+        l(event);
+      } catch {
+        // un oyente roto no puede impedir que el evento quede publicado
+      }
+    }
     return event;
+  }
+
+  /** Oyente de todos los eventos de todas las simulaciones (dispatcher y cerebro). */
+  onAppend(listener: Listener): () => void {
+    this.global.add(listener);
+    return () => this.global.delete(listener);
   }
 
   list(
