@@ -19,7 +19,7 @@ export default function DeployConsolePage() {
 function DeployConsole() {
   const searchParams = useSearchParams();
   const [repoUrl, setRepoUrl] = useState("");
-  const [mode, setMode] = useState<SandboxMode>("auto");
+  const [mode, setMode] = useState<SandboxMode>("agent");
   const [sandboxes, setSandboxes] = useState<Sandbox[]>([]);
   // ?sandbox=<id> preselecciona un sandbox (para enlazar directo desde otras pantallas).
   const [selected, setSelected] = useState<string | null>(() => searchParams.get("sandbox"));
@@ -95,11 +95,11 @@ function DeployConsole() {
           className="rounded border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
           value={mode}
           onChange={(e) => setMode(e.target.value as SandboxMode)}
-          title="auto: determinista y, si falla, IA"
+          title="IA: un agente analiza el repo y lo despliega"
         >
-          <option value="auto">auto (determinista → IA)</option>
-          <option value="manifest">solo determinista</option>
-          <option value="agent">directo a la IA</option>
+          <option value="agent">IA (recomendado)</option>
+          <option value="manifest">solo manifest, sin IA</option>
+          <option value="auto">determinista → IA</option>
         </select>
         <button className="rounded bg-black px-4 py-2 text-white disabled:opacity-50 dark:bg-white dark:text-black" disabled={busy}>
           Desplegar

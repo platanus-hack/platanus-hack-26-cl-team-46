@@ -81,7 +81,11 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Lanza el agente para un sandbox (ya clonado y con mirror). */
-  async start(id: string, reason: string): Promise<void> {
+  async start(
+    id: string,
+    reason: string,
+    known?: { manifest: SandboxManifest; source: 'file' | 'tried' },
+  ): Promise<void> {
     const problems = this.problems();
     if (problems.length) {
       throw new Error(
@@ -104,7 +108,7 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
         sandboxId: id,
         repoUrl: s.repo_url,
         reason,
-        previousManifest: s.manifest_source ? s.manifest : undefined,
+        knownManifest: known,
         maxPlans: this.maxPlans,
       }),
       env: {

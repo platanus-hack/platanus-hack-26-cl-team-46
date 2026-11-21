@@ -83,7 +83,7 @@ export class GitService {
     sandboxId: string,
     repoName: string,
     source: { url: string; sha: string },
-  ): Promise<{ mirrorUrl: string; sha: string }> {
+  ): Promise<{ mirrorUrl: string; sha: string; removedWorkflows: boolean }> {
     this.assertToken();
     const dir = this.workdir(sandboxId);
     await this.github('POST', `/orgs/${this.org}/repos`, {
@@ -94,6 +94,7 @@ export class GitService {
     });
 
     await rm(path.join(dir, '.git'), { recursive: true, force: true });
+    const removedWorkflows = await stripWorkflows(dir);
     await this.git(['init', '-b', 'main'], dir);
     await this.git(['add', '-A'], dir);
     await this.commit(dir, `Snapshot de ${source.url}@${source.sha}`);
@@ -103,7 +104,7 @@ export class GitService {
     );
     await this.git(['push', '-u', 'origin', 'main'], dir, { auth: true });
     const sha = (await this.git(['rev-parse', 'HEAD'], dir)).trim();
-    return { mirrorUrl: this.mirrorUrl(repoName), sha };
+    return { mirrorUrl: this.mirrorUrl(repoName), sha, removedWorkflows };
   }
 
   /** Aplica un diff unificado y/o cambios de archivos al mirror, commitea y pushea. */
@@ -142,6 +143,7 @@ export class GitService {
       }
     }
 
+    await stripWorkflows(dir);
     await this.git(['add', '-A'], dir);
     const changed = (await this.git(['diff', '--cached', '--name-only'], dir))
       .split('\n')
@@ -290,4 +292,16 @@ export class GitService {
       throw new Error(`GitHub ${method} ${apiPath} → ${res.status}: ${text}`);
     return text ? JSON.parse(text) : undefined;
   }
+}
+
+/**
+ * Saca los workflows de GitHub Actions del mirror. Render no los usa, pushearlos
+ * exige el scope `workflow` en el token, y no queremos que el CI del usuario
+ * corra en nuestra org (con nuestros minutos y nuestros secretos).
+ */
+export async function stripWorkflows(dir: string): Promise<boolean> {
+  const workflows = path.join(dir, '.github', 'workflows');
+  if (!existsSync(workflows)) return false;
+  await rm(workflows, { recursive: true, force: true });
+  return true;
 }
