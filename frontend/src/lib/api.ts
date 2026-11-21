@@ -28,6 +28,8 @@ export interface SandboxAgent {
 
 export interface Sandbox {
   sandbox_id: string;
+  /** Nombre para mostrar: el que eligió el usuario o `owner/repo`. */
+  name: string;
   repo_url: string;
   commit_sha: string | null;
   deployed_url: string | null;
@@ -79,8 +81,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   listSandboxes: () => request<Sandbox[]>("/sandboxes"),
   getSandbox: (id: string) => request<Sandbox>(`/sandboxes/${id}`),
-  createSandbox: (repo_url: string, opts: { env?: Record<string, string>; mode?: SandboxMode } = {}) =>
+  createSandbox: (repo_url: string, opts: { env?: Record<string, string>; mode?: SandboxMode; name?: string } = {}) =>
     request<Sandbox>("/sandboxes", { method: "POST", body: JSON.stringify({ repo_url, ...opts }) }),
+  /** Cambia el nombre para mostrar. Vacío = vuelve a `owner/repo`. */
+  renameSandbox: (id: string, name: string) =>
+    request<Sandbox>(`/sandboxes/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   /** Entrega los secretos que pidió el agente. */
   provideInputs: (id: string, env: Record<string, string>) =>
     request<Sandbox>(`/sandboxes/${id}/inputs`, { method: "POST", body: JSON.stringify({ env }) }),

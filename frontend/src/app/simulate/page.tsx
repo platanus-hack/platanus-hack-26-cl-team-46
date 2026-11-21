@@ -1,11 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { ArrowLeftRight, Pencil } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentChat } from "@/components/agent/AgentChat";
 import { setClickySimulation } from "@/clicky/active-sim";
 import { BrowserWindow } from "@/components/workspace/BrowserWindow";
+import { Logo } from "@/components/mayday";
+import { CmdK, RenameInput, repoShortName, SandboxPicker, type SandboxEntry } from "@/components/sandbox/SandboxPicker";
+import { api, type Sandbox } from "@/lib/api";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
 import { eventToMessage, seedMessages } from "@/lib/workspace-chat";
 import { eventToMail, seedMails } from "@/lib/workspace-mail";
@@ -14,8 +18,9 @@ import { eventToMail, seedMails } from "@/lib/workspace-mail";
  * Consola de la simulación multi-agente: sirve para jugar un incidente de punta a punta.
  * Izquierda: feed de notificaciones. Derecha: chat con el agente de código, que es la
  * única forma de actuar (como en la vida real: no hay botones que den la respuesta).
- * Arriba: estado de la simulación y control del flujo (partir, pausa, siguiente vuln, terminar).
- * La "vista interna" muestra lo que el developer no ve: ataque, estado del incidente y agentes.
+ * Navbar: logo, el sandbox abierto (renombrable) con "Cambiar sandbox" (⌘K) y el control del flujo.
+ * Sin sandbox abierto, el selector (SandboxPicker) aparece solo y no se puede cerrar.
+ * `?view=all` (sin UI) muestra lo interno para depurar: ataque, estado del incidente y agentes.
  */
 export default function SimulatePage() {
   return (
@@ -47,16 +52,27 @@ const CHAT_TYPES = new Set(["user.message", "coder.reply", "user.action"]);
 
 function SimulateConsole() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [sims, setSims] = useState<Simulation[]>([]);
-  const [selected, setSelected] = useState<string | null>(() => searchParams.get("sim"));
-  const [godMode, setGodMode] = useState(() => searchParams.get("view") === "all");
+  const [sandboxes, setSandboxes] = useState<Sandbox[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  // Lo que está abierto: un sandbox y, opcionalmente, una simulación puntual (si no, la más reciente del sandbox).
+  const [sandboxId, setSandboxId] = useState<string | null>(() => searchParams.get("sandbox"));
+  const [simId, setSimId] = useState<string | null>(() => searchParams.get("sim"));
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [renamingTitle, setRenamingTitle] = useState(false);
+  // Sin UI: `?view=all` muestra lo interno (ataque, estado, agentes) para depurar.
+  const godMode = searchParams.get("view") === "all";
   const [log, setLog] = useState<{ key: string; list: TimelineEvent[] }>({ key: "", list: [] });
-  const [repo, setRepo] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const creating = useRef(new Set<string>());
 
   const refresh = useCallback(async () => {
     try {
-      setSims(await simApi.list());
+      const [simList, sbxList] = await Promise.all([simApi.list(), api.listSandboxes()]);
+      setSims(simList);
+      setSandboxes(sbxList);
+      setLoaded(true);
     } catch (e) {
       setError((e as Error).message);
     }
@@ -71,16 +87,105 @@ function SimulateConsole() {
     };
   }, [refresh]);
 
+  // Sandboxes del selector, con su simulación más reciente, ordenados por actividad.
+  const entries = useMemo<SandboxEntry[]>(() => {
+    return sandboxes
+      .filter((s) => s.status !== "deleted")
+      .map((sandbox) => {
+        const latestSim =
+          sims
+            .filter((x) => x.sandbox.sandbox_id === sandbox.sandbox_id)
+            .sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null;
+        return { sandbox, latestSim, lastActivity: latestSim?.created_at ?? sandbox.updated_at };
+      })
+      .sort((a, b) => b.lastActivity.localeCompare(a.lastActivity));
+  }, [sandboxes, sims]);
+
+  // ?sim=… manda: abre esa simulación (y su sandbox). Si no, la más reciente del sandbox elegido.
+  const pinnedSim = simId ? sims.find((x) => x.sim_id === simId) : undefined;
+  const currentSandboxId = pinnedSim?.sandbox.sandbox_id ?? sandboxId;
+  const entry = entries.find((e) => e.sandbox.sandbox_id === currentSandboxId) ?? null;
+  const sim = pinnedSim ?? entry?.latestSim ?? undefined;
+
+  // La URL refleja lo abierto, para recargar o compartir el link.
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (currentSandboxId) params.set("sandbox", currentSandboxId);
+    if (simId) params.set("sim", simId);
+    if (godMode) params.set("view", "all");
+    const qs = params.toString();
+    window.history.replaceState(null, "", qs ? `/simulate?${qs}` : "/simulate");
+  }, [currentSandboxId, simId, godMode]);
+
+  // Un sandbox listo sin simulación viva (o con la última caída) parte una nueva solo.
+  useEffect(() => {
+    if (!entry || simId) return;
+    const { sandbox, latestSim } = entry;
+    const dead = !latestSim || latestSim.status === "failed" || latestSim.status === "stopped";
+    if (!dead || sandbox.status === "failed" || sandbox.status === "needs_input") return;
+    if (creating.current.has(sandbox.sandbox_id)) return;
+    creating.current.add(sandbox.sandbox_id);
+    simApi
+      .create({ sandbox_id: sandbox.sandbox_id })
+      .then((created) => {
+        setSimId(created.sim_id);
+        return refresh();
+      })
+      .catch((e) => setError((e as Error).message));
+  }, [entry, simId, refresh]);
+
+  // ⌘K / Ctrl+K abre y cierra el selector.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setPickerOpen((open) => !open);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const openSandbox = (e: SandboxEntry) => {
+    setPickerOpen(false);
+    // Sin deploy listo no hay simulacro posible: se sigue (o se arregla) en la consola de deploy.
+    if (e.sandbox.status === "failed" || e.sandbox.status === "needs_input") {
+      router.push(`/deploy?sandbox=${e.sandbox.sandbox_id}`);
+      return;
+    }
+    setError(null);
+    setSandboxId(e.sandbox.sandbox_id);
+    setSimId(null);
+  };
+
+  const rename = async (id: string, name: string) => {
+    try {
+      await api.renameSandbox(id, name);
+      await refresh();
+    } catch (e) {
+      setError((e as Error).message);
+      throw e;
+    }
+  };
+
+  const newRun = () =>
+    run(async () => {
+      if (!currentSandboxId) return;
+      const created = await simApi.create({ sandbox_id: currentSandboxId });
+      setSimId(created.sim_id);
+    });
+
+  const showPicker = loaded && (pickerOpen || !entry);
+
   // Hinty responde con una simulación en curso o terminada (para repasarla).
-  const selectedSim = sims.find((s) => s.sim_id === selected);
-  const clickySim =
-    selectedSim && ["starting", "ready", "running", "paused", "finished"].includes(selectedSim.status) ? selectedSim.sim_id : null;
-  const clickyEnded = selectedSim?.status === "finished";
+  const clickySim = sim && ["starting", "ready", "running", "paused", "finished"].includes(sim.status) ? sim.sim_id : null;
+  const clickyEnded = sim?.status === "finished";
   useEffect(() => {
     setClickySimulation(clickySim, clickyEnded);
     return () => setClickySimulation(null);
   }, [clickySim, clickyEnded]);
 
+  const selected = sim?.sim_id ?? null;
   const key = `${selected}|${godMode}`;
   useEffect(() => {
     if (!selected) return;
@@ -109,7 +214,6 @@ function SimulateConsole() {
     }
   };
 
-  const sim = sims.find((s) => s.sim_id === selected);
   const project = sim ? sim.repo_url.replace(/\/$/, "").split("/").pop() || "proyecto" : "proyecto";
   const simStart = sim?.created_at;
   const mails = [
@@ -129,48 +233,54 @@ function SimulateConsole() {
 
   return (
     <main className="flex h-screen flex-col gap-3 p-4 font-sans text-sm">
-      <header className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-4 text-lg font-semibold">Simulación</h1>
-        <select
-          className="rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-1"
-          value={selected ?? ""}
-          onChange={(e) => setSelected(e.target.value || null)}
-        >
-          <option value="">— elegir —</option>
-          {sims.map((s) => (
-            <option key={s.sim_id} value={s.sim_id}>
-              {s.sim_id} · {s.status} · {s.repo_url.replace("https://github.com/", "")}
-            </option>
-          ))}
-        </select>
-        <form
-          className="flex gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            run(async () => {
-              const body = repo.startsWith("sbx-") ? { sandbox_id: repo } : { repo_url: repo };
-              const s = await simApi.create(body);
-              setSelected(s.sim_id);
-            });
-          }}
-        >
-          <input
-            className="w-80 rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-1"
-            placeholder="https://github.com/… o sbx-xxxx"
-            value={repo}
-            onChange={(e) => setRepo(e.target.value)}
-          />
-          <button className="rounded-md bg-defense font-medium text-on-defense hover:bg-defense-strong disabled:opacity-50 px-3 py-1" disabled={!repo}>
-            Nueva
-          </button>
-        </form>
-        <div className="ml-auto flex items-center gap-4">
-          {sim && <FlowControls sim={sim} run={run} />}
-          <label className="flex items-center gap-1">
-            <input type="checkbox" checked={godMode} onChange={(e) => setGodMode(e.target.checked)} />
-            Vista interna (ataque, estado, control)
-          </label>
-        </div>
+      <header className="flex items-center gap-4 border-b border-line pb-3">
+        <Link href="/" aria-label="Mayday, inicio" className="shrink-0">
+          <Logo height={24} priority />
+        </Link>
+        {entry && (
+          <>
+            <span className="h-6 w-px shrink-0 bg-line" aria-hidden="true" />
+            <div className="flex min-w-0 items-center gap-1">
+              {renamingTitle ? (
+                <RenameInput
+                  initial={entry.sandbox.name}
+                  placeholder={repoShortName(entry.sandbox.repo_url)}
+                  className="w-72"
+                  onSave={async (name) => {
+                    await rename(entry.sandbox.sandbox_id, name);
+                    setRenamingTitle(false);
+                  }}
+                  onCancel={() => setRenamingTitle(false)}
+                />
+              ) : (
+                <>
+                  <h1 className="truncate text-[15px] font-semibold" title={entry.sandbox.repo_url}>
+                    {entry.sandbox.name}
+                  </h1>
+                  <button
+                    type="button"
+                    aria-label="Renombra el sandbox"
+                    title="Renombrar"
+                    onClick={() => setRenamingTitle(true)}
+                    className="rounded-sm p-1 text-ink-faint hover:bg-bg-200 hover:text-ink"
+                  >
+                    <Pencil className="size-3.5" strokeWidth={1.5} aria-hidden="true" />
+                  </button>
+                </>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => setPickerOpen(true)}
+              className="flex shrink-0 items-center gap-2 rounded-md border border-line-strong px-3 py-1.5 text-[13px] text-ink-muted hover:bg-bg-200 hover:text-ink"
+            >
+              <ArrowLeftRight className="size-4" strokeWidth={1.5} aria-hidden="true" />
+              Cambiar sandbox
+              <CmdK />
+            </button>
+          </>
+        )}
+        <div className="ml-auto flex items-center gap-4">{sim && <FlowControls sim={sim} run={run} onNewRun={newRun} />}</div>
       </header>
 
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
@@ -194,7 +304,7 @@ function SimulateConsole() {
             </div>
             <section className="flex min-h-0 flex-[2] flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
               <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Historial de sucesos</h2>
-              {godMode && <InternalPanel sim={sim} />}
+              {godMode && <InternalPanel sim={sim} run={run} />}
               {sim.debrief && <Debrief debrief={sim.debrief} />}
               {[...feed].reverse().map((e) => (
                 <FeedItem key={e.seq} e={e} />
@@ -209,6 +319,23 @@ function SimulateConsole() {
             onSend={(msg) => run(() => simApi.message(sim.sim_id, msg))}
           />
         </div>
+      )}
+
+      {entry && !sim && !error && (
+        <p className="m-auto text-[15px] text-ink-muted">Preparando el simulacro de {entry.sandbox.name}…</p>
+      )}
+
+      {showPicker && (
+        <SandboxPicker
+          entries={entries}
+          loading={!loaded}
+          currentId={entry?.sandbox.sandbox_id ?? null}
+          dismissable={Boolean(entry)}
+          onClose={() => setPickerOpen(false)}
+          onSelect={openSandbox}
+          onCreate={() => router.push("/start")}
+          onRename={rename}
+        />
       )}
     </main>
   );
@@ -234,7 +361,15 @@ function pendingSteps(sim: Simulation): string[] {
 }
 
 /** Estado de la simulación y control del flujo: partir, pausar, siguiente vuln y terminar. */
-function FlowControls({ sim, run }: { sim: Simulation; run: (fn: () => Promise<unknown>) => void }) {
+function FlowControls({
+  sim,
+  run,
+  onNewRun,
+}: {
+  sim: Simulation;
+  run: (fn: () => Promise<unknown>) => void;
+  onNewRun: () => void;
+}) {
   const live = sim.status === "running" || sim.status === "paused";
   const pending = sim.status === "starting" ? pendingSteps(sim) : [];
   return (
@@ -251,8 +386,10 @@ function FlowControls({ sim, run }: { sim: Simulation; run: (fn: () => Promise<u
       )}
       {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
       {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
-      {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Siguiente vuln</Btn>}
       {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>}
+      {(sim.status === "finished" || sim.status === "failed" || sim.status === "stopped") && (
+        <Btn onClick={onNewRun}>Nuevo simulacro</Btn>
+      )}
       {sim.status === "finished" && (
         <Link
           href={`/result?sim=${sim.sim_id}`}
@@ -266,7 +403,8 @@ function FlowControls({ sim, run }: { sim: Simulation; run: (fn: () => Promise<u
 }
 
 /** Solo en vista interna: estado del incidente y de los agentes. */
-function InternalPanel({ sim }: { sim: Simulation }) {
+function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<unknown>) => void }) {
+  const live = sim.status === "running" || sim.status === "paused";
   return (
     <div className="flex flex-col gap-2 rounded-md border border-dashed border-line-strong p-2 text-xs text-ink-muted">
       {sim.state && (
@@ -299,6 +437,10 @@ function InternalPanel({ sim }: { sim: Simulation }) {
             .join(" · ")}
         </span>
         <span>canales: {sim.channels.join(", ")}</span>
+        {/* Debug: el director escala solo. El backend rechaza el next si el atacante sigue en una vuln. */}
+        {live && (
+          <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Forzar siguiente vuln</Btn>
+        )}
       </div>
     </div>
   );

@@ -5,7 +5,12 @@ import {
   type TimelineEvent,
 } from '../simulation.types.js';
 import { TimelineService } from '../timeline.service.js';
-import { computeFacts, direct, DEFAULT_DIRECTOR } from './facts.js';
+import {
+  computeFacts,
+  direct,
+  DEFAULT_DIRECTOR,
+  nextBlockedReason,
+} from './facts.js';
 import type { SimLlm } from './llm.client.js';
 import { generatorSchema, type ObserverOutput } from './schemas.js';
 import { SimulationBrain } from './simulation.brain.js';
@@ -178,6 +183,28 @@ describe('director', () => {
         maxIncidents: 1,
       }),
     ).toEqual([expect.objectContaining({ type: 'finish' })]);
+  });
+});
+
+describe('siguiente vuln a pedido del developer', () => {
+  it('no deja encolar vulns mientras el atacante sigue en una', () => {
+    // El bug real: 12 clics en "Siguiente vuln" jugaron las 4 vulns en 45 s.
+    const t = [...attacked.slice(0, 3), ev(4, 'user', 'control.next')];
+    expect(nextBlockedReason(sim(attacked.slice(0, 2)))).toMatch(/todavía/);
+    expect(nextBlockedReason(sim(t))).toMatch(/todavía/);
+  });
+
+  it('tampoco mientras se re-verifica', () => {
+    const t = [
+      ...attacked,
+      ev(6, 'system', 'change.deployed'),
+      ev(7, 'observer', 'control.verify', { vuln_id: W }),
+    ];
+    expect(nextBlockedReason(sim(t))).toMatch(/re-verificando/);
+  });
+
+  it('se puede cuando el ataque anterior terminó', () => {
+    expect(nextBlockedReason(sim(attacked))).toBeNull();
   });
 });
 

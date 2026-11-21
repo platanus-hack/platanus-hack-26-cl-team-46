@@ -36,7 +36,7 @@ type SendState =
   | { status: "idle" }
   | { status: "sending" }
   | { status: "error"; message: string }
-  | { status: "sent"; sandboxId: string };
+  | { status: "sent"; sandboxId: string; name: string };
 
 type ReposState =
   | { status: "loading" }
@@ -63,6 +63,9 @@ function RepoPicker({ connection }: { connection: GitHubConnection }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<Choice | null>(null);
   const [send, setSend] = useState<SendState>({ status: "idle" });
+  // Nombre del sandbox por repo elegido. Vacío = el backend usa `owner/repo`.
+  const [names, setNames] = useState<Record<string, string>>({});
+  const name = selected ? (names[selected.full_name] ?? "") : "";
   const locked = send.status === "sending" || send.status === "sent";
 
   useEffect(() => {
@@ -102,8 +105,8 @@ function RepoPicker({ connection }: { connection: GitHubConnection }) {
     if (!selected || locked) return;
     setSend({ status: "sending" });
     try {
-      const sandbox = await api.createSandbox(selected.html_url);
-      setSend({ status: "sent", sandboxId: sandbox.sandbox_id });
+      const sandbox = await api.createSandbox(selected.html_url, name.trim() ? { name: name.trim() } : {});
+      setSend({ status: "sent", sandboxId: sandbox.sandbox_id, name: sandbox.name ?? selected.full_name });
     } catch (err) {
       const message =
         err instanceof TypeError
@@ -155,7 +158,7 @@ function RepoPicker({ connection }: { connection: GitHubConnection }) {
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Busca por nombre, descripción o lenguaje"
             aria-label="Busca un repo"
-            className="h-10 rounded-md border border-line-strong bg-bg-100 px-3 text-[15px] text-ink outline-none placeholder:text-ink-faint focus:border-defense"
+            className="h-10 rounded-md border border-line-strong bg-bg-100 px-3 text-[15px] text-ink placeholder:text-ink-faint focus:border-defense"
           />
 
           <div
@@ -226,6 +229,8 @@ function RepoPicker({ connection }: { connection: GitHubConnection }) {
       <SelectionPanel
         selected={selected}
         send={send}
+        name={name}
+        onName={(v) => selected && setNames((prev) => ({ ...prev, [selected.full_name]: v }))}
         onSend={sendToDeploy}
         onReset={() => {
           setSend({ status: "idle" });
@@ -297,11 +302,15 @@ function RepoRow({
 function SelectionPanel({
   selected,
   send,
+  name,
+  onName,
   onSend,
   onReset,
 }: {
   selected: Choice | null;
   send: SendState;
+  name: string;
+  onName: (name: string) => void;
   onSend: () => void;
   onReset: () => void;
 }) {
@@ -339,13 +348,14 @@ function SelectionPanel({
                 </p>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[13px]">
                   <dt className="text-ink-faint">SANDBOX</dt>
-                  <dd className="text-ink">{send.sandboxId}</dd>
+                  <dd className="text-ink">{send.name}</dd>
                 </dl>
                 <div className="flex flex-wrap gap-3">
-                  {/* Temporal: hasta que exista la pantalla del simulacro, el despliegue se sigue en la consola del equipo. */}
-                  <ButtonLink href={`/deploy?sandbox=${send.sandboxId}`} variant="primary">
-                    Sigue el despliegue
+                  {/* El simulacro muestra el avance del deploy y parte solo cuando la app está arriba. */}
+                  <ButtonLink href={`/simulate?sandbox=${send.sandboxId}`} variant="primary">
+                    Ir al simulacro
                   </ButtonLink>
+                  <ButtonLink href={`/deploy?sandbox=${send.sandboxId}`}>Ver el deploy</ButtonLink>
                   <Button onClick={onReset}>Envía otro repo</Button>
                 </div>
               </div>
@@ -365,6 +375,23 @@ function SelectionPanel({
                     Solo atacamos esa copia. Nunca tu producción.
                   </li>
                 </ul>
+
+                <label className="flex flex-col gap-2">
+                  <span className="md-index">NOMBRE DEL SANDBOX</span>
+                  <input
+                    value={name}
+                    maxLength={80}
+                    disabled={send.status === "sending"}
+                    placeholder={selected.full_name}
+                    style={{ outline: "none" }}
+                    onChange={(e) => onName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") onSend();
+                    }}
+                    className="h-10 rounded-sm border border-line-strong bg-bg-200 px-3 text-[15px] text-ink placeholder:text-ink-faint focus:border-defense"
+                  />
+                  <span className="text-[13px] text-ink-faint">Opcional. Si lo dejas vacío, se llama {selected.full_name}.</span>
+                </label>
 
                 <div className="flex flex-col gap-3">
                   <Button

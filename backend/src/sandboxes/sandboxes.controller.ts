@@ -7,6 +7,7 @@ import {
   Header,
   HttpCode,
   Param,
+  Patch,
   Post,
   Put,
   Query,
@@ -20,12 +21,14 @@ import {
   provideInputsSchema,
   redeploySchema,
   setEnvSchema,
+  updateSandboxSchema,
   type CreateSandboxBody,
   type LogsQuery,
   type LogsStreamQuery,
   type ProvideInputsBody,
   type RedeployBody,
   type SetEnvBody,
+  type UpdateSandboxBody,
 } from './sandboxes.schemas.js';
 import { SandboxesService } from './sandboxes.service.js';
 
@@ -62,6 +65,15 @@ export class SandboxesController {
   @Get(':id')
   async get(@Param('id') id: string) {
     return this.sandboxes.toContract(this.sandboxes.get(id));
+  }
+
+  /** Renombra el sandbox (solo el nombre para mostrar; no toca el deploy). */
+  @Patch(':id')
+  async update(
+    @Param('id') id: string,
+    @Body({ schema: updateSandboxSchema }) body: UpdateSandboxBody,
+  ) {
+    return this.sandboxes.toContract(this.sandboxes.rename(id, body.name));
   }
 
   /** SSE con el progreso (historial completo + en vivo). Formato de evento del contrato. */
