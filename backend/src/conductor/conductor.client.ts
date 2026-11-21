@@ -46,6 +46,22 @@ export class ConductorClient {
     });
   }
 
+  /** Crea otro thread (sesión) dentro de un workspace existente. */
+  createSession(input: {
+    workspaceId: string;
+    name: string;
+    message: string;
+  }): Promise<{ id: string; deepLink: string }> {
+    return this.request('POST', '/v0/sessions', {
+      workspaceId: input.workspaceId,
+      name: input.name,
+      agent: 'claude',
+      model: this.config.get('AGENT_MODEL', { infer: true }),
+      effort: this.config.get('AGENT_EFFORT', { infer: true }),
+      message: input.message,
+    });
+  }
+
   sessionStatus(
     sessionId: string,
   ): Promise<{

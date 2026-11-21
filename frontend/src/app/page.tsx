@@ -34,6 +34,9 @@ export default function LandingPage() {
       >
         Consola del servicio de deploy →
       </Link>
+      <Link className="underline" href="/simulate">
+        Consola de la simulación (multi-agente) →
+      </Link>
     </main>
   );
 }

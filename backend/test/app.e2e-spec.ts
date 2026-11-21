@@ -59,6 +59,42 @@ describe('API (e2e)', () => {
       .expect(401);
   });
 
+  it('GET /sim/cli.mjs trae el rol fijo', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/sim/cli.mjs?role=hacker')
+      .expect(200);
+    expect(res.text).toContain('const ROLE = "hacker"');
+  });
+
+  it('/sim/:id exige token de la simulación y un rol válido', async () => {
+    const server = app.getHttpServer();
+    await request(server).get('/sim/sim-1').expect(401);
+    const { signSimToken } = await import('./../src/simulations/sim-token.js');
+    const token = signSimToken(process.env.AGENT_API_SECRET!, 'sim-1');
+    await request(server)
+      .get('/sim/sim-2')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-sim-role', 'coder')
+      .expect(401);
+    await request(server)
+      .get('/sim/sim-1')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-sim-role', 'root')
+      .expect(403);
+    await request(server)
+      .get('/sim/sim-1')
+      .set('Authorization', `Bearer ${token}`)
+      .set('x-sim-role', 'coder')
+      .expect(404);
+  });
+
+  it('POST /simulations valida el body', () => {
+    return request(app.getHttpServer())
+      .post('/simulations')
+      .send({})
+      .expect(400);
+  });
+
   it('el token de un sandbox no sirve para otro', () => {
     const token = signAgentToken(process.env.AGENT_API_SECRET!, 'sbx-1');
     return request(app.getHttpServer())

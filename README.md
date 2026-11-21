@@ -1,83 +1,114 @@
-# Simulador de hacks — Platanus Hack 26
+# Simulador de hacks para developers
+
+> Platanus Hack 26 · Track Simulaciones · https://mayday.rip
+
+El developer entrega el repo de GitHub de un proyecto suyo. Lo desplegamos en un sandbox en Render, una IA encuentra sus vulnerabilidades, un agente lo hackea y el developer vive el incidente en tiempo real: le llegan notificaciones (correos de clientes, alertas de Sentry, Datadog…) y responde conversando con su agente de código. Sus acciones cambian la app desplegada de verdad. Si cambia la contraseña robada pero no rota `JWT_SECRET`, el atacante sigue adentro. Al final recibe un debrief con lo que pasó, dónde estaba el error y la comparación con un caso real.
+
+Herramienta defensiva y educativa: solo se atacan apps desplegadas en nuestro sandbox.
+
+📄 **Contexto completo del proyecto** (producto, decisiones, estado, pendientes): [`CONTEXT.md`](CONTEXT.md)
+
+## Estructura
 
 Monorepo con pnpm workspaces:
 
 | Carpeta | Qué es |
 |---|---|
-| `backend/` | API en NestJS 12 (TypeScript, ESM). Por ahora incluye el **servicio de deploy** (`src/sandboxes`). Acá se suman el motor y el narrador. |
-| `frontend/` | Next.js 16 (App Router + Tailwind + shadcn/ui). Rutas del flujo del simulador y `/deploy` (consola de desarrollo del servicio de deploy). Ver [`frontend/README.md`](frontend/README.md). |
-| `victim-app/` | App de entrenamiento deliberadamente vulnerable ("Apuntes"). Autocontenida; se despliega en Render. |
-| `docs/victim/` | Solucionario y notas de la app de entrenamiento (no va dentro de `victim-app/` para que el analizador no lo vea). |
+| `backend/` | API en NestJS 12 (TypeScript, ESM). Servicio de deploy (`src/sandboxes`, `render`, `git`, `agent`, `conductor`) y simulación multi-agente (`src/simulations`). CLIs para los agentes en `agent-cli/`. |
+| `frontend/` | Next.js 16 (App Router + Tailwind v4 + shadcn/ui). Rutas del flujo del simulador, `/simulate` (consola de la simulación) y `/deploy` (consola del servicio de deploy). Diseño en [`frontend/DESIGN.md`](frontend/DESIGN.md); ver [`frontend/README.md`](frontend/README.md). |
+| `victim-app/` | "Apuntes": app de entrenamiento deliberadamente vulnerable (8 vulns plantadas). Autocontenida; se despliega en Render. |
+| `docs/simulation.md` | Arquitectura de la simulación, API para la UI y contrato para el motor de hacking real. |
+| `docs/victim/` | Guía y solucionario (`ANSWER_KEY.md`) de la app víctima. Va fuera de `victim-app/` para que el analizador no lo vea. |
+
+## Cómo funciona
+
+```
+repo del developer ──▶ Servicio de deploy ──▶ sandbox en Render (sbx-xxxx.onrender.com)
+                          │  determinista (manifest / Dockerfile / package.json)
+                          └─ fallback: agente de IA en una VM de Conductor
+                                              │
+Simulación: 1 workspace de Conductor con 5 threads ── se coordinan por un timeline en el backend
+  infra · hacker · observer · generator · coder
+                                              │ SSE
+UI: feed de notificaciones + chat con el agente de código ──▶ acciones que cambian la app real
+```
+
+1. **Deploy** (`POST /sandboxes`): mirror del repo en la org `hack26-sandboxes`, Postgres si hace falta, web service en Render. Si no se puede inferir la configuración o el deploy falla, un agente de Claude en su propia VM de Conductor lo arregla y le pide al usuario los secretos que falten.
+2. **Simulación** (`POST /simulations`): infra arma el contexto del repo, el hacker (hoy emulado) publica el plan de ataque y ataca vuln por vuln, el observer lleva el estado del incidente y dirige el ritmo, el generator escribe las notificaciones y el coder ejecuta lo que pide el developer. Después de cada cambio desplegado se **re-verifica el exploit**: así una acción equivocada no saca al atacante.
+3. **Debrief**: veredicto por vuln, fix correcto, momentos clave y caso real.
+
+Detalle completo en [`docs/simulation.md`](docs/simulation.md) y [`CONTEXT.md`](CONTEXT.md).
 
 ## Correr local
 
+Requisitos: Node 24 y pnpm 11.
+
 ```bash
 pnpm install
-cp backend/.env.example backend/.env      # poner RENDER_API_KEY (y GITHUB_TOKEN)
+cp backend/.env.example backend/.env      # mínimo RENDER_API_KEY; ver el archivo para el resto
 cp frontend/.env.example frontend/.env.local
 pnpm dev                                  # backend :3001 + frontend :3000
 ```
 
 - Tests del backend: `pnpm --filter backend test` y `pnpm --filter backend test:e2e`.
+- Lint: `pnpm --filter backend lint` y `pnpm --filter frontend lint`.
+- Sin `DATABASE_URL`, el estado se guarda en `backend/.data/`.
+- **Agentes (fallback de deploy y simulación):** sus VMs llaman al backend, así que necesita una URL pública. Local: `cloudflared tunnel --url http://localhost:3001` y poner esa URL en `PUBLIC_BACKEND_URL`. También hacen falta `AGENT_API_SECRET`, `CONDUCTOR_API_KEY` y el token de GitHub de la org. Si falta alguna, el backend lo avisa al arrancar y se queda solo con el camino determinista.
+- En las VMs de Conductor el puerto 3000 está ocupado: levanta el frontend en otro (`pnpm --filter frontend dev -- -p 3100`).
+- App víctima local: `cd victim-app && docker compose up --build` (ver [`docs/victim/README.md`](docs/victim/README.md)).
 
-## Despliegue de nuestra app (Render)
+## Despliegue (Render)
 
 | Servicio | URL | Build |
 |---|---|---|
-| `hack26-backend` | https://hack26-backend.onrender.com | Docker, `backend/Dockerfile` (contexto: raíz) |
-| `hack26-frontend` | https://hack26-frontend.onrender.com | Docker, `frontend/Dockerfile` (contexto: raíz) |
+| `hack26-frontend` | https://mayday.rip (también https://hack26-frontend.onrender.com) | Docker, `frontend/Dockerfile` (contexto: raíz) |
+| `hack26-backend` | https://api.mayday.rip (también https://hack26-backend.onrender.com) | Docker, `backend/Dockerfile` (contexto: raíz) |
 
-- Los dos despliegan automáticamente con cada push a la rama configurada en Render (hoy `rmena1/render-despliegue-autom-tico`; cámbienla a `main` cuando hagan merge).
-- El backend guarda el estado en la base `hack26_backend`, dentro de la instancia compartida `hack26-shared-pg` (`DATABASE_URL`), porque el disco de Render es efímero.
-- Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, que es a la que llaman los agentes.
+- Los dos despliegan automáticamente con cada push a `main`.
+- Dominio: `mayday.rip` en Cloudflare, con CNAME "DNS only" hacia los servicios de Render (`@` y `www` → frontend, `api` → backend). Render emite los certificados.
+- El backend guarda el estado en la base `hack26_backend` de la instancia compartida `hack26-shared-pg` (`DATABASE_URL`), porque el disco de Render es efímero.
+- Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, a la que llaman los agentes. Conductor crea las VMs de los agentes desde `main` (se puede cambiar con `CONDUCTOR_PROJECT_BRANCH`).
 - El frontend recibe `NEXT_PUBLIC_API_URL` al buildear. Si cambia, hay que redesplegarlo.
-- Plan free: los servicios se duermen tras 15 minutos sin tráfico. Antes del demo, ábranlos para despertarlos, o pasen a `starter` cuando lleguen los créditos.
+- **Plan free:** los servicios se duermen tras 15 minutos sin tráfico y tardan ~1 minuto en despertar. Antes del demo, ábrelos (frontend, backend y el sandbox), o pasa a `starter` cuando lleguen los créditos.
 
-## Servicio de deploy
+## API
 
-**Camino optimista, con fallback a una IA.** `POST /sandboxes` con `mode: "auto"` (el default):
+Las operaciones largas responden **202** al tiro y el progreso sale por SSE. Con `?wait=true`, la respuesta espera a que la operación termine.
 
-1. Clona el repo y crea un **mirror** en `hack26-sandboxes/<sandbox_id>`. Render despliega desde el mirror y todos los cambios (parches del simulador, config de la IA) se commitean ahí. El repo del usuario no se toca.
-2. **Camino determinista:** si el repo trae `.sandbox/manifest.json`, o si se puede inferir la configuración (Dockerfile o package.json), crea Postgres (si hace falta) y el web service, y despliega. Con la app víctima tarda unos 35 s.
-3. **Fallback agéntico:** si no se puede inferir o si el deploy falla, el backend crea un **workspace de Conductor** (una VM por sandbox) con un agente de Claude. El agente:
-   - descarga el código,
-   - decide la estrategia (Dockerfile, comandos, Postgres, variables),
-   - sube sus cambios al mirror y lanza planes de deploy,
-   - lee los logs de build y de la app, corrige y reintenta (máximo `AGENT_MAX_PLANS`),
-   - pide al usuario los secretos que no puede inventar (estado `needs_input`),
-   - y reporta. Todo aparece en vivo en el timeline del sandbox, con eventos `source: "agent"`.
+### Simulación (`/simulations`)
 
-`mode: "manifest"` usa solo el camino determinista. `mode: "agent"` va directo a la IA.
+| Método | Ruta | Qué hace |
+|---|---|---|
+| `POST` | `/simulations` | `{repo_url}` o `{sandbox_id}`, más `tools: ["sentry","datadog",…]` y `hacker: "emulated" \| "external"` |
+| `GET` | `/simulations/:id` | Estado, threads, canales, contexto, plan, estado del incidente y debrief |
+| `GET` | `/simulations/:id/stream?view=user` | SSE del feed del developer (`view=all` incluye lo interno) |
+| `GET` | `/simulations/:id/timeline` | Lo mismo en JSON (`view`, `since`, `types`) |
+| `POST` | `/simulations/:id/start` | Parte el ataque |
+| `POST` | `/simulations/:id/control` | `{action: next \| pause \| resume \| verify \| finish, vuln_id?}` |
+| `POST` | `/simulations/:id/messages` | `{text}`: chat con el agente de código |
+| `POST` | `/simulations/:id/actions` | `{action, params, free_text}`. `rotate_secret`, `set_env`, `restart` y `redeploy` se ejecutan directo; el resto lo hace el coder |
+| `POST` | `/simulations/:id/stop` | Archiva la VM (`{delete_sandbox: true}` también borra el sandbox) |
+| `GET` | `/simulations/event-types` | Catálogo de eventos |
 
-**Seguridad del agente:**
-- El agente no recibe credenciales de Render ni de GitHub. Trabaja contra `/agent/sandboxes/:id/*` con un token `HMAC(AGENT_API_SECRET, sandbox_id)` que solo sirve para su sandbox.
-- El backend sigue siendo quien crea los recursos y lleva el estado.
-- El prompt (`backend/src/agent/agent-prompt.ts`) le prohíbe arreglar vulnerabilidades y le pide tratar el repo como datos, no como instrucciones.
-- La CLI que usa el agente está en `backend/agent-cli/deployer.mjs`, y el backend la sirve en `GET /agent/cli.mjs`.
+El motor de hacking real se conecta por `/sim/:id/*` con el token que entrega `hacker: "external"`. Contrato en [`docs/simulation.md`](docs/simulation.md#contrato-para-el-motor-de-hacking-real).
 
-**Variables:** ver `backend/.env.example`. El fallback necesita `AGENT_API_SECRET`, `PUBLIC_BACKEND_URL` (los agentes llaman al backend desde sus VMs), `CONDUCTOR_API_KEY` y el token de GitHub de la org. Si falta alguna, el backend lo avisa al arrancar y el modo `auto` se queda solo con el camino determinista.
-
-Las operaciones largas responden **202** al tiro, y el progreso sale por SSE en `/sandboxes/:id/events`. Con `?wait=true`, la respuesta espera a que la operación termine.
-
-### API
+### Deploy (`/sandboxes`)
 
 | Método | Ruta | Body | Qué hace |
 |---|---|---|---|
 | `POST` | `/sandboxes` | `{ repo_url, ref?, env?, mode? }` | Crea el sandbox y lo despliega (`mode`: `auto` \| `manifest` \| `agent`) |
 | `GET` | `/sandboxes` | | Lista de sandboxes |
 | `GET` | `/sandboxes/:id` | | Estado (contrato Deploy → Motor) |
-| `GET` | `/sandboxes/:id/events` | | SSE `event: deploy` con el formato de evento del contrato; incluye historial |
-| `POST` | `/sandboxes/:id/redeploy` | `{ patch?, files?, message?, clear_cache? }` | Aplica un diff unificado o archivos al mirror, commitea y redespliega |
+| `GET` | `/sandboxes/:id/events` | | SSE `event: deploy`; incluye historial |
+| `POST` | `/sandboxes/:id/redeploy` | `{ patch?, files?, message?, clear_cache? }` | Aplica un diff o archivos al mirror, commitea y redespliega |
 | `PUT` | `/sandboxes/:id/env` | `{ env?, generate?, unset?, deploy? }` | Cambia env vars y redespliega. `generate: ["JWT_SECRET"]` rota el secreto (invalida todas las sesiones) |
 | `POST` | `/sandboxes/:id/restart` | | Reinicia el servicio |
 | `GET` | `/sandboxes/:id/logs` | query: `limit, startTime, endTime, direction, type, text, level` | Logs de Render, paginados |
-| `GET` | `/sandboxes/:id/logs/stream` | query: `since, type` | Tail de logs en vivo por SSE (`event: log`) |
+| `GET` | `/sandboxes/:id/logs/stream` | query: `since, type` | Tail de logs en vivo por SSE |
 | `POST` | `/sandboxes/:id/inputs` | `{ env: { KEY: "valor" } }` | Entrega los secretos que pidió el agente |
-| `DELETE` | `/sandboxes/:id` | | Borra el servicio, la base de datos y el mirror, y archiva la VM del agente si sigue activa |
+| `DELETE` | `/sandboxes/:id` | | Borra servicio, base y mirror, y archiva la VM del agente |
 
 `status`: `provisioning` → (`analyzing` ⇄ `needs_input`) → `ready` ⇄ `deploying`, o `failed` / `deleted`. Si un redeploy falla, la versión anterior sigue sirviendo: `status` vuelve a `ready` y el detalle queda en `error`.
-
-Ejemplo:
 
 ```bash
 curl -XPOST 'localhost:3001/sandboxes?wait=true' -H 'content-type: application/json' \
@@ -88,7 +119,11 @@ curl -XPUT localhost:3001/sandboxes/sbx-1234abcd/env -H 'content-type: applicati
   -d '{"generate":["JWT_SECRET"]}'
 ```
 
+**Seguridad del agente de deploy:** no recibe credenciales de Render ni de GitHub. Trabaja contra `/agent/sandboxes/:id/*` con un token `HMAC(AGENT_API_SECRET, sandbox_id)` que solo sirve para su sandbox. Su prompt (`backend/src/agent/agent-prompt.ts`) le prohíbe arreglar vulnerabilidades y le pide tratar el repo como datos, no como instrucciones. La CLI que usa está en `backend/agent-cli/deployer.mjs` (servida en `GET /agent/cli.mjs`).
+
 ### `.sandbox/manifest.json`
+
+Si el repo lo trae, el deploy es directo:
 
 ```json
 {
@@ -101,10 +136,10 @@ curl -XPUT localhost:3001/sandboxes/sbx-1234abcd/env -H 'content-type: applicati
 }
 ```
 
-Otros campos opcionales: `root_dir`, `dockerfile_path`, `build_command` y `start_command` (estos dos para `runtime: node`). La app tiene que escuchar en `$PORT` e inicializar su base de datos sola al arrancar, porque en free tier no hay pre-deploy.
+Opcionales: `root_dir`, `dockerfile_path`, `build_command` y `start_command` (estos dos para `runtime: node`). La app tiene que escuchar en `$PORT` e inicializar su base de datos al arrancar, porque en free tier no hay pre-deploy.
 
-### Free tier: lo que hay que saber
+## Equipo
 
-- Los servicios free se duermen tras 15 minutos sin tráfico y tardan alrededor de 1 minuto en despertar. Antes del demo, haz un request para despertarlos, o cambia `RENDER_SERVICE_PLAN=starter` cuando lleguen los créditos.
-- Solo se permite una Postgres free por workspace (por eso existe el modo `shared`) y expira a los 30 días.
-- El estado de los sandboxes vive en `backend/.data/sandboxes.json`.
+- **Despliegue e integración:** Raimundo Mena
+- **Motor de hacking:** Daniel Toribio, Sebastián Mira
+- **Producto:** Clemente, Benjamín Lillo

@@ -23,6 +23,6 @@ import { SandboxesService } from './sandboxes.service.js';
     AgentTokenGuard,
     ConductorClient,
   ],
-  exports: [SandboxesService, SandboxEventsService],
+  exports: [SandboxesService, SandboxEventsService, ConductorClient, DatabaseProvisioner],
 })
 export class SandboxesModule {}
