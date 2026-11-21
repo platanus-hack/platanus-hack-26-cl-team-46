@@ -258,6 +258,7 @@ export class SimulationsService implements OnModuleInit {
         });
         this.store.update(simId, (r) => {
           r.workspace_id = ws.workspaceId;
+          delete r.error; // un intento anterior pudo haber fallado
           r.workspace_link = ws.deepLink.replace(/&session=.*$/, '');
           const t = r.threads.find((x) => x.role === 'infra')!;
           t.session_id = ws.sessionId;
