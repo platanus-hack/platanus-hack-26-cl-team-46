@@ -5,7 +5,7 @@ Monorepo con pnpm workspaces:
 | Carpeta | Qué es |
 |---|---|
 | `backend/` | API en NestJS 12 (TypeScript, ESM). Por ahora incluye el **servicio de deploy** (`src/sandboxes`). Acá se suman el motor y el narrador. |
-| `frontend/` | Next.js 16 (App Router + Tailwind). `/deploy` es una consola de desarrollo del servicio de deploy. |
+| `frontend/` | Next.js 16 (App Router + Tailwind + shadcn/ui). Rutas del flujo del simulador y `/deploy` (consola de desarrollo del servicio de deploy). Ver [`frontend/README.md`](frontend/README.md). |
 | `victim-app/` | App de entrenamiento deliberadamente vulnerable ("Apuntes"). Autocontenida; se despliega en Render. |
 | `docs/victim/` | Solucionario y notas de la app de entrenamiento (no va dentro de `victim-app/` para que el analizador no lo vea). |
 
