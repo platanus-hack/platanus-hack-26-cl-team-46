@@ -13,6 +13,7 @@ import path from 'node:path';
 import { diagnose } from '../core/diagnose.ts';
 import { buildAttackPlan } from '../core/events.ts';
 import { CostLedger } from '../core/ledger.ts';
+import { correlate, discoverRepo } from '../discovery/index.ts';
 import { recon } from '../core/recon.ts';
 import { renderGuide } from '../core/report.ts';
 import { buildScenarioPack } from '../core/scenario.ts';
@@ -38,7 +39,8 @@ Opciones:
   --only <ids>          CSV de vuln_id a correr (p. ej. idor,sql-injection)
   --weak-email <email>  Credencial conocida para fuerza bruta / sesión de baja privilegia
   --weak-pass <pass>    (ambos juntos; sin default, específico de la app)
-  --commit <sha>        Commit del target, para versionar el escenario
+  --repo <path>         Ruta al repo del target: discovery estática + correlación archivo/línea
+  --commit <sha>        Commit del target, para versionar el escenario y los FileRef
   --no-recon            Saltar la fase de reconocimiento
   --out <dir>           Carpeta de salida                        (default: engine/out)
   --help, -h            Mostrar esta ayuda (sin efectos secundarios)
@@ -97,6 +99,17 @@ async function main() {
   console.log(`\n🎯 Motor de hacking → ${target.url}  (scope: ${parsed.origin})`);
   console.log(`   solo se ataca este host autorizado · perfil ${profile} · seed ${seed}${readOnly ? ' · read-only' : ''}\n`);
 
+  // Fase discovery (A): el repo participa. Correlaciona hallazgos con archivo/línea.
+  const repoPath = arg('repo');
+  let repoModel;
+  let discoveryMs = 0;
+  if (repoPath) {
+    const t = Date.now();
+    repoModel = await discoverRepo(path.resolve(repoPath), { commit: arg('commit') });
+    discoveryMs = Date.now() - t;
+    console.log(`▶ discovery: ${repoModel.routes.length} rutas, ${repoModel.signals.length} señales, stack ${repoModel.stack.map((s) => s.framework ?? s.language).join('/')}`);
+  }
+
   const reconReport = flag('no-recon') ? undefined : await recon(target, plugin.reconCandidates, { seed, log: (m) => console.log(m) });
   const diag = await diagnose(target, plugin, { only, profile, seed, readOnly, log: (m) => console.log(m) });
 
@@ -104,8 +117,22 @@ async function main() {
   const plan = buildAttackPlan(diag, plugin, reconReport);
   const guide = renderGuide(diag, plugin, scenarios, reconReport);
 
+  // Correlación repo ↔ hallazgo (A/I): archivo/línea derivado del código real.
+  let correlated = 0;
+  if (repoModel) {
+    const findings = (plan.raw as any).findings as Array<Record<string, unknown>>;
+    for (const f of findings) {
+      const ref = correlate(String(f.vuln_id), repoModel);
+      if (ref) {
+        f.repo_ref = ref;
+        if (f.confirmed) correlated++;
+      }
+    }
+  }
+
   // Cost ledger: por ahora solo cómputo local ($0); los LLM entran con los providers (M6).
   const ledger = new CostLedger();
+  if (repoModel) ledger.recordLocal('discovery', 'repo-scan', { wallMs: discoveryMs });
   if (reconReport) ledger.recordLocal('recon', 'http+recon', { requests: reconReport.requests, wallMs: reconReport.duration_ms });
   ledger.recordLocal('exploit', 'http-attacks', { requests: diag.summary.requests, wallMs: diag.duration_ms });
   const ledgerSnap = ledger.snapshot();
@@ -120,6 +147,7 @@ async function main() {
   if (reconReport) await writeFile(path.join(outDir, 'recon.json'), JSON.stringify(reconReport, null, 2));
   await writeFile(path.join(outDir, 'attack-plan.json'), JSON.stringify(plan, null, 2));
   await writeFile(path.join(outDir, 'cost-ledger.json'), JSON.stringify(ledgerSnap, null, 2));
+  if (repoModel) await writeFile(path.join(outDir, 'repo-model.json'), JSON.stringify(repoModel, null, 2));
   await writeFile(path.join(outDir, 'GUIA-DEL-HACKEO.md'), guide);
   for (const sc of scenarios) {
     await writeFile(path.join(outDir, 'scenarios', `${sc.vuln_id}.json`), JSON.stringify(sc, null, 2));
@@ -140,6 +168,7 @@ async function main() {
   console.log(`   atacante activo al cierre: ${diag.summary.attacker_active ? 'sí' : 'no'}`);
   if (diag.residue.length) console.log(`   ⚠ residuo sin limpiar (${diag.residue.length}): ${diag.residue.join('; ')}`);
   console.log(`   escenarios generados: ${scenarios.length}`);
+  if (repoModel) console.log(`   correlación repo: ${correlated}/${diag.summary.confirmed} hallazgos confirmados con archivo/línea`);
   console.log(`   costo: $${ledgerSnap.grandTotalUsd.toFixed(4)} (LLM $0 — sin providers aún) · presupuesto $${budgetUsd}${overBudget ? ' ⚠ EXCEDIDO' : ''}`);
   console.log(`\n📁 ${outDir}\n`);
 }

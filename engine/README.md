@@ -29,7 +29,9 @@ npm test                          # suite contra un fixture víctima local
 | `--read-only` | off | Corre solo módulos no mutantes (no crea/modifica estado). |
 | `--only` | (todas) | CSV de `vuln_id`. |
 | `--weak-email` / `--weak-pass` | — | Credencial conocida (fuerza bruta / sesión de baja privilegia). |
-| `--commit` | — | Commit del target, para versionar el escenario. |
+| `--repo <path>` | — | Repo del target: discovery estática (rutas/señales/OpenAPI) + correlación archivo/línea. |
+| `--budget <usd>` | 5 | Tope de costo LLM por corrida. |
+| `--commit` | — | Commit del target, para versionar el escenario y los FileRef. |
 | `--no-recon` | off | Saltar la fase de reconocimiento. |
 | `--out` | `engine/out` | Carpeta de salida. |
 
@@ -129,9 +131,12 @@ shapes y tablas exactas), el payload SQLi (esquema Postgres), `catalog.ts`
 - [x] Núcleo + 8 módulos de ataque real (Apuntes) + guía + escenarios.
 - [x] Perfiles de evasión, PRNG seeded, scope guard, saneamiento, teardown.
 - [x] Fase de recon (superficie de ataque).
-- [x] Tests con fixture víctima local (12 casos, `node --test`).
-- [ ] Separar framework ↔ plugins (`plugins/apuntes/`) + contrato de plugin/target.
-- [ ] Escáneres SOTA en Docker scopeados (`nuclei`, `ffuf`).
-- [ ] ARTEX (fork libre) en Docker, caja negra contra el sandbox, sin entregar el repo.
-- [ ] Agente analista (LLM) que lee recon + telemetría y propone ángulos nuevos.
-- [ ] Adapters por repo/OpenAPI + SAST para generalizar a cualquier app.
+- [x] Tests con fixtures locales (16 casos, `node --test`).
+- [x] **M0** — separación framework ↔ plugins (`core/` + `plugins/apuntes/`, contrato `EnginePlugin`).
+- [x] **M1** — cost ledger por corrida (`core/ledger.ts`).
+- [x] **M2** — discovery del repo (`discovery/`: manifests, rutas Express/Flask, OpenAPI, señales) + correlación hallazgo↔archivo/línea (JS/TS + Python).
+- [ ] **M3** — scheduler (DAG/lanes, rate budget).
+- [ ] **M4** — variantes de ataque + diagnosis ampliado (veredicto/confianza/causa raíz).
+- [ ] **M5** — 2º dummy stack (Flask+SQLite) para generalización.
+- [ ] **M6** — providers LLM con gate + fuentes externas (`semgrep` → `nuclei` → ARTEX, tras review).
+- [ ] **M7** — Render (pendiente de créditos).
