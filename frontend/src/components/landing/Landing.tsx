@@ -304,7 +304,8 @@ export function Landing() {
               cta={<StartCta />}
             >
               <p>{ok ? RESULT.ok.why : RESULT.fail.why[answer.option.id]}</p>
-              <p>
+              {/* En mobile sobra: el CTA queda justo abajo. */}
+              <p className="max-md:hidden">
                 <strong>{RESULT.invite}</strong> {RESULT.inviteCta}
               </p>
             </ResultSplit>
