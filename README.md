@@ -20,6 +20,19 @@ pnpm dev                                  # backend :3001 + frontend :3000
 
 - Tests del backend: `pnpm --filter backend test` y `pnpm --filter backend test:e2e`.
 
+## Despliegue de nuestra app (Render)
+
+| Servicio | URL | Build |
+|---|---|---|
+| `hack26-backend` | https://hack26-backend.onrender.com | Docker, `backend/Dockerfile` (contexto: raíz) |
+| `hack26-frontend` | https://hack26-frontend.onrender.com | Docker, `frontend/Dockerfile` (contexto: raíz) |
+
+- Los dos despliegan automáticamente con cada push a la rama configurada en Render (hoy `rmena1/render-despliegue-autom-tico`; cámbienla a `main` cuando hagan merge).
+- El backend guarda el estado en la base `hack26_backend`, dentro de la instancia compartida `hack26-shared-pg` (`DATABASE_URL`), porque el disco de Render es efímero.
+- Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, que es a la que llaman los agentes.
+- El frontend recibe `NEXT_PUBLIC_API_URL` al buildear. Si cambia, hay que redesplegarlo.
+- Plan free: los servicios se duermen tras 15 minutos sin tráfico. Antes del demo, ábranlos para despertarlos, o pasen a `starter` cuando lleguen los créditos.
+
 ## Servicio de deploy
 
 **Camino optimista, con fallback a una IA.** `POST /sandboxes` con `mode: "auto"` (el default):
