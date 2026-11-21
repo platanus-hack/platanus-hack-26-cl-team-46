@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { AgentChat } from "@/components/agent/AgentChat";
@@ -248,6 +249,14 @@ function FlowControls({ sim, run }: { sim: Simulation; run: (fn: () => Promise<u
       {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
       {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Siguiente vuln</Btn>}
       {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>}
+      {sim.status === "finished" && (
+        <Link
+          href={`/result?sim=${sim.sim_id}`}
+          className="rounded-md bg-defense px-3 py-1 font-medium text-on-defense hover:bg-defense-strong"
+        >
+          Ver resultado
+        </Link>
+      )}
     </div>
   );
 }
