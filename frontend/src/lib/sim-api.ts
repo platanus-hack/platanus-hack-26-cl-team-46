@@ -26,6 +26,8 @@ export interface Simulation {
   repo_url: string;
   sandbox: {
     sandbox_id: string;
+    /** Nombre para mostrar del sandbox (custom o `owner/repo`). */
+    name?: string;
     status: string;
     deployed_url: string | null;
     /** La app servida por el proxy de preview (mismo site que mayday.rip: las cookies funcionan en el iframe). */

@@ -105,9 +105,10 @@ El motor de hacking real se conecta por `/sim/:id/*` con el token que entrega `h
 
 | Método | Ruta | Body | Qué hace |
 |---|---|---|---|
-| `POST` | `/sandboxes` | `{ repo_url, ref?, env?, mode? }` | Crea el sandbox y lo despliega (`mode`: `agent` (default) \| `manifest` \| `auto`) |
+| `POST` | `/sandboxes` | `{ repo_url, ref?, env?, mode?, name? }` | Crea el sandbox y lo despliega (`mode`: `agent` (default) \| `manifest` \| `auto`) |
 | `GET` | `/sandboxes` | | Lista de sandboxes |
 | `GET` | `/sandboxes/:id` | | Estado (contrato Deploy → Motor) |
+| `PATCH` | `/sandboxes/:id` | `{ name }` | Renombra el sandbox (solo el nombre para mostrar). Vacío = vuelve a `owner/repo` |
 | `GET` | `/sandboxes/:id/events` | | SSE `event: deploy`; incluye el historial (persistido: sobrevive a reinicios del backend) |
 | `POST` | `/sandboxes/:id/redeploy` | `{ patch?, files?, message?, clear_cache? }` | Aplica un diff o archivos al mirror, commitea y redespliega |
 | `PUT` | `/sandboxes/:id/env` | `{ env?, generate?, unset?, deploy? }` | Cambia env vars y redespliega. `generate: ["JWT_SECRET"]` rota el secreto (invalida todas las sesiones) |
