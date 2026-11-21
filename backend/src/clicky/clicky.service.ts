@@ -285,6 +285,35 @@ async function* mockBeats({ elements, page, screenshot }: LessonBody) {
         : [],
     },
     {
+      say: 'Te dibujo cómo funciona un token de sesión.',
+      marks: [{ type: 'board', title: 'Cómo funciona un token', cols: 3, rows: 2, at: 'te dibujo' }],
+    },
+    {
+      say: 'Primero inicias sesión con tu clave.',
+      marks: [{ type: 'node', id: 'login', text: 'Inicias sesión', col: 0, row: 0, at: 'inicias sesión' }],
+    },
+    {
+      say: 'El servidor te entrega un token firmado con JWT_SECRET.',
+      marks: [
+        { type: 'node', id: 'token', text: 'Token firmado', col: 1, row: 0, at: 'un token' },
+        { type: 'edge', from: 'login', to: 'token', label: 'entrega', at: 'te entrega' },
+      ],
+    },
+    {
+      say: 'Con ese token entras a la app sin volver a escribir la clave.',
+      marks: [
+        { type: 'node', id: 'app', text: 'Accedes a la app', col: 2, row: 0, at: 'entras a la app' },
+        { type: 'edge', from: 'token', to: 'app', label: 'permite', at: 'con ese token' },
+      ],
+    },
+    {
+      say: 'Pero si alguien roba el secreto, puede firmar tokens falsos.',
+      marks: [
+        { type: 'node', id: 'robo', text: 'Tokens falsos', col: 1, row: 1, hot: true, at: 'tokens falsos' },
+        { type: 'edge', from: 'token', to: 'robo', label: 'si filtran', at: 'roba el secreto' },
+      ],
+    },
+    {
       say: screenshot
         ? 'Además estoy viendo tu captura de pantalla en tiempo real.'
         : 'No compartiste la pestaña, así que solo leo el texto.',

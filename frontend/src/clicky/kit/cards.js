@@ -133,6 +133,77 @@ export function createCards(ctx) {
       }
     },
 
+    // Pizarra narrada, como HeyClicky arma su dibujo línea a línea: board abre la hoja con su
+    // grilla, cada node pone una caja en su celda cuando la voz la nombra y cada edge une dos
+    // cajas ya dibujadas. La grilla fija dónde va cada caja aunque las demás no hayan llegado.
+    async board({ title, subtitle, cols = 3, rows = 2 }, s = 1) {
+      const B = board(title, subtitle);
+      ctx.flow = { B, cols, rows, pos: {}, labels: [] };
+      await sleep(220 * s);
+    },
+
+    async node({ id, text: label, col = 0, row = 0, hot }, s = 1) {
+      const F = ctx.flow;
+      if (!F) return;
+      const t = theme(), { B } = F, top = subtitleOffset(B), padX = 22, padB = 22;
+      const cw = (B.W - 2 * padX) / F.cols, ch = (B.H - top - padB) / F.rows;
+      // aire entre celdas para las flechas y sus etiquetas
+      const w = Math.max(90, Math.min(200, cw - 84)), h = Math.max(52, Math.min(80, ch - 44));
+      const r = { x: padX + col * cw + (cw - w) / 2, y: top + row * ch + (ch - h) / 2, w, h };
+      F.pos[id] = r;
+      const stroke = hot ? t.hot : t === ctx.themes.ink ? t.mark : t.ink;
+      const fill = t.hatch ? hatch(B.svg, r, hot ? t.hot : t.palette[0]) : svgEl('rect', { x: r.x, y: r.y, width: r.w, height: r.h, rx: 12, fill: hot ? '#ffe9e6' : t === ctx.themes.ink ? '#eef3ff' : '#fff', opacity: 0 }, B.svg);
+      await pen.draw(line(B.svg, toD(rrectPts(r.x, r.y, r.w, r.h, 12, t.wobble)), stroke, t.width * 0.72), 0.42 * s, B.r.x, B.r.y);
+      animate(0.3 * s, u => fill.setAttribute('opacity', u));
+      // el texto se achica hasta caber en la caja (máx 3 líneas)
+      let size = 21, lines;
+      for (; size >= 14; size -= 1.5) {
+        lines = wrap(label, Math.floor((w - 16) / (size * 0.5)));
+        if (lines.length <= 3 && lines.length * size * 1.05 <= h - 10) break;
+      }
+      const style = (t === ctx.themes.platanus ? `font: 700 ${size * 0.68}px var(--f-ui);` : `${hand} font-size: ${size}px;`) + `fill: ${hot ? t.hot : t.ink};`;
+      lines.slice(0, 3).forEach((l, k) => text(B.svg, r.x + r.w / 2, r.y + r.h / 2 + size * 0.35 + (k - (lines.length - 1) / 2) * size * 1.05, l, style));
+      F.labels.push({ x: r.x, y: r.y, w: r.w, h: r.h });
+      await sleep(120 * s);
+    },
+
+    async edge({ from, to, label }, s = 1) {
+      const F = ctx.flow, A = F?.pos[from], Bn = F?.pos[to];
+      if (!A || !Bn) return;
+      const t = theme(), { B } = F;
+      const [x1, y1] = edgePoint(A, Bn.x + Bn.w / 2, Bn.y + Bn.h / 2), [x2, y2] = edgePoint(Bn, A.x + A.w / 2, A.y + A.h / 2);
+      // un poco de curva, hacia arriba en la misma fila
+      const bend = Math.abs(y2 - y1) < 8 ? -10 : Math.abs(x2 - x1) < 8 ? 10 : 8;
+      const p = line(B.svg, smoothD(wobble(linePts(x1, y1, x2, y2, 20, bend), 0.7)), t.arrow, t.width * 0.75);
+      await pen.draw(p, 0.38 * s, B.r.x, B.r.y);
+      await pen.draw(line(B.svg, arrowHeadD(p, 10), t.arrow, t.width * 0.75), 0.12 * s, B.r.x, B.r.y);
+      if (!label) return;
+      // la etiqueta va junto al medio de la flecha, del lado libre: nunca encima de una caja ni de otra etiqueta
+      const len = p.getTotalLength(), dx = x2 - x1, dy = y2 - y1, n = Math.hypot(dx, dy) || 1;
+      const nx = -dy / n, ny = dx / n;
+      const clash = b => F.labels.some(o => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y);
+      // si no cabe entera, la letra se achica antes de rendirse
+      let spot = null, size = 17;
+      for (; size >= 12 && !spot; size -= 1) {
+        const wLabel = label.length * size * 0.5 + 6, hLabel = size + 4;
+        for (const along of [0.5, 0.38, 0.62, 0.28, 0.72]) {
+          const m = p.getPointAtLength(len * along);
+          for (const side of [-1, 1]) {
+            const off = Math.abs(ny) > 0.5 ? hLabel / 2 + 3 : wLabel / 2 + 6;
+            const cx = m.x + nx * off * side, cy = m.y + ny * off * side;
+            const b = { x: cx - wLabel / 2, y: cy - hLabel / 2, w: wLabel, h: hLabel };
+            if (!clash(b)) { spot = { cx, cy, b, size }; break; }
+          }
+          if (spot) break;
+        }
+      }
+      if (!spot) { const m = p.getPointAtLength(len / 2), wl = label.length * 6 + 6; spot = { cx: m.x, cy: m.y - 12, b: { x: m.x - wl / 2, y: m.y - 20, w: wl, h: 16 }, size: 12 }; }
+      size = spot.size;
+      F.labels.push(spot.b);
+      const e = text(B.svg, spot.cx, spot.cy + size * 0.35, label, `${hand} font-size: ${size}px; fill: ${t.arrow}; paint-order: stroke; stroke: #fff; stroke-width: 5px; stroke-linejoin: round;`);
+      e.setAttribute('stroke', '#fff');
+    },
+
     async card({ eyebrow, title, items = [] }, s = 1) {
       const el = sidePanel('clicky-card');
       el.innerHTML = `${eyebrow ? `<div class="eyebrow">${esc(eyebrow)}</div>` : ''}<h4>${esc(title || '')}</h4><ul></ul>`;
@@ -166,4 +237,19 @@ export function createCards(ctx) {
   };
 }
 
+// Parte un texto en líneas de hasta `max` caracteres, sin cortar palabras.
+function wrap(text, max) {
+  const lines = [''];
+  for (const word of String(text).split(/\s+/)) {
+    const next = (lines.at(-1) + ' ' + word).trim();
+    if (next.length > max && lines.at(-1)) lines.push(word);
+    else lines[lines.length - 1] = next;
+  }
+  return lines;
+}
+// Dónde empieza el área de dibujo de la pizarra: bajo el título y el subtítulo.
+function subtitleOffset(B) {
+  const head = B.el.querySelector('.sub') || B.el.querySelector('.ttl');
+  return head ? Math.max(64, head.offsetTop + head.offsetHeight + 18) : 64;
+}
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

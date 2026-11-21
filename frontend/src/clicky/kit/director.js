@@ -8,7 +8,7 @@ const COST = {
   note: 0.5, button: 0.2,
   card: m => 0.5 + 0.6 * (m.items?.length || 0),
   chart: m => 1 + 0.55 * (m.bars?.length || 0) + (m.note ? 0.6 : 0),
-  diagram: m => 0.4 + 0.5 * (m.nodes?.length || 0) + 0.5 * (m.edges?.length || 0),
+  board: 0.5, node: 0.9, edge: m => (m.label ? 0.75 : 0.55),
 };
 const cost = m => (typeof COST[m.type] === 'function' ? COST[m.type](m) : COST[m.type] || 0.5);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
