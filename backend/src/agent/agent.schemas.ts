@@ -40,6 +40,18 @@ export const agentReportSchema = z.object({
   summary: z.string().min(1).max(8000),
 });
 
+export const agentUsersSchema = z
+  .array(
+    z
+      .object({
+        email: z.string().min(1),
+        password: z.string().min(1),
+        role: z.string().optional(),
+      })
+      .loose(),
+  )
+  .max(20);
+
 export const agentLogsQuerySchema = z.object({
   type: z.enum(['build', 'app']).default('build'),
   limit: z.coerce.number().int().min(1).max(1000).default(150),
@@ -55,5 +67,6 @@ export type AgentPlanBody = z.infer<typeof agentPlanSchema>;
 export type AgentNoteBody = z.infer<typeof agentNoteSchema>;
 export type AgentInputRequestBody = z.infer<typeof agentInputRequestSchema>;
 export type AgentReportBody = z.infer<typeof agentReportSchema>;
+export type AgentUsersBody = z.infer<typeof agentUsersSchema>;
 export type AgentLogsQuery = z.infer<typeof agentLogsQuerySchema>;
 export type AgentContextQuery = z.infer<typeof agentContextQuerySchema>;

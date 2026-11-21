@@ -1,5 +1,6 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Get,
   HttpCode,
@@ -21,6 +22,7 @@ import {
   agentNoteSchema,
   agentPlanSchema,
   agentReportSchema,
+  agentUsersSchema,
   type AgentChangesBody,
   type AgentContextQuery,
   type AgentInputRequestBody,
@@ -28,6 +30,7 @@ import {
   type AgentNoteBody,
   type AgentPlanBody,
   type AgentReportBody,
+  type AgentUsersBody,
 } from './agent.schemas.js';
 
 const CLI_PATH = path.resolve(
@@ -147,6 +150,36 @@ export class AgentController {
     return new Response(text, {
       headers: { 'content-type': 'text/plain; charset=utf-8' },
     });
+  }
+
+  /** Tablas y cantidad de filas de la base del sandbox (para verificar migraciones y seed). */
+  @Get('sandboxes/:id/db')
+  @UseGuards(AgentTokenGuard)
+  db(@Param('id') id: string) {
+    return this.sandboxes.inspectDatabase(id);
+  }
+
+  /** Usuarios de prueba que creó o encontró el agente (los usa el motor de ataque). */
+  @Post('sandboxes/:id/users')
+  @UseGuards(AgentTokenGuard)
+  @HttpCode(200)
+  users(
+    @Param('id') id: string,
+    @Body({ schema: agentUsersSchema }) body: AgentUsersBody,
+  ) {
+    const s = this.sandboxes.get(id);
+    if (!s.manifest) {
+      throw new ConflictException(
+        'Primero despliega un plan: los usuarios se guardan junto al manifest',
+      );
+    }
+    this.sandboxes.setSeedUsers(id, body);
+    this.agents.note(
+      s,
+      'Usuarios de prueba registrados',
+      body.map((u) => `${u.email}${u.role ? ` (${u.role})` : ''}`).join(', '),
+    );
+    return { ok: true, seed_users: body.length };
   }
 
   @Post('sandboxes/:id/notes')

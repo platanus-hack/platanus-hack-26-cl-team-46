@@ -24,6 +24,8 @@ deployer <comando>
   plan <manifest.json> ["nota"]   Despliega con ese manifest (crea o actualiza el servicio)
   wait                            Espera a que termine el deploy en curso y muestra el resultado
   logs [build|app] [n]            Últimas n líneas de logs del deploy actual (default: build 150)
+  db                              Tablas y filas de la base del sandbox (verifica migraciones/seed)
+  users <usuarios.json>           Registra usuarios de prueba: [{"email","password","role"}]
   note "<título>" ["detalle"]     Publica una nota en el timeline que ve el usuario
   ask KEY "descripción" [...]     Pide variables secretas al usuario y espera a que las entregue
   report deployed|gave_up "<resumen>"   Termina el trabajo (OBLIGATORIO al final)
@@ -49,6 +51,13 @@ try {
       break;
     case 'logs':
       process.stdout.write(await api('GET', `/logs?type=${args[0] ?? 'build'}&limit=${args[1] ?? 150}`, undefined, 'text'));
+      break;
+    case 'db':
+      print(await api('GET', '/db'));
+      break;
+    case 'users':
+      if (!args[0]) fail('Uso: deployer users <usuarios.json>');
+      print(await api('POST', '/users', JSON.parse(readFileSync(args[0], 'utf8'))));
       break;
     case 'note':
       if (!args[0]) fail('Uso: deployer note "<título>" ["detalle"]');

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
+import pg from 'pg';
 import { AgentOrchestrator } from '../agent/agent.orchestrator.js';
 import type { Env } from '../config/env.js';
 import { GitService, type FileChange } from '../git/git.service.js';
@@ -181,7 +182,7 @@ export class SandboxesService implements OnModuleInit {
   // -------------------------------------------------------------- crear
 
   create(input: CreateSandboxInput): SandboxRecord {
-    const mode = input.mode ?? 'auto';
+    const mode = input.mode ?? 'agent';
     if (!this.git.mirrorsEnabled && mode !== 'manifest') {
       throw new ConflictException(
         'Los modos auto y agent necesitan GITHUB_TOKEN (mirrors) configurado',
@@ -282,11 +283,24 @@ export class SandboxesService implements OnModuleInit {
       });
     }
 
-    // 3. Camino agéntico directo
+    // 3. Camino agéntico (default): la IA decide siempre cómo desplegar.
     if (s.mode === 'agent') {
+      const hasManifestFile = this.get(id).manifest_source === 'file';
+      // Una configuración inferida es solo una adivinanza: no se la pasamos al agente como si fuera un dato.
+      if (!hasManifestFile) {
+        this.store.update(id, {
+          manifest: undefined,
+          manifest_source: undefined,
+        });
+      }
       await this.agents.start(
         id,
-        'El usuario pidió que la IA configure el deploy.',
+        hasManifestFile
+          ? 'Despliegue con IA. El repo trae .sandbox/manifest.json: úsalo como punto de partida y verifica que la app quede usable.'
+          : 'Despliegue con IA: analiza el repo, define la mejor forma de desplegarlo y deja la app usable.',
+        hasManifestFile
+          ? { manifest: this.get(id).manifest!, source: 'file' }
+          : undefined,
       );
       return;
     }
@@ -314,7 +328,10 @@ export class SandboxesService implements OnModuleInit {
           error: (err as Error).message,
         },
       );
-      await this.agents.start(id, reason);
+      await this.agents.start(id, reason, {
+        manifest: this.get(id).manifest!,
+        source: 'tried',
+      });
     }
   }
 
@@ -503,6 +520,52 @@ export class SandboxesService implements OnModuleInit {
   }
 
   // ------------------------------------------------------------ acciones
+
+  /** Tablas y filas de la base del sandbox, para que el agente verifique migraciones y seed. */
+  async inspectDatabase(id: string): Promise<{
+    database: boolean;
+    tables: { name: string; rows: number }[];
+  }> {
+    const s = this.get(id);
+    if (!s.database) return { database: false, tables: [] };
+    const { external_url } = await this.databases.urlsFor(s.database);
+    const client = new pg.Client({
+      connectionString: external_url,
+      ssl: { rejectUnauthorized: false },
+    });
+    await client.connect();
+    try {
+      const { rows } = await client.query<{ schema: string; name: string }>(
+        `SELECT table_schema AS schema, table_name AS name
+           FROM information_schema.tables
+          WHERE table_type = 'BASE TABLE'
+            AND table_schema NOT IN ('pg_catalog', 'information_schema')
+          ORDER BY 1, 2
+          LIMIT 100`,
+      );
+      const tables: { name: string; rows: number }[] = [];
+      for (const t of rows) {
+        const ident = `"${t.schema.replaceAll('"', '""')}"."${t.name.replaceAll('"', '""')}"`;
+        const count = await client.query<{ n: string }>(
+          `SELECT count(*)::text AS n FROM ${ident}`,
+        );
+        tables.push({
+          name: t.schema === 'public' ? t.name : `${t.schema}.${t.name}`,
+          rows: Number(count.rows[0].n),
+        });
+      }
+      return { database: true, tables };
+    } finally {
+      await client.end().catch(() => undefined);
+    }
+  }
+
+  /** Registra usuarios de prueba (los usa el motor de ataque) sin redesplegar. */
+  setSeedUsers(id: string, users: SandboxManifest['seed_users']) {
+    return this.store.update(id, (r) => {
+      if (r.manifest) r.manifest.seed_users = users;
+    });
+  }
 
   archiveSource(id: string): Promise<Buffer> {
     const s = this.get(id);

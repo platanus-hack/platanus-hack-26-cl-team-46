@@ -24,8 +24,8 @@ Monorepo con pnpm workspaces:
 
 ```
 repo del developer ──▶ Servicio de deploy ──▶ sandbox en Render (sbx-xxxx.onrender.com)
-                          │  determinista (manifest / Dockerfile / package.json)
-                          └─ fallback: agente de IA en una VM de Conductor
+                          └─ agente de IA en una VM de Conductor: analiza, despliega,
+                             verifica (tablas, rutas, usuarios de prueba) y corrige
                                               │
 Simulación: 1 workspace de Conductor con 5 threads ── se coordinan por un timeline en el backend
   infra · hacker · observer · generator · coder
@@ -33,7 +33,13 @@ Simulación: 1 workspace de Conductor con 5 threads ── se coordinan por un t
 UI: feed de notificaciones + chat con el agente de código ──▶ acciones que cambian la app real
 ```
 
-1. **Deploy** (`POST /sandboxes`): mirror del repo en la org `hack26-sandboxes`, Postgres si hace falta, web service en Render. Si no se puede inferir la configuración o el deploy falla, un agente de Claude en su propia VM de Conductor lo arregla y le pide al usuario los secretos que falten.
+1. **Deploy** (`POST /sandboxes`): el backend crea un mirror del repo en la org `hack26-sandboxes` y lanza un agente de Claude en su propia VM de Conductor (modo `agent`, el default). El agente:
+   - analiza el repo (configs de Railway, Fly o Heroku, el ORM y sus migraciones, las variables),
+   - despliega a través del backend (Postgres y web service en Render),
+   - verifica que la app quede usable: tablas creadas, rutas sin errores 5xx y usuarios de prueba para el atacante,
+   - y le pide al usuario, desde el dashboard, los secretos que falten.
+
+   `mode: "manifest"` despliega sin IA a partir de `.sandbox/manifest.json`, para scripts o emergencias.
 2. **Simulación** (`POST /simulations`): infra arma el contexto del repo, el hacker (hoy emulado) publica el plan de ataque y ataca vuln por vuln, el observer lleva el estado del incidente y dirige el ritmo, el generator escribe las notificaciones y el coder ejecuta lo que pide el developer. Después de cada cambio desplegado se **re-verifica el exploit**: así una acción equivocada no saca al atacante.
 3. **Debrief**: veredicto por vuln, fix correcto, momentos clave y caso real.
 
@@ -53,7 +59,7 @@ pnpm dev                                  # backend :3001 + frontend :3000
 - Tests del backend: `pnpm --filter backend test` y `pnpm --filter backend test:e2e`.
 - Lint: `pnpm --filter backend lint` y `pnpm --filter frontend lint`.
 - Sin `DATABASE_URL`, el estado se guarda en `backend/.data/`.
-- **Agentes (fallback de deploy y simulación):** sus VMs llaman al backend, así que necesita una URL pública. Local: `cloudflared tunnel --url http://localhost:3001` y poner esa URL en `PUBLIC_BACKEND_URL`. También hacen falta `AGENT_API_SECRET`, `CONDUCTOR_API_KEY` y el token de GitHub de la org. Si falta alguna, el backend lo avisa al arrancar y se queda solo con el camino determinista.
+- **Agentes (deploy y simulación):** sus VMs llaman al backend, así que necesita una URL pública. Local: `cloudflared tunnel --url http://localhost:3001` y poner esa URL en `PUBLIC_BACKEND_URL`. También hacen falta `AGENT_API_SECRET`, `CONDUCTOR_API_KEY` y el token de GitHub de la org. Si falta alguna, el backend lo avisa al arrancar y solo acepta sandboxes con `mode: "manifest"`.
 - En las VMs de Conductor el puerto 3000 está ocupado: levanta el frontend en otro (`pnpm --filter frontend dev -- -p 3100`).
 - App víctima local: `cd victim-app && docker compose up --build` (ver [`docs/victim/README.md`](docs/victim/README.md)).
 
@@ -96,7 +102,7 @@ El motor de hacking real se conecta por `/sim/:id/*` con el token que entrega `h
 
 | Método | Ruta | Body | Qué hace |
 |---|---|---|---|
-| `POST` | `/sandboxes` | `{ repo_url, ref?, env?, mode? }` | Crea el sandbox y lo despliega (`mode`: `auto` \| `manifest` \| `agent`) |
+| `POST` | `/sandboxes` | `{ repo_url, ref?, env?, mode? }` | Crea el sandbox y lo despliega (`mode`: `agent` (default) \| `manifest` \| `auto`) |
 | `GET` | `/sandboxes` | | Lista de sandboxes |
 | `GET` | `/sandboxes/:id` | | Estado (contrato Deploy → Motor) |
 | `GET` | `/sandboxes/:id/events` | | SSE `event: deploy`; incluye historial |
