@@ -25,3 +25,16 @@ body {
   from { transform: translateX(-100%); }
   to { transform: translateX(300%); }
 }
+
+/* Entrada de las secciones con scroll normal (Rise): el md-rise del sistema, un poco más largo. */
+.md-reveal[data-rise="pending"] { opacity: 0; }
+.md-reveal[data-rise="in"] { animation: md-rise .45s cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) { .md-reveal[data-rise] { opacity: 1; } }
+
+/* Espacio reservado de DemoVideo: grilla de puntos (pixeles de 2 px, cuadrados). */
+.md-video-slot {
+  background-color: var(--bg-100);
+  background-image: conic-gradient(from 270deg at 2px 2px, var(--line-strong) 25%, transparent 0);
+  background-size: 16px 16px;
+  background-position: 7px 7px;
+}
