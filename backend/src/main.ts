@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule, ObserveInstrument } from './app.module.js';
 import { CLICKY_JSON, MAX_AUDIO_BYTES } from './clicky/clicky.schemas.js';
+import { rejectForeignOrigins } from './auth/origin-check.js';
 import { createPreviewProxy } from './preview/preview-proxy.js';
 import { SandboxStore } from './sandboxes/sandbox.store.js';
 
@@ -39,9 +40,15 @@ async function bootstrap() {
   // En Render hay un balanceador delante: req.ip debe ser el del cliente (límite por IP de Clicky).
   if (process.env.RENDER) app.set('trust proxy', 1);
   app.useGlobalPipes(new StandardSchemaValidationPipe());
-  app.enableCors({
-    origin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(','),
-  });
+  const origins = (process.env.CORS_ORIGIN ?? 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim());
+  // credentials: el frontend manda la cookie de sesión (fetch con credentials: 'include').
+  app.enableCors({ origin: origins, credentials: true });
+  // Los subdominios del preview (código del usuario) son del mismo *site* que el frontend:
+  // sus formularios mandarían la cookie de sesión. Se rechaza cualquier escritura que venga
+  // de un origen que no sea el frontend (CSRF).
+  app.use(rejectForeignOrigins(origins));
   app.enableShutdownHooks();
   await app.listen(process.env.PORT ?? 3001);
 }

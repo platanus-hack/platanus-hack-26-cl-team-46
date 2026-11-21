@@ -1,16 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { Button, ButtonLink, StatusChip, TypedLog } from "@/components/mayday";
 import { Avatar } from "@/components/onboarding/Avatar";
 import { OnboardingShell, StepHeading } from "@/components/onboarding/OnboardingShell";
 import { api } from "@/lib/api";
-import { DEMO_REPO, github, timeAgo, type GitHubRepo } from "@/lib/github";
-import { listReposFor, useGitHubConnection, type GitHubConnection } from "@/lib/onboarding";
+import { DEMO_REPO, timeAgo, type GitHubRepo } from "@/lib/github";
+import { listRepos, useSession, type SessionUser } from "@/lib/onboarding";
 
-/** Paso 3 · Elige el repo. Lista los repos públicos del usuario + Apuntes, el repo de ejemplo. */
+/**
+ * Paso 3 · Elige el repo: los que el usuario compartió con la GitHub App (públicos o
+ * privados), Apuntes como ejemplo, o la URL de cualquier repo público.
+ */
 export default function ChooseRepoPage() {
   return (
     <OnboardingShell step={3}>
@@ -28,6 +30,7 @@ interface Choice {
   description: string | null;
   language: string | null;
   demo?: boolean;
+  private?: boolean;
 }
 
 const DEMO_CHOICE: Choice = { ...DEMO_REPO, demo: true };
@@ -45,19 +48,20 @@ type ReposState =
 
 function ChooseRepo() {
   const router = useRouter();
-  const { connection } = useGitHubConnection();
+  const { user, enabled, installUrl } = useSession();
+  const mustLogin = user === null && enabled !== false;
 
-  // Sin conexión no hay nada que listar: de vuelta al paso 2.
+  // Sin sesión (y con login encendido): de vuelta al paso 2.
   useEffect(() => {
-    if (connection === null) router.replace("/start/github");
-  }, [connection, router]);
+    if (mustLogin) router.replace("/start/github?next=/start/repos");
+  }, [mustLogin, router]);
 
-  if (!connection) return <div className="flex-1" />;
-  return <RepoPicker connection={connection} />;
+  if (user === undefined || mustLogin) return <div className="flex-1" />;
+  return <RepoPicker user={user} installUrl={installUrl} />;
 }
 
-function RepoPicker({ connection }: { connection: GitHubConnection }) {
-  const preselected = useSearchParams().get("repo");
+/** `user` null = login apagado en el backend (desarrollo): solo el ejemplo y repos públicos por URL. */
+function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl: string | null }) {
   const [state, setState] = useState<ReposState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [query, setQuery] = useState("");
@@ -72,16 +76,8 @@ function RepoPicker({ connection }: { connection: GitHubConnection }) {
     let cancelled = false;
     (async () => {
       try {
-        let repos = await listReposFor(connection);
-        // Si pegó la URL de un repo que no vino en la lista (ej. de una org), lo sumamos arriba.
-        if (preselected && !repos.some((r) => r.full_name.toLowerCase() === preselected.toLowerCase())) {
-          const [owner, name] = preselected.split("/");
-          repos = [await github.getRepo(owner, name), ...repos];
-        }
-        if (cancelled) return;
-        setState({ status: "ready", repos });
-        const match = preselected && repos.find((r) => r.full_name.toLowerCase() === preselected.toLowerCase());
-        if (match) setSelected(match);
+        const repos = user ? await listRepos() : [];
+        if (!cancelled) setState({ status: "ready", repos });
       } catch (err) {
         if (!cancelled) setState({ status: "error", message: (err as Error).message });
       }
@@ -89,7 +85,7 @@ function RepoPicker({ connection }: { connection: GitHubConnection }) {
     return () => {
       cancelled = true;
     };
-  }, [connection, preselected, attempt]);
+  }, [user, attempt]);
 
   const filtered = useMemo(() => {
     if (state.status !== "ready") return [];
@@ -139,17 +135,23 @@ function RepoPicker({ connection }: { connection: GitHubConnection }) {
           Funciona mejor con una app web con backend: una API, un login, una base de datos.
         </StepHeading>
 
-        <div className="flex flex-wrap items-center gap-3 text-[13px] text-ink-muted">
-          <Avatar src={connection.avatar_url} login={connection.login} size={24} />
-          <span>
-            Repos públicos de <span className="font-mono text-ink">@{connection.login}</span>
-            {connection.via === "oauth" && " y de tus orgs"}
-          </span>
-          <span className="text-ink-faint">·</span>
-          <Link href="/start/github" className="underline-offset-4 hover:text-ink hover:underline">
-            Cambia de cuenta
-          </Link>
-        </div>
+        {user && (
+          <div className="flex flex-wrap items-center gap-3 text-[13px] text-ink-muted">
+            <Avatar src={user.avatar_url} login={user.login} size={24} />
+            <span>
+              Repos que <span className="font-mono text-ink">@{user.login}</span> compartió con Mayday
+            </span>
+            {installUrl && (
+              <>
+                <span className="text-ink-faint">·</span>
+                {/* GitHub vuelve a esta página al terminar (Setup URL de la app). */}
+                <a href={installUrl} className="underline-offset-4 hover:text-ink hover:underline">
+                  Comparte más repos en GitHub ↗
+                </a>
+              </>
+            )}
+          </div>
+        )}
 
         <div className="flex flex-col gap-3">
           <input
@@ -214,13 +216,24 @@ function RepoPicker({ connection }: { connection: GitHubConnection }) {
               ))}
 
             {state.status === "ready" && filtered.length === 0 && (
-              <p className="border-t border-line px-4 py-6 text-[13px] text-ink-muted first:border-t-0">
-                {query
-                  ? `Ningún repo calza con “${query}”.`
-                  : `@${connection.login} no tiene repos públicos propios. Prueba con Apuntes, el repo de ejemplo.`}
-              </p>
+              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-5 first:border-t-0">
+                <p className="text-[13px] leading-5 text-ink-muted">
+                  {query
+                    ? `Ningún repo calza con “${query}”.`
+                    : user
+                      ? "Todavía no compartes repos con Mayday. Elige cuáles en GitHub, o prueba con Apuntes."
+                      : "Login apagado: prueba con Apuntes o pega la URL de un repo público."}
+                </p>
+                {!query && user && installUrl && (
+                  <a href={installUrl} className="md-btn">
+                    Elige repos en GitHub ↗
+                  </a>
+                )}
+              </div>
             )}
           </div>
+
+          <PublicRepoInput disabled={locked} onPick={select} />
         </div>
       </section>
 
@@ -279,6 +292,7 @@ function RepoRow({
         <span className="flex flex-wrap items-center gap-2">
           <span className="truncate font-mono text-[15px] text-ink">{choice.full_name}</span>
           {choice.demo && <StatusChip>Ejemplo</StatusChip>}
+          {choice.private && <StatusChip>Privado</StatusChip>}
           {repo?.fork && <StatusChip>Fork</StatusChip>}
           {repo?.archived && <StatusChip>Archivado</StatusChip>}
           {empty && <StatusChip>Vacío</StatusChip>}
@@ -391,6 +405,13 @@ function SelectionPanel({
                   <span className="text-[13px] text-ink-faint">Opcional. Si lo dejas vacío, se llama {selected.full_name}.</span>
                 </label>
 
+                {selected.private && (
+                  <p className="rounded-md border border-line-strong p-3 text-[13px] leading-5 text-ink-muted">
+                    <span className="text-ink">Es un repo privado.</span> Su código se copia a un repo privado de Mayday
+                    y lo leen agentes de IA para desplegarlo y simular el ataque. Nadie más que tú ve el sandbox.
+                  </p>
+                )}
+
                 <div className="flex flex-col gap-3">
                   <Button
                     variant="primary"
@@ -411,5 +432,54 @@ function SelectionPanel({
         )}
       </div>
     </aside>
+  );
+}
+
+/** Cualquier repo público por URL (no hace falta compartirlo con la app). */
+function PublicRepoInput({ disabled, onPick }: { disabled: boolean; onPick: (c: Choice) => void }) {
+  const [value, setValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  return (
+    <form
+      className="flex flex-col gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        const m = value.trim().match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i);
+        if (!m) {
+          setError("Pega una URL como https://github.com/dueño/repo");
+          return;
+        }
+        setError(null);
+        onPick({
+          full_name: `${m[1]}/${m[2]}`,
+          html_url: `https://github.com/${m[1]}/${m[2]}`,
+          description: null,
+          language: null,
+        });
+      }}
+    >
+      <label htmlFor="public-repo" className="text-[13px] text-ink-muted">
+        ¿Otro repo público? Pega su URL
+      </label>
+      <div className="flex gap-2">
+        <input
+          id="public-repo"
+          value={value}
+          disabled={disabled}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setError(null);
+          }}
+          placeholder="https://github.com/dueño/repo"
+          autoComplete="off"
+          spellCheck={false}
+          className="h-10 min-w-0 flex-1 rounded-md border border-line-strong bg-bg-100 px-3 font-mono text-[13px] text-ink outline-none placeholder:text-ink-faint focus:border-defense"
+        />
+        <Button type="submit" disabled={disabled || !value.trim()}>
+          Usar este
+        </Button>
+      </div>
+      {error && <TypedLog text={error} />}
+    </form>
   );
 }

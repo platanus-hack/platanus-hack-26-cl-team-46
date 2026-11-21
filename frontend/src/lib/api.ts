@@ -65,11 +65,31 @@ export interface SimEvent {
   raw: Record<string, unknown>;
 }
 
+/**
+ * Sin sesión (401) → al login, volviendo después a esta misma página.
+ * La sesión es una cookie httpOnly del backend: por eso todas las llamadas van con credentials.
+ */
+export function goToLogin() {
+  if (typeof window === "undefined") return;
+  const next = window.location.pathname + window.location.search;
+  // Recarga completa a propósito: la sesión se vuelve a leer desde cero al volver.
+  const url = new URL("/start/github", window.location.origin);
+  url.searchParams.set("next", next);
+  window.location.assign(url.href);
+}
+
+/** EventSource que manda la cookie de sesión (el backend está en otro subdominio). */
+export function authedEventSource(url: string) {
+  return new EventSource(url, { withCredentials: true });
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
+  if (res.status === 401) goToLogin();
   const body = await res.json().catch(() => undefined);
   if (!res.ok) {
     const msg = Array.isArray(body?.message) ? body.message.join(", ") : body?.message;
@@ -97,7 +117,7 @@ export const api = {
   deleteSandbox: (id: string) => request<Sandbox>(`/sandboxes/${id}`, { method: "DELETE" }),
   /** SSE de progreso (eventos `deploy` del backend y `agent` del agente de IA). Devuelve la función para cerrar. */
   subscribeEvents: (id: string, onEvent: (e: SimEvent) => void) => {
-    const es = new EventSource(`${API_URL}/sandboxes/${id}/events`);
+    const es = authedEventSource(`${API_URL}/sandboxes/${id}/events`);
     const handler = (msg: Event) => onEvent(JSON.parse((msg as MessageEvent).data));
     es.addEventListener("deploy", handler);
     es.addEventListener("agent", handler);

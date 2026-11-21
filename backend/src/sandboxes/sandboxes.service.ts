@@ -10,6 +10,7 @@ import { ConfigService } from '@nestjs/config';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { AgentOrchestrator } from '../agent/agent.orchestrator.js';
+import { AuthService } from '../auth/auth.service.js';
 import type { Env } from '../config/env.js';
 import {
   classifySourceRepo,
@@ -49,6 +50,10 @@ export interface CreateSandboxInput {
   ref?: string;
   env?: Record<string, string>;
   mode?: SandboxMode;
+  /** Dueño (con el login encendido). */
+  owner?: { github_id: number; login: string };
+  /** Repo privado: se clona con el token del dueño. */
+  private_repo?: boolean;
 }
 
 export interface RedeployInput {
@@ -90,6 +95,7 @@ export class SandboxesService implements OnModuleInit {
     private readonly git: GitService,
     private readonly databases: DatabaseProvisioner,
     private readonly agents: AgentOrchestrator,
+    private readonly auth: AuthService,
   ) {}
 
   /** Retoma deploys que estaban en curso cuando el backend se reinició. */
@@ -117,6 +123,11 @@ export class SandboxesService implements OnModuleInit {
 
   list(): SandboxRecord[] {
     return this.store.list();
+  }
+
+  /** Org de GitHub de los mirrors (para clasificar repos de origen). */
+  get org(): string {
+    return this.git.org;
   }
 
   get(id: string): SandboxRecord {
@@ -218,6 +229,8 @@ export class SandboxesService implements OnModuleInit {
       ...(input.name?.trim() ? { name: input.name.trim() } : {}),
       repo_url: input.repo_url,
       ref: input.ref,
+      owner: input.owner,
+      private_repo: input.private_repo,
       mode,
       status: 'provisioning',
       created_at: now,
@@ -247,10 +260,16 @@ export class SandboxesService implements OnModuleInit {
 
     // 1. Código fuente
     step('Clonando repositorio', s.repo_url);
+    // Repo privado: se clona con el token del dueño (el que compartió el repo con la GitHub App).
+    const userToken =
+      s.private_repo && s.owner
+        ? await this.auth.tokenFor(s.owner.github_id)
+        : undefined;
     const { dir, sha: sourceSha } = await this.git.cloneSource(
       id,
       s.repo_url,
       s.ref,
+      userToken,
     );
     this.store.update(id, { source_sha: sourceSha });
 
