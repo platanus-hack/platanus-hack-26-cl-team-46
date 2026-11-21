@@ -28,7 +28,7 @@ export function HeroSplit({
       {/* Mitad cian: tú. Contenido arriba en mobile, abajo-izquierda en desktop. */}
       <div
         ref={firstRef}
-        className="absolute inset-x-0 top-0 flex h-1/2 flex-col justify-start bg-defense-deep px-4 pt-4 will-change-transform md:inset-y-0 md:right-auto md:h-auto md:w-1/2 md:justify-end md:pt-0 md:pr-[calc(var(--pixel-lg)*4+var(--space-6))] md:pb-16 md:pl-12"
+        className="absolute inset-x-0 top-0 flex h-1/2 flex-col justify-start bg-defense-deep px-3 pt-3 will-change-transform md:inset-y-0 md:right-auto md:h-auto md:w-1/2 md:justify-end md:pt-0 md:pr-[calc(var(--pixel-lg)*4+var(--space-6))] md:pb-16 md:pl-12"
       >
         <CalmPanel />
       </div>
@@ -36,7 +36,7 @@ export function HeroSplit({
       {/* Mitad ámbar: el atacante. Contenido abajo en mobile, abajo-derecha en desktop. */}
       <div
         ref={secondRef}
-        className="absolute inset-x-0 bottom-0 flex h-1/2 flex-col items-end justify-end bg-attack-deep px-4 pb-4 will-change-transform md:inset-y-0 md:left-auto md:h-auto md:w-1/2 md:pr-12 md:pb-16 md:pl-[calc(var(--pixel-lg)*4+var(--space-6))]"
+        className="absolute inset-x-0 bottom-0 flex h-1/2 flex-col items-end justify-end bg-attack-deep px-3 pb-3 will-change-transform md:inset-y-0 md:left-auto md:h-auto md:w-1/2 md:pr-12 md:pb-16 md:pl-[calc(var(--pixel-lg)*4+var(--space-6))]"
       >
         <AttackPanel />
       </div>
@@ -127,14 +127,16 @@ function ProjectPanel({
     : undefined;
 
   return (
-    <div className="flex w-full max-w-[480px] flex-col gap-2 md:gap-3">
-      <div className={`flex items-center gap-3 ${attack ? "flex-row-reverse" : ""}`}>
+    // Mobile: ancho completo pero bajo (HUD, estado y feed compactos) para no chocar con el titular.
+    <div className="flex w-full max-w-[480px] flex-col gap-1.5 md:gap-3">
+      {/* Mobile: pastilla centrada, hacia el titular (debajo del panel de arriba, encima del de abajo). */}
+      <div className={`flex items-center gap-3 max-md:justify-center ${attack ? "flex-row-reverse" : "max-md:order-last"}`}>
         <StatusChip tone={tone}>{chip}</StatusChip>
-        <span className="text-[13px] leading-5 text-ink-muted">{caption}</span>
+        <span className="text-[13px] leading-5 text-ink-muted max-md:hidden">{caption}</span>
       </div>
 
       <div className="overflow-hidden rounded-md border border-line bg-bg-000 shadow-window">
-        <div className="flex items-center justify-between border-b border-line px-4 py-2" style={flicker}>
+        <div className="flex items-center justify-between border-b border-line px-3 py-1 md:px-4 md:py-2" style={flicker}>
           <span className="md-index">{HERO.project.toUpperCase()} · PROD</span>
           <span className={`md-index ${attack ? "text-attack-strong" : "text-defense"}`}>
             {attack ? "EN ATAQUE" : "SANO"}
@@ -142,12 +144,12 @@ function ProjectPanel({
         </div>
 
         {/* En mobile el HUD va más chico y sin el valor opcional (p95). */}
-        <div className="px-4 py-3">
+        <div className="px-3 py-1.5 max-md:[&_.md-hud__value]:text-[18px]! max-md:[&_.md-hud__value]:leading-[18px]! md:px-4 md:py-3">
           <Hud items={hud} fluid />
         </div>
 
         <div
-          className={`flex items-center gap-2 px-4 py-2 font-mono text-[13px] leading-5 ${
+          className={`flex items-center gap-2 px-3 py-0.5 font-mono text-[12px] leading-5 md:px-4 md:py-2 md:text-[13px] ${
             attack ? "bg-attack-soft text-attack-strong" : "bg-defense-soft text-defense"
           }`}
         >
@@ -169,12 +171,16 @@ function ProjectPanel({
 function LogFeed({ rows, tone, seconds }: { rows: LogRow[]; tone: "defense" | "attack"; seconds: number }) {
   const doubled = [...rows, ...rows];
   return (
-    <div className="relative h-[72px] overflow-hidden md:h-[100px]" aria-hidden="true">
+    // Mobile: una sola fila, y sin feed en pantallas muy bajas (iPhone SE con las barras de Safari).
+    <div
+      className="relative h-[24px] overflow-hidden max-md:[@media(max-height:620px)]:hidden md:h-[100px]"
+      aria-hidden="true"
+    >
       <div className="will-change-transform" style={{ animation: `md-feed ${seconds}s linear infinite` }}>
         {doubled.map((r, i) => (
           <div
             key={i}
-            className={`grid grid-cols-[auto_auto_1fr_auto_auto] gap-x-3 px-4 py-0.5 font-mono text-[12px] leading-5 whitespace-nowrap max-md:grid-cols-[auto_1fr_auto_auto] ${
+            className={`grid grid-cols-[auto_auto_1fr_auto_auto] gap-x-3 px-3 py-0.5 md:px-4 font-mono text-[12px] leading-5 whitespace-nowrap max-md:grid-cols-[auto_1fr_auto_auto] ${
               r.hit ? "bg-attack-soft text-attack-strong" : "text-ink-faint"
             }`}
           >
