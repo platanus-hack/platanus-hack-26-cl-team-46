@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { diagnose } from '../src/diagnose.ts';
-import { buildScenarioPack } from '../src/scenario.ts';
+import { diagnose } from '../src/core/diagnose.ts';
+import { buildScenarioPack } from '../src/core/scenario.ts';
 import { startFixture } from './fixture.ts';
-import type { TargetConfig } from '../src/types.ts';
+import type { TargetConfig } from '../src/core/types.ts';
+import { apuntesPlugin } from '../src/plugins/apuntes/index.ts';
 
 function targetFor(url: string): TargetConfig {
   return {
@@ -16,10 +17,10 @@ function targetFor(url: string): TargetConfig {
 test('diagnóstico completo contra el fixture confirma las 8 vulns', async () => {
   const fx = await startFixture();
   try {
-    const diag = await diagnose(targetFor(fx.url), { seed: 't1', profile: 'noisy' });
+    const diag = await diagnose(targetFor(fx.url), apuntesPlugin, { seed: 't1', profile: 'noisy' });
     assert.equal(diag.summary.total, 8);
     assert.equal(diag.summary.confirmed, 8, diag.results.filter((r) => !r.confirmed).map((r) => `${r.vuln_id}: ${r.summary}`).join(' | '));
-    const pack = buildScenarioPack(diag);
+    const pack = buildScenarioPack(diag, apuntesPlugin);
     assert.equal(pack.length, 8);
   } finally {
     await fx.close();
@@ -30,7 +31,7 @@ test('teardown limpia la nota del XSS y revierte el rol escalado; residuo = cuen
   const fx = await startFixture();
   try {
     const before = fx.notes.length;
-    const diag = await diagnose(targetFor(fx.url), { seed: 't2', profile: 'noisy' });
+    const diag = await diagnose(targetFor(fx.url), apuntesPlugin, { seed: 't2', profile: 'noisy' });
     // La nota del XSS fue creada y luego borrada por el teardown.
     assert.equal(fx.notes.length, before, 'quedó una nota sin borrar');
     assert.ok(!fx.notes.some((n) => /onerror|xss-/.test(n.body)), 'quedó la nota XSS');
@@ -50,7 +51,7 @@ test('modo read-only no crea estado y corre solo módulos no mutantes', async ()
   try {
     const usersBefore = fx.users.length;
     const notesBefore = fx.notes.length;
-    const diag = await diagnose(targetFor(fx.url), { seed: 't3', profile: 'noisy', readOnly: true });
+    const diag = await diagnose(targetFor(fx.url), apuntesPlugin, { seed: 't3', profile: 'noisy', readOnly: true });
     assert.equal(fx.users.length, usersBefore, 'read-only creó usuarios');
     assert.equal(fx.notes.length, notesBefore, 'read-only creó notas');
     assert.equal(diag.residue.length, 0);
@@ -66,13 +67,13 @@ test('determinismo: misma seed → mismos vuln_id/confirmado y mismas versiones 
   const a = await startFixture();
   const b = await startFixture();
   try {
-    const da = await diagnose(targetFor(a.url), { seed: 'same', profile: 'noisy' });
-    const db = await diagnose(targetFor(b.url), { seed: 'same', profile: 'noisy' });
+    const da = await diagnose(targetFor(a.url), apuntesPlugin, { seed: 'same', profile: 'noisy' });
+    const db = await diagnose(targetFor(b.url), apuntesPlugin, { seed: 'same', profile: 'noisy' });
     const keyA = da.results.map((r) => `${r.vuln_id}:${r.confirmed}`).sort();
     const keyB = db.results.map((r) => `${r.vuln_id}:${r.confirmed}`).sort();
     assert.deepEqual(keyA, keyB);
-    const vA = buildScenarioPack(da).map((s) => s.version).sort();
-    const vB = buildScenarioPack(db).map((s) => s.version).sort();
+    const vA = buildScenarioPack(da, apuntesPlugin).map((s) => s.version).sort();
+    const vB = buildScenarioPack(db, apuntesPlugin).map((s) => s.version).sort();
     assert.deepEqual(vA, vB);
     // Las cuentas desechables generadas son idénticas (RNG seeded).
     assert.deepEqual(

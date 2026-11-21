@@ -3,10 +3,9 @@
  * se confirmó, con evidencia, mapeo ATT&CK/D3FEND, caso real, fix correcto y
  * fixes equivocados. Es el material con el que el simulador enseña al developer.
  */
-import { CATALOG } from './catalog.ts';
 import type { DiagnosisResult } from './diagnose.ts';
 import type { ReconReport } from './recon.ts';
-import type { AttackResult, Scenario } from './types.ts';
+import type { AttackResult, EnginePlugin, Scenario, VulnMeta } from './types.ts';
 
 function statusTag(r: AttackResult): string {
   if (r.confirmed) return '🔴 CONFIRMADA';
@@ -19,7 +18,7 @@ function fmtExchange(request: string, status?: number): string {
   return status !== undefined ? `${request} → HTTP ${status}` : request;
 }
 
-export function renderGuide(diag: DiagnosisResult, scenarios: Scenario[], recon?: ReconReport): string {
+export function renderGuide(diag: DiagnosisResult, plugin: EnginePlugin, scenarios: Scenario[], recon?: ReconReport): string {
   const L: string[] = [];
   const confirmed = diag.results.filter((r) => r.confirmed);
 
@@ -42,7 +41,7 @@ export function renderGuide(diag: DiagnosisResult, scenarios: Scenario[], recon?
   L.push('| # | Vulnerabilidad | Severidad | Estado | Qué ganó el atacante |');
   L.push('|---|---|---|---|---|');
   for (const r of diag.results.sort((a, b) => order(a) - order(b))) {
-    const m = metaOf(scenarios, r.vuln_id);
+    const m = metaOf(scenarios, r.vuln_id, plugin.catalog);
     L.push(`| ${m.order} | ${m.title} | ${m.severity} | ${statusTag(r)} | ${r.gained[0] ?? '—'} |`);
   }
   L.push('');
@@ -68,7 +67,7 @@ export function renderGuide(diag: DiagnosisResult, scenarios: Scenario[], recon?
     L.push('');
     confirmed
       .sort((a, b) => order(a) - order(b))
-      .forEach((r, i) => L.push(`${i + 1}. **${metaOf(scenarios, r.vuln_id).title}** — ${r.summary}`));
+      .forEach((r, i) => L.push(`${i + 1}. **${metaOf(scenarios, r.vuln_id, plugin.catalog).title}** — ${r.summary}`));
     L.push('');
   }
 
@@ -135,7 +134,7 @@ export function renderGuide(diag: DiagnosisResult, scenarios: Scenario[], recon?
   return L.join('\n');
 
   function order(r: AttackResult): number {
-    return metaOf(scenarios, r.vuln_id).order;
+    return metaOf(scenarios, r.vuln_id, plugin.catalog).order;
   }
 }
 
@@ -143,8 +142,8 @@ function sevRank(s: string): number {
   return { info: 0, low: 1, medium: 2, high: 3, critical: 4 }[s] ?? 0;
 }
 
-function metaOf(scenarios: Scenario[], vulnId: string) {
+function metaOf(scenarios: Scenario[], vulnId: string, catalog: Record<string, VulnMeta>) {
   const sc = scenarios.find((s) => s.vuln_id === vulnId);
   if (sc) return sc.meta;
-  return CATALOG[vulnId];
+  return catalog[vulnId];
 }

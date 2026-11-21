@@ -1,6 +1,6 @@
 /** Helpers de sesión compartidos por los módulos de ataque. */
-import { hex } from '../rng.ts';
-import type { AttackContext } from '../types.ts';
+import { hex } from '../../../core/rng.ts';
+import type { AttackContext } from '../../../core/types.ts';
 
 export interface Account {
   email: string;

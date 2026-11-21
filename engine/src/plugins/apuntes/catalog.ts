@@ -6,7 +6,7 @@
  * incorrectos. El motor la combina con el ataque real grabado para producir la
  * guía del hackeo y los escenarios. Derivado de docs/victim/ANSWER_KEY.md.
  */
-import type { VulnMeta } from './types.ts';
+import type { VulnMeta } from '../../core/types.ts';
 
 export const CATALOG: Record<string, VulnMeta> = {
   'weak-password-no-rate-limit': {

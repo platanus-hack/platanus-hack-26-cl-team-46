@@ -12,7 +12,7 @@
 import { decodeJwt, RecordingClient } from './http.ts';
 import { randomIdentity } from './evasion.ts';
 import { makeRng, realClock } from './rng.ts';
-import type { TargetConfig } from './types.ts';
+import type { CandidateRoute, TargetConfig } from './types.ts';
 
 export type ReconSeverity = 'info' | 'low' | 'medium' | 'high';
 
@@ -46,34 +46,9 @@ export interface ReconReport {
   surface_summary: { probed: number; present: number; auth_gaps: number; injectable: number };
 }
 
-// Rutas candidatas: las conocidas de la app + genéricas que suelen filtrarse.
-const CANDIDATES: Array<{ path: string; sensitive?: boolean; adminOnly?: boolean }> = [
-  { path: '/' },
-  { path: '/login' },
-  { path: '/register' },
-  { path: '/profile', sensitive: true },
-  { path: '/admin', sensitive: true, adminOnly: true },
-  { path: '/api' },
-  { path: '/api/notes', sensitive: true },
-  { path: '/api/notes/1', sensitive: true },
-  { path: '/api/users/me', sensitive: true },
-  { path: '/api/admin', sensitive: true, adminOnly: true },
-  { path: '/api/admin/stats', sensitive: true, adminOnly: true },
-  { path: '/api/admin/users', sensitive: true, adminOnly: true },
-  { path: '/api/admin/users/export', sensitive: true, adminOnly: true },
-  { path: '/notes/1', sensitive: true },
-  { path: '/health' },
-  { path: '/healthz' },
-  { path: '/metrics', sensitive: true },
-  { path: '/debug', sensitive: true },
-  { path: '/robots.txt' },
-  { path: '/.env', sensitive: true },
-  { path: '/.git/config', sensitive: true },
-  { path: '/api/docs' },
-];
-
 export async function recon(
   target: TargetConfig,
+  candidates: CandidateRoute[],
   opts: { log?: (m: string) => void; seed?: string } = {},
 ): Promise<ReconReport> {
   const log = opts.log ?? (() => {});
@@ -118,7 +93,7 @@ export async function recon(
   checkSecurityHeaders(home.headers, findings);
 
   // 3. Enumeración de endpoints + matriz de auth.
-  for (const c of CANDIDATES) {
+  for (const c of candidates) {
     const anon = await http.get(c.path, { noRedirect: true });
     const present = anon.status !== 404;
     const probe: EndpointProbe = {
@@ -208,7 +183,7 @@ export async function recon(
     jwt: jwtInfo,
     endpoints,
     findings,
-    surface_summary: { probed: CANDIDATES.length, present, auth_gaps, injectable },
+    surface_summary: { probed: candidates.length, present, auth_gaps, injectable },
     telemetry: http.exchanges,
   } as ReconReport & { telemetry: unknown };
 }

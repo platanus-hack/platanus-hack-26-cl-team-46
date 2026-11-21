@@ -4,9 +4,9 @@
  * columnas y volcamos la tabla users (email + password_hash). Solo lectura.
  */
 import { CATALOG } from '../catalog.ts';
-import { reqLine } from '../http.ts';
+import { reqLine } from '../../../core/http.ts';
 import { lowPrivSession } from './session.ts';
-import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
+import type { Attack, AttackContext, AttackResult, AttackStep } from '../../../core/types.ts';
 
 // La query real: SELECT id,user_id,title,body,created_at,updated_at FROM notes
 //   WHERE user_id = <me> AND (title ILIKE '%<q>%' OR body ILIKE '%<q>%') ORDER BY ...

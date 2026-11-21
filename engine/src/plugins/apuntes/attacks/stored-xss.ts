@@ -5,10 +5,10 @@
  * sesión no es httpOnly. La nota creada se limpia por el teardown (tracker).
  */
 import { CATALOG } from '../catalog.ts';
-import { reqLine } from '../http.ts';
-import { hex } from '../rng.ts';
+import { reqLine } from '../../../core/http.ts';
+import { hex } from '../../../core/rng.ts';
 import { lowPrivSession } from './session.ts';
-import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
+import type { Attack, AttackContext, AttackResult, AttackStep } from '../../../core/types.ts';
 
 export const storedXss: Attack = {
   meta: CATALOG['stored-xss'],

@@ -1,4 +1,4 @@
-import type { Attack } from '../types.ts';
+import type { Attack } from '../../../core/types.ts';
 import { weakPassword } from './weak-password.ts';
 import { jwtReuse } from './jwt-reuse.ts';
 import { idor } from './idor.ts';

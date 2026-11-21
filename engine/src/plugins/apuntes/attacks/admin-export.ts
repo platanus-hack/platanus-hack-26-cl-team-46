@@ -5,9 +5,9 @@
  * password_hash incluido. Lo hacemos con una cuenta desechable de rol "user".
  */
 import { CATALOG } from '../catalog.ts';
-import { reqLine } from '../http.ts';
+import { reqLine } from '../../../core/http.ts';
 import { lowPrivSession, me } from './session.ts';
-import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
+import type { Attack, AttackContext, AttackResult, AttackStep } from '../../../core/types.ts';
 
 export const adminExport: Attack = {
   meta: CATALOG['admin-endpoint-no-authz'],

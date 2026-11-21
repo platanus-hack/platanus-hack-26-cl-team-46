@@ -4,9 +4,9 @@
  * normal y detectamos notas cuyo user_id no es el nuestro.
  */
 import { CATALOG } from '../catalog.ts';
-import { reqLine } from '../http.ts';
+import { reqLine } from '../../../core/http.ts';
 import { lowPrivSession } from './session.ts';
-import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
+import type { Attack, AttackContext, AttackResult, AttackStep } from '../../../core/types.ts';
 
 const MAX_ID = 15;
 

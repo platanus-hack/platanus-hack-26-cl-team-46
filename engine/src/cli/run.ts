@@ -10,12 +10,16 @@
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { diagnose } from './diagnose.ts';
-import { buildAttackPlan } from './events.ts';
-import { recon } from './recon.ts';
-import { renderGuide } from './report.ts';
-import { buildScenarioPack } from './scenario.ts';
-import type { TargetConfig } from './types.ts';
+import { diagnose } from '../core/diagnose.ts';
+import { buildAttackPlan } from '../core/events.ts';
+import { recon } from '../core/recon.ts';
+import { renderGuide } from '../core/report.ts';
+import { buildScenarioPack } from '../core/scenario.ts';
+import type { TargetConfig } from '../core/types.ts';
+import { apuntesPlugin } from '../plugins/apuntes/index.ts';
+
+// Plugin activo. En el futuro se seleccionará según el repo del EngagementSpec.
+const plugin = apuntesPlugin;
 
 const HELP = `Motor de hacking — diagnóstico real contra una app controlada y autorizada.
 
@@ -78,7 +82,7 @@ async function main() {
   const profile = (arg('profile', 'fast') ?? 'fast') as 'noisy' | 'normal' | 'fast' | 'stealth';
   const seed = arg('seed', 'default')!;
   const readOnly = flag('read-only');
-  const outRoot = arg('out', path.resolve(import.meta.dirname, '../out'))!;
+  const outRoot = arg('out', path.resolve(import.meta.dirname, '../../out'))!;
 
   const target: TargetConfig = {
     url: url.replace(/\/$/, ''),
@@ -90,12 +94,12 @@ async function main() {
   console.log(`\n🎯 Motor de hacking → ${target.url}  (scope: ${parsed.origin})`);
   console.log(`   solo se ataca este host autorizado · perfil ${profile} · seed ${seed}${readOnly ? ' · read-only' : ''}\n`);
 
-  const reconReport = flag('no-recon') ? undefined : await recon(target, { seed, log: (m) => console.log(m) });
-  const diag = await diagnose(target, { only, profile, seed, readOnly, log: (m) => console.log(m) });
+  const reconReport = flag('no-recon') ? undefined : await recon(target, plugin.reconCandidates, { seed, log: (m) => console.log(m) });
+  const diag = await diagnose(target, plugin, { only, profile, seed, readOnly, log: (m) => console.log(m) });
 
-  const scenarios = buildScenarioPack(diag);
-  const plan = buildAttackPlan(diag, reconReport);
-  const guide = renderGuide(diag, scenarios, reconReport);
+  const scenarios = buildScenarioPack(diag, plugin);
+  const plan = buildAttackPlan(diag, plugin, reconReport);
+  const guide = renderGuide(diag, plugin, scenarios, reconReport);
 
   const ts = diag.started_at.replace(/[:.]/g, '-');
   const outDir = path.join(outRoot, ts);

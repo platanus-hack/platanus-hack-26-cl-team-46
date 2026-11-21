@@ -79,35 +79,44 @@ respuestas del servidor y los timestamps reales de observación (son evidencia).
 - `attack-plan.json` — plan en el contrato de eventos del backend (`attack.plan`).
 - `recon.json`, `diagnosis.json`, `telemetry.json` — crudos.
 
-## Arquitectura
+## Arquitectura (capas — M0)
+
+El `core/` **no importa** plugins; recibe el plugin por parámetro (contrato
+`EnginePlugin` en `core/types.ts`). Para otra app se agrega otro plugin, sin
+tocar el core.
 
 ```
-run.ts ─▶ recon.ts    (superficie de ataque)
-       └▶ diagnose.ts ─▶ attacks/*.ts   (un módulo de ataque real por vuln)
-            │               ├─ http.ts   (RecordingClient: scope guard + saneamiento)
-            │               ├─ evasion.ts (perfiles, identidades, jitter, pool)
-            │               ├─ rng.ts     (PRNG seeded + reloj inyectable)
-            │               └─ tracker.ts (teardown de recursos)
-            ├─▶ catalog.ts   (ATT&CK/ATLAS, D3FEND, caso real, fixes)
-            ├─▶ scenario.ts  (pack de escenarios)
-            ├─▶ events.ts    (contrato attack.plan / attack.* del backend)
-            └─▶ report.ts    (guía del hackeo)
-test/      fixture.ts (app víctima local en memoria) + *.test.ts (node:test)
+src/
+  cli/run.ts          wiring: selecciona el plugin y corre recon → diagnose → report
+  core/               REUTILIZABLE (cualquier target HTTP)
+    http.ts           RecordingClient: scope guard + saneamiento de evidencia
+    evasion.ts        perfiles, identidades, jitter, pool
+    rng.ts            PRNG seeded + reloj inyectable
+    tracker.ts        teardown de recursos
+    diagnose.ts       orquestación (concurrencia, teardown, read-only, seed)
+    recon.ts          motor de superficie de ataque (candidatos inyectados)
+    scenario.ts       pack de escenarios (catálogo/storylines inyectados)
+    events.ts         contrato attack.plan / attack.* del backend
+    report.ts         guía del hackeo
+    types.ts          contratos: Attack, EnginePlugin, VulnMeta, …
+  plugins/apuntes/    ESPECÍFICO de la app víctima "Apuntes"
+    index.ts          ensambla el EnginePlugin
+    catalog.ts        ATT&CK/ATLAS, D3FEND, caso real, fixes (de ANSWER_KEY.md)
+    attacks/*.ts      un módulo de ataque real por vuln (+ session.ts)
+    recon-candidates.ts  rutas candidatas
+    storylines.ts     beats de storytelling
+test/   fixture.ts (app víctima local en memoria) + *.test.ts (node:test)
 ```
 
 ## Reutilizable vs específico de Apuntes
 
-**Núcleo reutilizable** (sirve para cualquier target HTTP):
-`http.ts` (cliente + scope + saneamiento), `evasion.ts`, `rng.ts`, `tracker.ts`,
-`diagnose.ts` (orquestación, concurrencia, teardown, read-only, seed),
-`scenario.ts`, `events.ts`, `report.ts` y el motor de `recon.ts`.
+**Núcleo reutilizable** (`src/core/`): sirve para cualquier target HTTP; el
+conocimiento de la app entra por el contrato `EnginePlugin`.
 
-**Específico de "Apuntes" (plugins/fixtures), hoy acoplado:**
-- `attacks/*.ts`: conocen endpoints, shapes y tablas exactas de Apuntes.
-- `sql-injection.ts`: payload atado al esquema PostgreSQL de Apuntes.
-- `catalog.ts`: ubicaciones de código del repo (de `ANSWER_KEY.md`).
-- `recon.ts`: lista de rutas candidatas y login hardcodeados.
-- `scenario.ts`: prefijo `apuntes.*` en `scenario_id`.
+**Específico de "Apuntes"** (`src/plugins/apuntes/`): los `attacks/*.ts` (endpoints,
+shapes y tablas exactas), el payload SQLi (esquema Postgres), `catalog.ts`
+(ubicaciones del repo), `recon-candidates.ts` y `storylines.ts`, y el namespace
+`apuntes` del `scenario_id`.
 
 **Todavía NO existe (para que sea general):**
 - Parámetro `--repo` / adapters derivados del repo (rutas, OpenAPI) o de un spec.

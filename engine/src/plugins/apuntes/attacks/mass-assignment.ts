@@ -4,9 +4,9 @@
  * admin. Lo probamos con una cuenta desechable y revertimos el rol al final.
  */
 import { CATALOG } from '../catalog.ts';
-import { reqLine } from '../http.ts';
+import { reqLine } from '../../../core/http.ts';
 import { me, registerThrowaway } from './session.ts';
-import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
+import type { Attack, AttackContext, AttackResult, AttackStep } from '../../../core/types.ts';
 
 export const massAssignment: Attack = {
   meta: CATALOG['mass-assignment'],

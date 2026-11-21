@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { RecordingClient, ScopeError, redactBody, sanitizeText } from '../src/http.ts';
-import { randomIdentity } from '../src/evasion.ts';
-import { makeRng, shuffle } from '../src/rng.ts';
+import { RecordingClient, ScopeError, redactBody, sanitizeText } from '../src/core/http.ts';
+import { randomIdentity } from '../src/core/evasion.ts';
+import { makeRng, shuffle } from '../src/core/rng.ts';
 import { startFixture } from './fixture.ts';
 
 test('sanitizeText enmascara JWT, bcrypt, email y teléfono', () => {

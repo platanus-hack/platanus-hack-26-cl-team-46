@@ -1,17 +1,7 @@
-/**
- * Convierte el diagnóstico en escenarios preconfigurados, versionados y
- * reproducibles. Cada escenario confirmado es un "guión" que el simulador
- * reproduce: trae el ataque real grabado, los beats de storytelling y los
- * criterios de evaluación. El usuario del simulador elige cuál seguir.
- */
-import { CATALOG } from './catalog.ts';
-import type { DiagnosisResult } from './diagnose.ts';
-import type { AttackResult, Scenario, StorylineBeat } from './types.ts';
+/** Beats de storytelling por vuln (específicos de Apuntes): cómo se percibe el ataque. */
+import type { StorylineBeat } from '../../core/types.ts';
 
-const SCHEMA_VERSION = '1';
-
-/** Beats de storytelling por vuln: cómo se percibe el ataque (síntomas). */
-const STORYLINES: Record<string, StorylineBeat[]> = {
+export const APUNTES_STORYLINES: Record<string, StorylineBeat[]> = {
   'weak-password-no-rate-limit': [
     { phase: 'recon', fact: 'Ráfaga de intentos de login fallidos contra una cuenta.', channel: 'datadog', symptom: 'Pico de respuestas 401 en /api/auth/login desde una IP.' },
     { phase: 'exploit', fact: 'La contraseña débil cae y el atacante entra.', channel: 'email', symptom: 'El usuario recibe un aviso de inicio de sesión que no reconoce.' },
@@ -44,42 +34,3 @@ const STORYLINES: Record<string, StorylineBeat[]> = {
     { phase: 'impact', fact: 'Robo de la cookie de sesión de la admin.', channel: 'datadog', symptom: 'Acciones de admin desde una IP desconocida.' },
   ],
 };
-
-function successCriteria(vulnId: string) {
-  const meta = CATALOG[vulnId];
-  return {
-    detected: `El developer identifica el síntoma y lo atribuye a ${meta.title.toLowerCase()}.`,
-    contained: meta.fix_correct,
-    traps: meta.fix_wrong,
-  };
-}
-
-export function buildScenario(attack: AttackResult, diag: DiagnosisResult): Scenario {
-  const meta = CATALOG[attack.vuln_id];
-  // El seed de la corrida (--seed) gobierna la reproducibilidad del escenario.
-  const seed = diag.seed;
-
-  return {
-    // NOTA: prefijo "apuntes." específico del plugin de la app víctima Apuntes.
-    scenario_id: `apuntes.${attack.vuln_id}`,
-    version: `${SCHEMA_VERSION}.${meta.order}+${seed}`,
-    seed,
-    vuln_id: attack.vuln_id,
-    title: meta.title,
-    meta,
-    entry_point: attack.steps[0]?.request ?? meta.code_location,
-    attack,
-    storyline: STORYLINES[attack.vuln_id] ?? [],
-    success_criteria: successCriteria(attack.vuln_id),
-    created_at: new Date().toISOString(),
-    target: { url: diag.target.url, commit: diag.target.commit },
-  };
-}
-
-/** Un escenario por vulnerabilidad CONFIRMADA. */
-export function buildScenarioPack(diag: DiagnosisResult): Scenario[] {
-  return diag.results
-    .filter((r) => r.confirmed)
-    .map((r) => buildScenario(r, diag))
-    .sort((a, b) => a.meta.order - b.meta.order);
-}

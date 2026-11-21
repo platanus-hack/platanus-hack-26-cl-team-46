@@ -7,10 +7,10 @@
  * Usa una cuenta desechable como "víctima" para no tocar datos seed.
  */
 import { CATALOG } from '../catalog.ts';
-import { decodeJwt, reqLine } from '../http.ts';
-import { hex } from '../rng.ts';
+import { decodeJwt, reqLine } from '../../../core/http.ts';
+import { hex } from '../../../core/rng.ts';
 import { registerThrowaway } from './session.ts';
-import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
+import type { Attack, AttackContext, AttackResult, AttackStep } from '../../../core/types.ts';
 
 export const jwtReuse: Attack = {
   meta: CATALOG['jwt-not-invalidated-on-password-change'],

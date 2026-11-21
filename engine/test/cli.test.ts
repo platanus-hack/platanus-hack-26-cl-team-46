@@ -4,7 +4,7 @@ import { execFile } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const RUN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/run.ts');
+const RUN = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../src/cli/run.ts');
 
 function cli(args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {

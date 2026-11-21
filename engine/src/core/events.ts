@@ -4,10 +4,9 @@
  * para producir el `attack.plan` y el replay de `attack.*` que consume el
  * simulador por el contrato `hacker: "external"`.
  */
-import { CATALOG } from './catalog.ts';
 import type { DiagnosisResult } from './diagnose.ts';
 import type { ReconReport } from './recon.ts';
-import type { AttackResult, EventSeverity } from './types.ts';
+import type { AttackResult, EnginePlugin, EventSeverity } from './types.ts';
 
 function toEventSeverity(sev: string): EventSeverity {
   if (sev === 'critical') return 'critical';
@@ -16,10 +15,10 @@ function toEventSeverity(sev: string): EventSeverity {
 }
 
 /** raw del evento `attack.plan`: hallazgos ordenados (formato del analizador). */
-export function buildAttackPlan(diag: DiagnosisResult, recon?: ReconReport) {
+export function buildAttackPlan(diag: DiagnosisResult, plugin: EnginePlugin, recon?: ReconReport) {
   const findings = diag.results
     .map((r) => {
-      const m = CATALOG[r.vuln_id];
+      const m = plugin.catalog[r.vuln_id];
       return {
         vuln_id: r.vuln_id,
         title: m.title,
@@ -59,8 +58,8 @@ export function buildAttackPlan(diag: DiagnosisResult, recon?: ReconReport) {
 }
 
 /** Secuencia de eventos `attack.*` para el replay de una vuln (view=all). */
-export function toTimelineEvents(r: AttackResult) {
-  const m = CATALOG[r.vuln_id];
+export function toTimelineEvents(r: AttackResult, plugin: EnginePlugin) {
+  const m = plugin.catalog[r.vuln_id];
   const sev = toEventSeverity(m.severity);
   const events: Array<Record<string, unknown>> = [];
 

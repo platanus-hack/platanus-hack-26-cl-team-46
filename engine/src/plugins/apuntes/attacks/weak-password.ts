@@ -4,8 +4,8 @@
  * servidor nunca frena (no hay 429, ni lockout, ni backoff) antes de acertar.
  */
 import { CATALOG } from '../catalog.ts';
-import { reqLine } from '../http.ts';
-import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
+import { reqLine } from '../../../core/http.ts';
+import type { Attack, AttackContext, AttackResult, AttackStep } from '../../../core/types.ts';
 
 const COMMON = ['123456', 'password', 'martin2024', 'qwerty', 'admin123', '12345678', 'notas123'];
 

@@ -139,7 +139,7 @@ Se instrumenta por corrida. **Herramientas gratuitas/locales también figuran** 
 | Análisis + diagnóstico (workhorse) | `claude-sonnet-5-5` | 2 / 10 (0.10) | discovery analysis, síntesis de diagnóstico |
 | Generación/adaptación de módulos + causa raíz difícil | `claude-opus-5-5` | 4 / 20 (0.20) | código generado (pasa por el gate) |
 
-Estimado por corrida (≈200k in / 55k out, con prompt caching del RepoModel): **~$1–2/corrida** con tiering (Sonnet de base + Opus puntual + Haiku triage). **Default `budget.maxUsd = 3`**; tope global sugerido para el hackathon **$30–50**. El provider interface permite fijar modelo por fase.
+Estimado por corrida (≈200k in / 55k out, con prompt caching del RepoModel): **~$1–2/corrida** con tiering (Sonnet de base + Opus puntual + Haiku triage). **Default `budget.maxUsd = 5`**; tope global sugerido para el hackathon **$30–50**. El provider interface permite fijar modelo por fase.
 
 ## 8. Diagnóstico (I) — capacidad principal
 
@@ -175,7 +175,7 @@ Solo repos/fuentes **verificadas**: proyectos oficiales; revisar licencia, activ
 
 **Resueltas (Sebastián):**
 1. Repo **obligatorio**, sin modo black-box degradado (§2).
-2. **Presupuesto**: default `maxUsd = 3`/corrida, `onExceed: abort`; tope hackathon $30–50. **Modelos por rol**: Haiku 5.5 (triage) / Sonnet 5.5 (análisis+diagnóstico) / Opus 5.5 (generación+causa raíz) (§7).
+2. **Presupuesto**: default `maxUsd = 5`/corrida, `onExceed: abort`; tope hackathon $30–50. **Modelos por rol**: Haiku 5.5 (triage) / Sonnet 5.5 (análisis+diagnóstico) / Opus 5.5 (generación+causa raíz) (§7).
 3. **Gate (C)**: automatizado (schema+scope+tests-en-sandbox) **basta para local y Render**; además **checkpoint de supervisión con Sebastián** en cada prueba/modificación (§6).
 4. **Dummies (E)**: Express+SQLite y Flask+SQLite, con vulns solapadas y no solapadas.
 5. **Fuentes (G)**: primero `semgrep` (SAST) + `nuclei`; **ARTEX sigue en alcance**.

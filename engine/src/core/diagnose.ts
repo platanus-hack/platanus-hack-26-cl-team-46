@@ -5,13 +5,12 @@
  * con concurrencia), modo read-only y teardown robusto con reporte de residuo.
  * No ataca nada fuera del target autorizado (scope guard en el cliente HTTP).
  */
-import { ATTACKS } from './attacks/index.ts';
 import { PROFILES, randomIdentity, type ProfileName } from './evasion.ts';
 import { pool } from './evasion.ts';
 import { RecordingClient } from './http.ts';
 import { makeRng, realClock, shuffle, type Clock } from './rng.ts';
 import { ResourceTracker } from './tracker.ts';
-import type { Attack, AttackContext, AttackResult, HttpExchange, TargetConfig } from './types.ts';
+import type { Attack, AttackContext, AttackResult, EnginePlugin, HttpExchange, TargetConfig } from './types.ts';
 
 export interface DiagnosisResult {
   target: TargetConfig;
@@ -44,7 +43,7 @@ export interface DiagnoseOpts {
   clock?: Clock;
 }
 
-export async function diagnose(target: TargetConfig, opts: DiagnoseOpts = {}): Promise<DiagnosisResult> {
+export async function diagnose(target: TargetConfig, plugin: EnginePlugin, opts: DiagnoseOpts = {}): Promise<DiagnosisResult> {
   const log = opts.log ?? (() => {});
   const profile = PROFILES[opts.profile ?? 'fast'];
   const seed = opts.seed ?? 'default';
@@ -54,7 +53,7 @@ export async function diagnose(target: TargetConfig, opts: DiagnoseOpts = {}): P
   const started = clock.now();
   const started_at = clock.iso();
 
-  let toRun: Attack[] = opts.only ? ATTACKS.filter((a) => opts.only!.includes(a.meta.id)) : ATTACKS;
+  let toRun: Attack[] = opts.only ? plugin.attacks.filter((a) => opts.only!.includes(a.meta.id)) : plugin.attacks;
   if (opts.readOnly) toRun = toRun.filter((a) => !a.mutating);
   if (profile.shuffle) toRun = shuffle(makeRng(`${seed}:order`), toRun);
 

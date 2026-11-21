@@ -172,3 +172,29 @@ export interface Attack {
   /** Ejecuta el ataque real y devuelve el resultado con evidencia. */
   run(ctx: AttackContext): Promise<AttackResult>;
 }
+
+/** Ruta candidata para la enumeración de superficie (recon). */
+export interface CandidateRoute {
+  path: string;
+  sensitive?: boolean;
+  adminOnly?: boolean;
+}
+
+/**
+ * Contrato de plugin: todo lo específico de una app víctima. El core (core/*)
+ * no importa plugins; recibe el plugin por parámetro. Así el motor se extiende a
+ * otra app agregando un EnginePlugin, sin tocar el core.
+ */
+export interface EnginePlugin {
+  id: string;
+  /** Prefijo del scenario_id (p. ej. "apuntes"). */
+  scenarioNamespace: string;
+  /** Conocimiento de enseñanza por vuln. */
+  catalog: Record<string, VulnMeta>;
+  /** Módulos de ataque, en el orden sugerido del storytelling. */
+  attacks: Attack[];
+  /** Rutas candidatas para el recon. */
+  reconCandidates: CandidateRoute[];
+  /** Beats de storytelling por vuln. */
+  storylines: Record<string, StorylineBeat[]>;
+}
