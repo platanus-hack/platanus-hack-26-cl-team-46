@@ -343,8 +343,8 @@ function SelectionPanel({
             {send.status === "sent" ? (
               <div className="flex flex-col gap-5">
                 <p className="text-[15px] leading-[22px] text-ink-muted">
-                  <span className="text-ink">Listo, lo tenemos.</span> Una IA lo está preparando y desplegando en un
-                  sandbox aislado. Tarda entre 1 y 5 minutos.
+                  <span className="text-ink">Estamos preparando tu sandbox y pronto estará listo para el simulacro.</span>{" "}
+                  Tarda entre 1 y 5 minutos.
                 </p>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[13px]">
                   <dt className="text-ink-faint">SANDBOX</dt>
