@@ -27,6 +27,12 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-hud__value { font: 500 40px/40px var(--font-mono, var(--font-geist-mono)); letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
 .md-hud__value--attack { color: var(--attack); }
 .md-hud__value--defense { color: var(--defense); }
+/* HUD fluido: en pantallas chicas los valores bajan a 28px y se ocultan los items opcionales. */
+@media (max-width: 767px) {
+  .md-hud--fluid { gap: var(--space-6); }
+  .md-hud--fluid .md-hud__value { font-size: 28px; line-height: 28px; }
+  .md-hud--fluid .md-hud__item.is-optional { display: none; }
+}
 .md-index { font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; color: var(--ink-faint); }
 
 /* ---------- Alerta MAYDAY ---------- */
