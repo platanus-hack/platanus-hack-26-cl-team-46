@@ -1,6 +1,6 @@
 // Tipos del kit (el kit es JS sin dependencias; ver index.js).
 export interface ClickyOptions {
-  /** Base de las rutas /lesson y /transcribe (en el backend: `${API_URL}/clicky`). */
+  /** Base de las rutas /lesson, /stt-session y /transcribe (en el backend: `${API_URL}/clicky`). */
   api?: string;
   /** Headers extra en cada petición; el backend exige `x-sim-id` de una simulación en curso. */
   headers?: () => Record<string, string>;
@@ -18,11 +18,13 @@ export interface ClickyOptions {
   ignore?: string;
   /** "dark" si la app es oscura: las marcas sobre la pantalla usan los colores onDark del tema. */
   surface?: "light" | "dark";
+  /** Dictado en vivo mientras se mantiene la tecla (si falla, se sube el audio al soltar). Default: true. */
+  liveTranscription?: boolean;
 }
 
 export interface ClickyInstance {
   ask(question: string): Promise<void>;
-  clear(): Promise<void>;
+  clear(options?: { fast?: boolean }): Promise<void>;
   setTheme(name: string): void;
   setVoice(on: boolean): void;
   openInput(): void;

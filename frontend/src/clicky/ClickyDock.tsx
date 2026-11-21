@@ -17,23 +17,25 @@ import type { ClickyInstance } from "./kit/index.js";
 type Status = "off" | "starting" | "on";
 
 /**
- * Muestra el avioncito en las rutas de CLICKY_CONFIG. Solo se activa con una simulación en
- * curso; si cambia o termina, el dock se vuelve a montar y suelta la isla y la captura.
+ * Muestra el avioncito solo con una simulación en curso (y en las rutas de CLICKY_CONFIG).
+ * Si la simulación cambia o termina, el dock se desmonta o se vuelve a montar y suelta la
+ * isla y la captura.
  */
 export function ClickyDock() {
   const pathname = usePathname();
   const simId = useClickySimulation();
   const visible =
+    !!simId &&
     CLICKY_CONFIG.enabled &&
     (!CLICKY_CONFIG.routes || CLICKY_CONFIG.routes.some((r) => pathname === r || pathname.startsWith(r + "/")));
-  return visible ? <Dock key={simId ?? "none"} simId={simId} /> : null;
+  return visible ? <Dock key={simId} simId={simId} /> : null;
 }
 
 /**
  * Avioncito pixel abajo a la derecha. Un clic activa Clicky (pide ver la pestaña, monta la isla
  * para preguntar por texto o voz) y queda activo; otro clic lo apaga y suelta la captura.
  */
-function Dock({ simId }: { simId: string | null }) {
+function Dock({ simId }: { simId: string }) {
   const [status, setStatus] = useState<Status>("off");
   const [seeing, setSeeing] = useState(false);
   const clicky = useRef<ClickyInstance | null>(null);
@@ -67,7 +69,7 @@ function Dock({ simId }: { simId: string | null }) {
     setSeeing(!!cap);
     clicky.current = createClicky({
       api: `${API_URL}/clicky`,
-      headers: (): Record<string, string> => (simId ? { "x-sim-id": simId } : {}),
+      headers: () => ({ "x-sim-id": simId }),
       theme: CLICKY_CONFIG.theme,
       surface: CLICKY_CONFIG.surface,
       voice: CLICKY_CONFIG.voice,
@@ -83,7 +85,7 @@ function Dock({ simId }: { simId: string | null }) {
   }, [simId]);
 
   const toggle = () => {
-    if (status === "starting" || (!simId && status === "off")) return;
+    if (status === "starting") return;
     if (status === "on") shutdown();
     else activate().catch((e) => {
       console.error("[clicky]", e);
@@ -105,20 +107,18 @@ function Dock({ simId }: { simId: string | null }) {
       ? "Apagar Clicky"
       : status === "starting"
         ? "Activando Clicky…"
-        : simId
-          ? "Activar Clicky: pregúntale a tu pantalla"
-          : "Clicky se activa cuando hay una simulación en curso";
+        : "Activar Clicky: pregúntale a tu pantalla";
 
   return (
-    <div className="clicky-dock" data-clicky-ignore data-status={status} data-available={simId ? "yes" : "no"}>
+    <div className="clicky-dock" data-clicky-ignore data-status={status}>
       {/* espacio libre para las tarjetas de Clicky, sobre el avioncito */}
       <div data-clicky-region="side" className="clicky-dock-side" aria-hidden="true" />
       {status === "off" && (
         <span className={`clicky-dock-tip ${pixelFont.className}`} aria-hidden="true">
-          {simId ? "¿Dudas? ¡Pregúntame!" : "Disponible en una simulación"}
+          ¿Dudas? ¡Pregúntame!
         </span>
       )}
-      <button type="button" className="clicky-dock-plane" onClick={toggle} aria-label={label} title={label} aria-pressed={status === "on"} aria-disabled={!simId}>
+      <button type="button" className="clicky-dock-plane" onClick={toggle} aria-label={label} title={label} aria-pressed={status === "on"}>
         <span className="clicky-dock-trail" aria-hidden="true">
           <i />
           <i />
