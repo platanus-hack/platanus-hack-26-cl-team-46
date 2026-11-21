@@ -1,0 +1,14 @@
+{
+  "name": "@hack26/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Motor de hacking: pasada de diagnóstico real contra una app controlada y autorizada; produce la guía del hackeo y escenarios preconfigurados para el simulador.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "diagnose": "node src/run.ts",
+    "help": "node src/run.ts --help"
+  }
+}
