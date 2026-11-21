@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Header,
+  Headers,
   HttpCode,
   Param,
   Post,
@@ -78,9 +79,16 @@ export class SimulationsController {
   stream(
     @Param('id') id: string,
     @Query({ schema: timelineQuerySchema }) q: TimelineQuery,
+    @Headers('last-event-id') lastEventId?: string,
   ) {
     this.sims.get(id);
-    return this.timeline.sseStream(id, q.view, q.since);
+    // Al reconectar, EventSource manda el último id recibido: se sigue desde ahí en vez de repetir el historial.
+    const resumeFrom = Number(lastEventId);
+    const since =
+      Number.isFinite(resumeFrom) && resumeFrom > 0
+        ? Math.max(q.since ?? 0, resumeFrom)
+        : q.since;
+    return this.timeline.sseStream(id, q.view, since);
   }
 
   @Post(':id/start')

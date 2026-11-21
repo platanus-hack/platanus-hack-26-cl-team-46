@@ -70,14 +70,25 @@ function SimulateConsole() {
   useEffect(() => {
     if (!selected) return;
     return simApi.subscribe(selected, godMode ? "all" : "user", (e) =>
-      setLog((prev) => (prev.key === key ? { key, list: [...prev.list, e] } : { key, list: [e] })),
+      setLog((prev) => {
+        if (prev.key !== key) return { key, list: [e] };
+        // Al reconectar, el stream puede repetir eventos: se descartan por seq (si no, se duplican los keys).
+        if (prev.list.some((x) => x.seq === e.seq)) return prev;
+        const list = [...prev.list, e];
+        if (list.length > 1 && list[list.length - 2].seq > e.seq) list.sort((a, b) => a.seq - b.seq);
+        return { key, list };
+      }),
     );
   }, [selected, godMode, key]);
   const events = log.key === key ? log.list : [];
   const feed = events.filter((e) => !CHAT_TYPES.has(e.type) && e.type !== "deploy.progress");
   const chat = events.filter((e) => CHAT_TYPES.has(e.type) || e.type === "change.deployed" || e.type === "change.deploy_failed");
 
-  useEffect(() => chatEnd.current?.scrollIntoView({ behavior: "smooth" }), [chat.length]);
+  // Con llaves a propósito: scrollIntoView devuelve una Promise en Chrome reciente, y si el efecto
+  // la retorna React la trata como cleanup ("destroy is not a function") y bota la página.
+  useEffect(() => {
+    chatEnd.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chat.length]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setError(null);
