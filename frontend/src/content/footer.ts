@@ -1,8 +1,8 @@
 /**
  * Items del footer (SiteFooter, en `/` y `/como-funciona`).
  *
- * Regla: un item sin `href` NO se muestra. Así el footer nunca tiene links rotos ni
- * "próximamente": para sumar un link, basta con ponerle su href.
+ * Todos se muestran. Un item sin `href` aparece como texto, sin link (quedan a la vista para
+ * acordarse de completarlos): para que sea link, basta con ponerle su href.
  * `external: true` abre en otra pestaña.
  */
 export interface FooterLink {
@@ -56,8 +56,3 @@ export const FOOTER = {
     replayIntro: { label: "Ver la intro de nuevo", href: "/#intro" },
   },
 };
-
-/** Solo los items con href. */
-export function visibleLinks(links: FooterLink[]) {
-  return links.filter((l): l is FooterLink & { href: string } => Boolean(l.href));
-}

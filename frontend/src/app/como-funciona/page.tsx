@@ -306,6 +306,10 @@ const FAQ: { q: string; a: ReactNode }[] = [
       </p>
     ),
   },
+  {
+    q: "¿Cuánto cuesta?",
+    a: <p>Nada. Mayday es gratis.</p>,
+  },
   // TODO(clemente): ¿Cuánto dura un simulacro? (la corrida de prueba duró ~8 min, pero no hay un largo fijo
-  // documentado). ¿Cuánto cuesta? (no hay nada sobre precio en la repo).
+  // documentado).
 ];
