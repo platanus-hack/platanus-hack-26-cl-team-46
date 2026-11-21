@@ -67,10 +67,10 @@ function SimulateConsole() {
     };
   }, [refresh]);
 
-  // Clicky solo responde con una simulación en curso.
+  // Clicky responde con una simulación en curso o terminada (para repasarla).
   const selectedSim = sims.find((s) => s.sim_id === selected);
   const clickySim =
-    selectedSim && ["starting", "ready", "running", "paused"].includes(selectedSim.status) ? selectedSim.sim_id : null;
+    selectedSim && ["starting", "ready", "running", "paused", "finished"].includes(selectedSim.status) ? selectedSim.sim_id : null;
   useEffect(() => {
     setClickySimulation(clickySim);
     return () => setClickySimulation(null);

@@ -91,4 +91,3 @@
 /* Sobre fondo oscuro el anillo "haz clic aquí" del tema platanus va en amarillo. */
 .clicky-root[data-surface="dark"][data-theme="platanus"] .clicky-target { border-color: #ffd23f; }
 
-/* Sin simulación en curso: el avioncito se ve apagado y no se activa. */

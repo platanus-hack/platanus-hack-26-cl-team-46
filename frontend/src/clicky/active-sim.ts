@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 // Simulación en curso que Clicky puede usar. La pone la página de la simulación;
-// el backend solo responde con una simulación en curso (header x-sim-id).
+// el backend solo responde con una simulación en curso o terminada (header x-sim-id).
 let current: string | null = null;
 const listeners = new Set<() => void>();
 
