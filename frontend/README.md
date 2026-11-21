@@ -35,11 +35,15 @@ pnpm --filter frontend build
 - `src/lib/routes.ts` — helpers de rutas (usar en vez de strings sueltos).
 - `src/lib/api.ts` — cliente del backend (servicio de deploy).
 
-## Diseño
+## Diseño (Mayday)
 
-- Tokens de color en `src/app/globals.css` (`:root` y `.dark`). Además de los de shadcn hay tokens del simulacro: `attack`, `warning`, `safe`, `terminal` → clases `bg-attack`, `text-safe`, etc.
-- Tema oscuro por defecto (`className="dark"` en `src/app/layout.tsx`).
-- Fuentes: Geist Sans / Geist Mono (`font-sans`, `font-mono`).
+- **Antes de tocar UI, lee [`DESIGN.md`](./DESIGN.md).** Es la fuente de verdad visual: colores, tipografía, componentes, landing y escritorio.
+- Las decisiones de cómo lo aplicamos en esta repo están en [`docs/adr/`](./docs/adr/README.md). Las que siguen en estado **Propuesta** esperan el OK de diseño.
+- Nada de hex sueltos: solo clases de Tailwind que salen de los tokens (`bg-bg-100`, `text-ink-muted`, `text-defense`, `bg-attack-soft`).
+- Cian (`defense`) = tú; ámbar (`attack`) = el atacante. No hay rojo ni verde.
+- Siempre oscuro. Fuentes: Geist y Geist Mono (`font-sans`, `font-mono`).
+
+> Los tokens viejos del simulacro (`attack` rojo, `warning`, `safe`, `terminal`) y los grises de shadcn de `globals.css` se reemplazan en la etapa 1 (ver ADR 0002).
 
 ## Ojo
 
