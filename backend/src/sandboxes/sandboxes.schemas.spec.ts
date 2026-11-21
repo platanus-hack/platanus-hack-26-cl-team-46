@@ -8,6 +8,11 @@ describe('schemas', () => {
     expect(r.repo_url).toBe('https://github.com/a/b');
   });
 
+  it('por defecto despliega con el agente', () => {
+    const r = createSandboxSchema.parse({ repo_url: 'https://github.com/a/b' });
+    expect(r.mode).toBe('agent');
+  });
+
   it('rechaza repo_url que no es https', () => {
     expect(
       createSandboxSchema.safeParse({ repo_url: 'git@github.com:a/b.git' })

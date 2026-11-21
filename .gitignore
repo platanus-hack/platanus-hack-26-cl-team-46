@@ -6,7 +6,7 @@ coverage/
 .env
 .env.*
 !.env.example
-.data/
+.data*/
 .DS_Store
 .context/
 .data-test/

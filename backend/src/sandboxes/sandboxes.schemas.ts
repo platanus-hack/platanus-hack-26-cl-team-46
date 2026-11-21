@@ -11,8 +11,12 @@ export const createSandboxSchema = z.object({
     .transform((u) => u.replace(/\/+$/, '').replace(/\.git$/, '')),
   ref: z.string().min(1).optional(),
   env: z.record(envKey, z.string()).optional(),
-  /** auto (default): determinista y, si falla, IA. manifest: solo determinista. agent: directo a la IA. */
-  mode: z.enum(['auto', 'manifest', 'agent']).default('auto'),
+  /**
+   * agent (default): la IA analiza el repo y lo despliega, siempre.
+   * manifest: solo determinista con .sandbox/manifest.json (sin IA).
+   * auto: determinista y, si falla, IA (legado).
+   */
+  mode: z.enum(['agent', 'manifest', 'auto']).default('agent'),
 });
 
 /** Valores que el agente le pidió al usuario (API keys, etc.). */

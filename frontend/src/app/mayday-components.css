@@ -1,0 +1,210 @@
+/* Mayday — clases md-* de referencia (mismo CSS que las previews del sistema visual). Úsalas tal cual o pásalas a componentes React + Tailwind. Requiere mayday-tokens.css. */
+/* Mayday — estilos de componentes. Prefijo md-. Solo lee variables de tokens.css. */
+
+body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var(--font-sans, var(--font-geist-sans)); -webkit-font-smoothing: antialiased; }
+.md-stage { padding: var(--space-6); display: flex; flex-wrap: wrap; gap: var(--space-4); align-items: center; }
+.md-col { display: flex; flex-direction: column; gap: var(--space-3); }
+.md-mono { font-family: var(--font-mono, var(--font-geist-mono)); font-variant-numeric: tabular-nums; }
+
+/* ---------- Botón ---------- */
+.md-btn { font: 500 13px/16px var(--font-sans, var(--font-geist-sans)); height: 40px; padding: 0 var(--space-4); border-radius: var(--radius-md); border: 1px solid var(--line-strong); background: transparent; color: var(--ink); display: inline-flex; align-items: center; gap: var(--space-2); cursor: pointer; transition: background .15s, box-shadow .15s, border-color .15s; }
+.md-btn:hover { background: var(--bg-200); }
+.md-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.md-btn--primary { background: var(--defense); border-color: var(--defense); color: var(--on-defense); }
+.md-btn--primary:hover { background: var(--defense-strong); box-shadow: var(--glow-defense); }
+.md-btn--lg { height: 52px; padding: 0 var(--space-6); font-size: 15px; }
+.md-btn svg { width: 16px; height: 16px; flex: none; }
+
+/* ---------- Chip de estado / HUD ---------- */
+.md-chip { align-self: flex-start; font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; text-transform: uppercase; display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); border: 1px solid var(--line-strong); color: var(--ink-muted); }
+.md-chip::before { content: ""; width: 6px; height: 6px; background: currentColor; flex: none; }
+.md-chip--defense { color: var(--defense); border-color: var(--defense-soft); background: var(--defense-soft); }
+.md-chip--attack { color: var(--attack-strong); border-color: var(--attack-soft); background: var(--attack-soft); }
+.md-chip--attack::before { animation: md-blink 1s steps(1) infinite; }
+.md-hud { display: flex; align-items: flex-end; gap: var(--space-8); font-family: var(--font-mono, var(--font-geist-mono)); }
+.md-hud__item { display: flex; flex-direction: column; gap: var(--space-1); }
+.md-hud__label { font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+.md-hud__value { font: 500 40px/40px var(--font-mono, var(--font-geist-mono)); letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.md-hud__value--attack { color: var(--attack); }
+.md-hud__value--defense { color: var(--defense); }
+.md-index { font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; color: var(--ink-faint); }
+
+/* ---------- Alerta MAYDAY ---------- */
+.md-alert { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--attack-deep); border-top: 1px solid var(--attack); border-bottom: 1px solid var(--attack); color: var(--attack-strong); font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; text-transform: uppercase; }
+.md-alert__call { display: flex; align-items: center; gap: var(--space-3); }
+.md-alert__call::before { content: ""; width: 8px; height: 8px; background: var(--attack); animation: md-blink 1s steps(1) infinite; }
+.md-alert--solid { background: var(--attack); color: var(--on-attack); border-color: var(--attack); }
+.md-alert--solid .md-alert__call::before { background: var(--on-attack); }
+.md-marquee { overflow: hidden; white-space: nowrap; }
+.md-marquee > span { display: inline-block; padding-left: 100%; animation: md-marquee 14s linear infinite; }
+
+/* ---------- Terminal de ataque (fondo de la landing) ---------- */
+.md-attack-term { position: relative; overflow: hidden; background: var(--bg-000); font: 400 16px/24px var(--font-mono, var(--font-geist-mono)); color: var(--ink-faint); }
+.md-attack-term__feed { animation: md-feed 18s linear infinite; padding: var(--space-4) var(--space-6); white-space: pre; }
+.md-attack-term .t-hit { color: var(--attack); }
+.md-attack-term .t-ok { color: var(--ink-muted); }
+.md-attack-term::after { content: ""; position: absolute; inset: 0; background: linear-gradient(var(--bg-000), #050A0D00 20%, #050A0D00 70%, var(--bg-000)); pointer-events: none; }
+
+/* ---------- Pregunta y respuestas ---------- */
+.md-question { background: #0A1217E6; border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--space-8); display: flex; flex-direction: column; gap: var(--space-6); backdrop-filter: blur(6px); }
+.md-question__title { margin: 0; font: 600 40px/44px var(--font-sans, var(--font-geist-sans)); letter-spacing: -.03em; color: var(--ink); }
+.md-question__context { margin: 0; font: 400 15px/22px var(--font-sans, var(--font-geist-sans)); color: var(--ink-muted); }
+.md-question__code { font: 400 13px/20px var(--font-mono, var(--font-geist-mono)); background: var(--bg-200); border-radius: var(--radius-sm); padding: var(--space-3) var(--space-4); color: var(--ink-muted); border-left: 0; }
+.md-question__code mark { background: var(--attack-soft); color: var(--attack-strong); padding: 0 2px; }
+.md-options { display: flex; flex-direction: column; gap: var(--space-2); }
+.md-option { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-4); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: transparent; color: var(--ink); font: 500 15px/22px var(--font-sans, var(--font-geist-sans)); text-align: left; cursor: pointer; width: 100%; transition: border-color .15s, background .15s; }
+.md-option__key { font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; color: var(--ink-faint); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); width: 24px; height: 24px; display: grid; place-items: center; flex: none; }
+.md-option__verdict { margin-left: auto; font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; text-transform: uppercase; }
+.md-option:hover { border-color: var(--ink-faint); background: var(--bg-200); }
+.md-option.is-selected { border-color: var(--ink); background: var(--bg-200); }
+.md-option.is-correct { border-color: var(--defense); background: var(--defense-soft); }
+.md-option.is-correct .md-option__key { border-color: var(--defense); color: var(--defense); }
+.md-option.is-correct .md-option__verdict { color: var(--defense); }
+.md-option.is-wrong { border-color: var(--attack); background: var(--attack-soft); }
+.md-option.is-wrong .md-option__key { border-color: var(--attack); color: var(--attack-strong); }
+.md-option.is-wrong .md-option__verdict { color: var(--attack-strong); }
+.md-option.is-dim { opacity: .45; }
+
+/* ---------- Resultado (split) ---------- */
+.md-result { display: grid; grid-template-columns: 1fr 1fr; min-height: 360px; border-top: 1px solid var(--line); }
+.md-result__side { padding: var(--space-12); display: flex; flex-direction: column; gap: var(--space-4); justify-content: center; }
+.md-result__side + .md-result__side { border-left: 1px solid var(--line); background: var(--bg-100); }
+.md-result__verdict { margin: 0; font: 600 72px/.95 var(--font-sans, var(--font-geist-sans)); letter-spacing: -.04em; }
+.md-result__verdict--ok { color: var(--defense); }
+.md-result__verdict--fail { color: var(--attack); }
+.md-result__text { margin: 0; font: 400 18px/28px var(--font-sans, var(--font-geist-sans)); color: var(--ink-muted); max-width: 44ch; }
+.md-result__text strong { color: var(--ink); font-weight: 500; }
+
+/* ---------- Transición de pixeles ---------- */
+.md-pixels { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--cols, 24), 1fr); pointer-events: none; }
+.md-pixels > i { background: var(--bg-000); opacity: 0; }
+.md-pixels > i.on { opacity: 1; }
+.md-pixels > i.edge { background: var(--defense); opacity: 1; }
+
+/* =====================================================================
+   ESCRITORIO — dos capas
+   Capa Mayday (md-hdr, md-hint, md-evidence): colores de marca.
+   Capa simulada (md-browser, md-agent, md-logs): grises neutros sim-*, que se vea como apps reales.
+   ===================================================================== */
+
+/* ---------- Capa Mayday: header del escenario ---------- */
+.md-hdr { display: flex; align-items: center; gap: var(--space-6); padding: var(--space-6) var(--space-8); background: var(--bg-000); border-bottom: 1px solid var(--line); }
+.md-hdr__num { font: 500 64px/1 var(--font-mono, var(--font-geist-mono)); letter-spacing: -.04em; color: var(--attack); font-variant-numeric: tabular-nums; }
+.md-hdr__text { flex: 1; min-width: 0; }
+.md-hdr__title { margin: 0; font: 600 28px/34px var(--font-sans, var(--font-geist-sans)); letter-spacing: -.02em; color: var(--ink); }
+.md-hdr__desc { margin: var(--space-1) 0 0; font: 400 15px/22px var(--font-sans, var(--font-geist-sans)); color: var(--ink-muted); }
+.md-hdr__meta { display: flex; align-items: center; gap: var(--space-2); }
+.md-hdr__timer { font: 500 22px/1 var(--font-mono, var(--font-geist-mono)); color: var(--ink); font-variant-numeric: tabular-nums; padding-left: var(--space-4); margin-left: var(--space-2); border-left: 1px solid var(--line); }
+
+/* ---------- Capa Mayday: pista numerada (ayuda = cian) ---------- */
+.md-hint { display: inline-flex; align-items: flex-start; gap: var(--space-2); max-width: 300px; padding: var(--space-2) var(--space-3); background: var(--defense); color: var(--on-defense); border-radius: var(--radius-md); font: 600 13px/18px var(--font-sans, var(--font-geist-sans)); box-shadow: 0 8px 24px #00000080; animation: md-drop .35s cubic-bezier(.2,.8,.2,1) both; }
+.md-hint__n { flex: none; width: 18px; height: 18px; border-radius: var(--radius-full); background: var(--on-defense); color: var(--defense); font: 600 11px/18px var(--font-mono, var(--font-geist-mono)); text-align: center; }
+
+/* ---------- Capa Mayday: marca sobre la evidencia (rastro del atacante = ámbar) ---------- */
+.md-evidence { outline: 2px solid var(--attack); outline-offset: 2px; border-radius: var(--radius-sm); }
+.md-evidence--pulse { animation: md-evidence 1.6s ease-in-out infinite; }
+@keyframes md-evidence { 50% { outline-color: #FF8A0055; } }
+
+/* ---------- Capa simulada: navegador tipo Chrome ---------- */
+.md-browser { background: var(--sim-100); border-radius: var(--radius-lg); overflow: hidden; display: flex; flex-direction: column; box-shadow: var(--shadow-window); font-family: var(--font-sans, var(--font-geist-sans)); min-width: 0; }
+.md-browser__tabs { height: 40px; display: flex; align-items: flex-end; gap: 2px; padding: 0 var(--space-3); background: var(--sim-000); }
+.md-traffic { display: flex; gap: 8px; align-self: center; margin-right: var(--space-4); }
+.md-traffic i { width: 12px; height: 12px; border-radius: var(--radius-full); }
+.md-traffic i:nth-child(1) { background: var(--sim-close); } .md-traffic i:nth-child(2) { background: var(--sim-minimize); } .md-traffic i:nth-child(3) { background: var(--sim-zoom); }
+.md-tab { height: 32px; min-width: 0; width: 220px; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-3); border-radius: var(--radius-md) var(--radius-md) 0 0; font: 400 12px/16px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink-muted); white-space: nowrap; overflow: hidden; }
+.md-tab.is-active { background: var(--sim-100); color: var(--sim-ink); }
+.md-tab__fav { width: 14px; height: 14px; border-radius: var(--radius-sm); background: var(--sim-300); flex: none; display: grid; place-items: center; font: 600 9px/1 var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink); }
+.md-tab__new { align-self: center; color: var(--sim-ink-muted); font: 400 18px/1 var(--font-sans, var(--font-geist-sans)); padding: 0 var(--space-2); }
+.md-browser__nav { height: 40px; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-3); border-bottom: 1px solid var(--sim-line); color: var(--sim-ink-muted); font: 400 15px/1 var(--font-sans, var(--font-geist-sans)); }
+.md-omnibox { flex: 1; height: 28px; border-radius: var(--radius-full); background: var(--sim-000); display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); font: 400 13px/16px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink); }
+.md-omnibox span { color: var(--sim-ink-muted); }
+.md-browser__page { flex: 1; min-height: 0; overflow: hidden; background: var(--sim-100); }
+.md-browser.is-compromised { box-shadow: var(--shadow-window), var(--glow-attack); }
+
+/* Página real: archivo de la repo del usuario (estilo visor de código) */
+.md-repo { display: flex; flex-direction: column; height: 100%; }
+.md-repo__path { padding: var(--space-3) var(--space-4); font: 500 13px/20px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink); border-bottom: 1px solid var(--sim-line); display: flex; gap: var(--space-2); }
+.md-repo__path span { color: var(--sim-ink-muted); font-weight: 400; }
+.md-code { font: 400 12px/20px var(--font-mono, var(--font-geist-mono)); padding: var(--space-2) 0; color: var(--sim-ink); }
+.md-code__ln { display: grid; grid-template-columns: 48px 1fr; padding-right: var(--space-4); }
+.md-code__ln > span { white-space: pre; }
+.md-code__ln > b { font-weight: 400; color: var(--sim-ink-faint); text-align: right; padding-right: var(--space-4); user-select: none; }
+.md-code__ln.is-hit { background: var(--attack-soft); }
+.md-code__ln.is-hit > b { color: var(--attack); box-shadow: inset 3px 0 0 var(--attack); }
+.md-code .k { color: #C792EA; } .md-code .s { color: #C3E88D; } .md-code .c { color: var(--sim-ink-faint); }
+
+/* ---------- Capa simulada: panel del agente (Claude del usuario) ---------- */
+.md-agent { background: var(--sim-100); border-radius: var(--radius-lg); box-shadow: var(--shadow-window); display: flex; flex-direction: column; overflow: hidden; min-width: 0; font-family: var(--font-sans, var(--font-geist-sans)); }
+.md-agent__head { height: 52px; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); border-bottom: 1px solid var(--sim-line); }
+.md-agent__name { font: 600 15px/20px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink); }
+.md-agent__ctx { margin-left: auto; font: 400 12px/16px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink-muted); }
+.md-agent__icon { width: 20px; height: 20px; border-radius: var(--radius-sm); background: var(--sim-300); }
+.md-agent__body { flex: 1; min-height: 0; padding: var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); overflow: hidden; font: 400 14px/22px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink); }
+.md-agent__user { align-self: flex-end; max-width: 88%; background: var(--sim-200); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); }
+.md-agent__reply strong { font-weight: 600; }
+.md-agent__reply code { font: 400 12px/18px var(--font-mono, var(--font-geist-mono)); background: var(--sim-200); padding: 1px 4px; border-radius: var(--radius-sm); }
+.md-agent__section { font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; text-transform: uppercase; color: var(--sim-ink-muted); margin-top: var(--space-1); }
+.md-agent__steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); counter-reset: s; }
+.md-agent__steps li { display: grid; grid-template-columns: 22px 1fr; gap: var(--space-2); counter-increment: s; }
+.md-agent__steps li::before { content: counter(s); width: 20px; height: 20px; border-radius: var(--radius-full); background: var(--sim-ink); color: var(--sim-000); font: 600 11px/20px var(--font-mono, var(--font-geist-mono)); text-align: center; margin-top: 1px; }
+.md-agent__composer { margin: var(--space-3); display: flex; gap: var(--space-2); align-items: center; border: 1px solid var(--sim-line); border-radius: var(--radius-md); padding: var(--space-2) var(--space-2) var(--space-2) var(--space-3); color: var(--sim-ink-muted); font: 400 14px/20px var(--font-sans, var(--font-geist-sans)); }
+.md-agent__composer > span:first-child { flex: 1; }
+.md-agent__send { width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--sim-ink); color: var(--sim-000); display: grid; place-items: center; font: 600 14px/1 var(--font-sans, var(--font-geist-sans)); }
+
+/* ---------- Capa simulada: logs tipo panel de deploy ---------- */
+.md-logs { background: var(--sim-000); border-radius: var(--radius-lg); box-shadow: var(--shadow-window); overflow: hidden; display: flex; flex-direction: column; min-width: 0; }
+.md-logs__tabs { display: flex; gap: var(--space-6); padding: 0 var(--space-4); border-bottom: 1px solid var(--sim-line); font: 400 13px/16px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink-muted); }
+.md-logs__tabs span { padding: var(--space-3) 0; }
+.md-logs__tabs span.is-active { color: var(--sim-ink); box-shadow: inset 0 -2px 0 var(--sim-ink); }
+.md-logs__filter { margin: var(--space-2) var(--space-4); height: 32px; border: 1px solid var(--sim-line); border-radius: var(--radius-md); display: flex; align-items: center; padding: 0 var(--space-3); font: 400 13px/16px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink-faint); }
+.md-logs__cols, .md-log { display: grid; grid-template-columns: 168px 1fr; gap: var(--space-4); padding: 0 var(--space-4) 0 var(--space-4); }
+.md-logs__cols { font: 400 12px/16px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink-muted); padding-top: var(--space-2); padding-bottom: var(--space-2); border-bottom: 1px solid var(--sim-line); }
+.md-logs__rows { flex: 1; min-height: 0; overflow: hidden; }
+.md-log { font: 400 12px/18px var(--font-mono, var(--font-geist-mono)); color: var(--sim-ink); padding-top: var(--space-1); padding-bottom: var(--space-1); box-shadow: inset 3px 0 0 transparent; }
+.md-log__time { color: var(--sim-ink-muted); white-space: nowrap; }
+.md-log__lvl { font-weight: 500; }
+.md-log--warn { box-shadow: inset 3px 0 0 var(--sim-ink-faint); }
+.md-log--warn .md-log__lvl { color: var(--sim-ink-muted); }
+.md-log--attack { box-shadow: inset 3px 0 0 var(--attack); background: var(--attack-soft); }
+.md-log--attack .md-log__lvl, .md-log--attack .md-log__msg { color: var(--attack-strong); }
+.md-log--hint { box-shadow: inset 3px 0 0 var(--defense); }
+.md-log--hint .md-log__lvl { color: var(--defense); }
+.md-log--ok { box-shadow: inset 3px 0 0 var(--defense); background: var(--defense-soft); }
+.md-log--ok .md-log__lvl { color: var(--defense); }
+.md-log__cursor::after { content: "▌"; color: var(--sim-ink-muted); animation: md-blink 1s steps(1) infinite; }
+
+/* ---------- Capa simulada: notificación del sistema ---------- */
+.md-toast { width: 340px; display: flex; gap: var(--space-3); padding: var(--space-3); background: var(--sim-200); border-radius: var(--radius-lg); box-shadow: var(--shadow-toast); animation: md-drop .35s cubic-bezier(.2,.8,.2,1) both; font-family: var(--font-sans, var(--font-geist-sans)); }
+.md-toast__icon { width: 32px; height: 32px; border-radius: var(--radius-md); background: var(--sim-300); display: grid; place-items: center; flex: none; font: 600 13px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink); }
+.md-toast__app { font: 400 11px/16px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink-muted); display: flex; justify-content: space-between; }
+.md-toast__title { font: 600 13px/18px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink); margin: 2px 0 0; }
+.md-toast__text { font: 400 13px/18px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink-muted); }
+.md-toast.is-attack { outline: 2px solid var(--attack); outline-offset: 2px; }
+
+/* ---------- Composición del escritorio ---------- */
+.md-desktop { display: grid; grid-template-columns: 1fr 360px; grid-template-rows: auto 1fr 300px; gap: var(--space-4); background: var(--bg-000) center / cover no-repeat; }
+.md-desktop > .md-hdr { grid-column: 1 / -1; }
+.md-desktop > .md-browser { grid-column: 1; grid-row: 2; margin-left: var(--space-4); }
+.md-desktop > .md-logs { grid-column: 1; grid-row: 3; margin: 0 0 var(--space-4) var(--space-4); }
+.md-desktop > .md-agent { grid-column: 2; grid-row: 2 / 4; margin: 0 var(--space-4) var(--space-4) 0; }
+
+/* ---------- Vectores: familias A, B, C ---------- */
+.md-injected { font: 400 13px/20px var(--font-mono, var(--font-geist-mono)); color: var(--attack-strong); background: var(--attack-soft); padding: 0 2px; animation: md-type 2.4s steps(40) infinite; }
+.md-secret { display: grid; grid-template-columns: 1fr auto; gap: var(--space-3); align-items: center; padding: var(--space-2) var(--space-3); background: var(--bg-200); border-radius: var(--radius-sm); font: 400 13px/20px var(--font-mono, var(--font-geist-mono)); color: var(--ink-muted); }
+.md-secret__val { color: var(--ink); white-space: nowrap; }
+.md-secret.is-leaked { box-shadow: var(--glow-attack); }
+.md-secret.is-leaked .md-secret__val { color: var(--attack-strong); }
+.md-meter { display: flex; flex-direction: column; gap: var(--space-2); }
+.md-meter__bars { display: flex; gap: 3px; height: 32px; align-items: flex-end; }
+.md-meter__bars i { flex: 1; background: var(--bg-300); }
+.md-meter__bars i.on { background: var(--ink-muted); }
+.md-meter__bars i.hot { background: var(--attack); animation: md-flicker 1.2s steps(1) infinite; }
+
+/* ---------- Animaciones ---------- */
+@keyframes md-blink { 50% { opacity: 0; } }
+@keyframes md-flicker { 0%, 100% { opacity: 1; } 47% { opacity: 1; } 48% { opacity: .35; } 50% { opacity: 1; } 52% { opacity: .5; } 53% { opacity: 1; } }
+@keyframes md-feed { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+@keyframes md-marquee { to { transform: translateX(-100%); } }
+@keyframes md-drop { from { transform: translateY(-16px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes md-type { from { clip-path: inset(0 100% 0 0); } 70%, to { clip-path: inset(0 0 0 0); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }

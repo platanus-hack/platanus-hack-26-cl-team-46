@@ -19,7 +19,7 @@ export default function DeployConsolePage() {
 function DeployConsole() {
   const searchParams = useSearchParams();
   const [repoUrl, setRepoUrl] = useState("");
-  const [mode, setMode] = useState<SandboxMode>("auto");
+  const [mode, setMode] = useState<SandboxMode>("agent");
   const [sandboxes, setSandboxes] = useState<Sandbox[]>([]);
   // ?sandbox=<id> preselecciona un sandbox (para enlazar directo desde otras pantallas).
   const [selected, setSelected] = useState<string | null>(() => searchParams.get("sandbox"));
@@ -71,7 +71,7 @@ function DeployConsole() {
   return (
     <main className="mx-auto w-full max-w-6xl p-8 font-sans">
       <h1 className="text-2xl font-semibold">Servicio de deploy</h1>
-      <p className="mb-6 text-sm text-zinc-500">Repo de GitHub → sandbox en Render → URL</p>
+      <p className="mb-6 text-sm text-ink-muted">Repo de GitHub → sandbox en Render → URL</p>
 
       <form
         className="mb-6 flex gap-2"
@@ -85,28 +85,28 @@ function DeployConsole() {
         }}
       >
         <input
-          className="flex-1 rounded border border-zinc-300 px-3 py-2 dark:border-zinc-700 dark:bg-zinc-900"
+          className="flex-1 rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-3 py-2"
           placeholder="https://github.com/usuario/repo"
           value={repoUrl}
           onChange={(e) => setRepoUrl(e.target.value)}
           required
         />
         <select
-          className="rounded border border-zinc-300 px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+          className="rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-2 text-sm"
           value={mode}
           onChange={(e) => setMode(e.target.value as SandboxMode)}
-          title="auto: determinista y, si falla, IA"
+          title="IA: un agente analiza el repo y lo despliega"
         >
-          <option value="auto">auto (determinista → IA)</option>
-          <option value="manifest">solo determinista</option>
-          <option value="agent">directo a la IA</option>
+          <option value="agent">IA (recomendado)</option>
+          <option value="manifest">solo manifest, sin IA</option>
+          <option value="auto">determinista → IA</option>
         </select>
-        <button className="rounded bg-black px-4 py-2 text-white disabled:opacity-50 dark:bg-white dark:text-black" disabled={busy}>
+        <button className="rounded-md bg-defense font-medium text-on-defense hover:bg-defense-strong disabled:opacity-50 px-4 py-2" disabled={busy}>
           Desplegar
         </button>
       </form>
 
-      {error && <p className="mb-4 rounded bg-red-100 p-3 text-sm text-red-800">{error}</p>}
+      {error && <p className="mb-4 rounded-md border border-attack bg-attack-soft p-3 text-sm text-attack-strong">{error}</p>}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-[320px_1fr]">
         <ul className="space-y-2">
@@ -115,14 +115,14 @@ function DeployConsole() {
               <button
                 onClick={() => setSelected(s.sandbox_id)}
                 className={`w-full rounded border p-3 text-left text-sm ${
-                  s.sandbox_id === selected ? "border-black dark:border-white" : "border-zinc-200 dark:border-zinc-800"
+                  s.sandbox_id === selected ? "border-ink bg-bg-200" : "border-line hover:bg-bg-100"
                 }`}
               >
                 <div className="flex justify-between font-mono">
                   <span>{s.sandbox_id}</span>
                   <StatusBadge status={s.status} />
                 </div>
-                <div className="truncate text-zinc-500">{s.repo_url.replace("https://github.com/", "")}</div>
+                <div className="truncate text-ink-muted">{s.repo_url.replace("https://github.com/", "")}</div>
               </button>
             </li>
           ))}
@@ -130,9 +130,9 @@ function DeployConsole() {
 
         {current ? (
           <section className="space-y-4">
-            <div className="rounded border border-zinc-200 p-4 text-sm dark:border-zinc-800">
+            <div className="rounded-md border border-line bg-bg-100 p-4 text-sm">
               <dl className="grid grid-cols-[140px_1fr] gap-y-1">
-                <dt className="text-zinc-500">URL</dt>
+                <dt className="text-ink-muted">URL</dt>
                 <dd>
                   {current.deployed_url ? (
                     <a className="underline" href={current.deployed_url} target="_blank" rel="noreferrer">
@@ -142,20 +142,20 @@ function DeployConsole() {
                     "—"
                   )}
                 </dd>
-                <dt className="text-zinc-500">Commit</dt>
+                <dt className="text-ink-muted">Commit</dt>
                 <dd className="font-mono">{current.commit_sha?.slice(0, 7) ?? "—"}</dd>
-                <dt className="text-zinc-500">Deploy</dt>
+                <dt className="text-ink-muted">Deploy</dt>
                 <dd>{current.current_deploy ? `${current.current_deploy.status} (${current.current_deploy.reason})` : "—"}</dd>
-                <dt className="text-zinc-500">Configuración</dt>
+                <dt className="text-ink-muted">Configuración</dt>
                 <dd>{current.manifest_source ? MANIFEST_LABELS[current.manifest_source] : "—"} · modo {current.mode}</dd>
-                <dt className="text-zinc-500">Mirror</dt>
+                <dt className="text-ink-muted">Mirror</dt>
                 <dd>{current.mirror_repo_url ?? "sin mirror"}</dd>
-                <dt className="text-zinc-500">Seed users</dt>
+                <dt className="text-ink-muted">Seed users</dt>
                 <dd className="font-mono">{current.credentials.seed_users.map((u) => u.email).join(", ") || "—"}</dd>
                 {current.error && (
                   <>
-                    <dt className="text-red-600">Error</dt>
-                    <dd className="text-red-600">{current.error}</dd>
+                    <dt className="text-attack-strong">Error</dt>
+                    <dd className="text-attack-strong">{current.error}</dd>
                   </>
                 )}
               </dl>
@@ -179,19 +179,19 @@ function DeployConsole() {
               <InputsForm sandbox={current} disabled={busy} onSubmit={(env) => run(() => api.provideInputs(current.sandbox_id, env))} />
             )}
 
-            <ol className="space-y-1 rounded border border-zinc-200 p-4 font-mono text-xs dark:border-zinc-800">
+            <ol className="space-y-1 rounded-md border border-line bg-bg-100 p-4 font-mono text-xs">
               {events.map((e, i) => (
-                <li key={i} className={e.severity === "critical" ? "text-red-600" : e.severity === "warning" ? "text-amber-600" : ""}>
-                  <span className="text-zinc-400">{new Date(e.t).toLocaleTimeString()}</span>{" "}
-                  {e.source === "agent" && <span className="rounded bg-violet-100 px-1 text-violet-800">IA</span>} {e.title}
-                  {e.body && <span className="text-zinc-500"> — {e.body}</span>}
+                <li key={i} className={e.severity === "critical" ? "text-attack" : e.severity === "warning" ? "text-attack-strong" : ""}>
+                  <span className="text-ink-faint">{new Date(e.t).toLocaleTimeString()}</span>{" "}
+                  {e.source === "agent" && <span className="rounded-sm bg-defense-soft px-1 text-defense">IA</span>} {e.title}
+                  {e.body && <span className="text-ink-muted"> — {e.body}</span>}
                 </li>
               ))}
-              {events.length === 0 && <li className="text-zinc-400">Sin eventos todavía</li>}
+              {events.length === 0 && <li className="text-ink-faint">Sin eventos todavía</li>}
             </ol>
           </section>
         ) : (
-          <p className="text-sm text-zinc-500">Selecciona o crea un sandbox.</p>
+          <p className="text-sm text-ink-muted">Selecciona o crea un sandbox.</p>
         )}
       </div>
     </main>
@@ -207,15 +207,15 @@ const MANIFEST_LABELS = {
 function AgentPanel({ sandbox }: { sandbox: Sandbox }) {
   const agent = sandbox.agent!;
   return (
-    <div className="rounded border border-violet-200 bg-violet-50 p-4 text-sm dark:border-violet-900 dark:bg-violet-950">
+    <div className="rounded-md border border-defense-deep bg-defense-soft p-4 text-sm">
       <div className="mb-1 flex items-center justify-between">
         <span className="font-medium">Agente de IA {agent.active ? "trabajando" : agent.outcome === "deployed" ? "terminó ✓" : "se rindió"}</span>
         <a className="underline" href={agent.deep_link}>
           Abrir en Conductor
         </a>
       </div>
-      <p className="text-zinc-600 dark:text-zinc-400">{agent.reason}</p>
-      <p className="mt-1 text-zinc-500">Planes intentados: {agent.plans_submitted}</p>
+      <p className="text-ink-muted">{agent.reason}</p>
+      <p className="mt-1 text-ink-muted">Planes intentados: {agent.plans_submitted}</p>
       {agent.summary && <pre className="mt-2 whitespace-pre-wrap font-sans">{agent.summary}</pre>}
     </div>
   );
@@ -225,7 +225,7 @@ function InputsForm(props: { sandbox: Sandbox; disabled?: boolean; onSubmit: (en
   const [values, setValues] = useState<Record<string, string>>({});
   return (
     <form
-      className="space-y-2 rounded border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950"
+      className="space-y-2 rounded-md border border-line-strong bg-bg-100 p-4 text-sm"
       onSubmit={(e) => {
         e.preventDefault();
         props.onSubmit(values);
@@ -234,17 +234,17 @@ function InputsForm(props: { sandbox: Sandbox; disabled?: boolean; onSubmit: (en
       <p className="font-medium">El agente necesita estos datos para desplegar tu app</p>
       {props.sandbox.pending_inputs.map((p) => (
         <label key={p.key} className="block">
-          <span className="font-mono">{p.key}</span> <span className="text-zinc-500">— {p.description}</span>
+          <span className="font-mono">{p.key}</span> <span className="text-ink-muted">— {p.description}</span>
           <input
             type="password"
             required
-            className="mt-1 w-full rounded border border-zinc-300 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-900"
+            className="mt-1 w-full rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-1"
             value={values[p.key] ?? ""}
             onChange={(e) => setValues((v) => ({ ...v, [p.key]: e.target.value }))}
           />
         </label>
       ))}
-      <button className="rounded bg-black px-3 py-1 text-white disabled:opacity-50 dark:bg-white dark:text-black" disabled={props.disabled}>
+      <button className="rounded-md bg-defense font-medium text-on-defense hover:bg-defense-strong disabled:opacity-50 px-3 py-1" disabled={props.disabled}>
         Entregar
       </button>
     </form>
@@ -253,15 +253,15 @@ function InputsForm(props: { sandbox: Sandbox; disabled?: boolean; onSubmit: (en
 
 function StatusBadge({ status }: { status: Sandbox["status"] }) {
   const color = {
-    analyzing: "bg-violet-100 text-violet-800",
-    needs_input: "bg-amber-100 text-amber-800",
-    provisioning: "bg-blue-100 text-blue-800",
-    deploying: "bg-blue-100 text-blue-800",
-    ready: "bg-green-100 text-green-800",
-    failed: "bg-red-100 text-red-800",
-    deleted: "bg-zinc-100 text-zinc-500",
+    analyzing: "bg-bg-300 text-ink-muted",
+    needs_input: "bg-bg-300 text-ink",
+    provisioning: "bg-bg-300 text-ink-muted",
+    deploying: "bg-bg-300 text-ink-muted",
+    ready: "bg-defense-soft text-defense",
+    failed: "bg-attack-soft text-attack-strong",
+    deleted: "bg-bg-200 text-ink-faint",
   }[status];
-  return <span className={`rounded px-1.5 text-xs ${color}`}>{status}</span>;
+  return <span className={`rounded-sm px-1.5 font-mono text-xs ${color}`}>{status}</span>;
 }
 
 function Action(props: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
@@ -269,7 +269,7 @@ function Action(props: { onClick: () => void; disabled?: boolean; children: Reac
     <button
       onClick={props.onClick}
       disabled={props.disabled}
-      className="rounded border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+      className="rounded-md border border-line-strong px-3 py-1 text-sm hover:bg-bg-200 disabled:opacity-50"
     >
       {props.children}
     </button>

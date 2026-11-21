@@ -1,6 +1,6 @@
 # DESIGN.md — Mayday
 
-**Mayday es el simulador de vuelo para responder a un hackeo.** Un dev entrena a responder un ataque a su propio proyecto antes de que le pase de verdad. Este documento son las reglas visuales de la landing y del MVP. Lo leen las personas y los agentes que construyen en `/web`.
+**Mayday es el simulador de vuelo para responder a un hackeo.** Un dev entrena a responder un ataque a su propio proyecto antes de que le pase de verdad. Este documento son las reglas visuales de la landing y del MVP. Lo leen las personas y los agentes que construyen en `frontend/`.
 
 ## La idea en una línea
 
@@ -115,9 +115,9 @@ Los eventos del timeline (contrato 2) se pintan siempre en dos lugares: una fila
 ## Cómo usar esto en la repo
 
 - Fuente de verdad visual: el sistema de diseño "Mayday" (artifact en claude.ai). Si algo de este archivo choca con el sistema, manda el sistema.
-- Tokens: `web/app/mayday-tokens.css` (importar en `globals.css`). Nunca hex sueltos en componentes: usa las clases de Tailwind que salen de los tokens (`bg-bg-100`, `text-ink-muted`, `text-defense`, `bg-attack-soft`, `border-line-strong`, `rounded-lg`, `shadow-window`).
+- Tokens: `frontend/src/app/mayday-tokens.css` (importar en `globals.css`). Nunca hex sueltos en componentes: usa las clases de Tailwind que salen de los tokens (`bg-bg-100`, `text-ink-muted`, `text-defense`, `bg-attack-soft`, `border-line-strong`, `rounded-lg`, `shadow-window`).
 - Fuentes: paquete `geist` (`import { GeistSans } from "geist/font/sans"` y `GeistMono`), con sus variables `--font-geist-sans` y `--font-geist-mono` en el `<html>`.
-- Clases de referencia: `web/app/mayday-components.css` trae el CSS exacto de cada componente (prefijo `md-`). Se puede usar directo o como spec para escribir los componentes en React.
+- Clases de referencia: `frontend/src/app/mayday-components.css` trae el CSS exacto de cada componente (prefijo `md-`). Se puede usar directo o como spec para escribir los componentes en React.
 - Animaciones: CSS para lo simple (blink, flicker, drop); Framer Motion o GSAP para las escenas de la landing y la transición de pixeles.
 - Antes de hacer un PR de UI, revisa la sección "No hacer".
 
