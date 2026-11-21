@@ -149,12 +149,10 @@ export const QUESTION = {
 export const RESULT = {
   ok: {
     verdict: "Bien ahí.",
-    chip: "Contenido",
     why: "El atacante no necesitaba la contraseña: tenía un JWT firmado antes del cambio, válido por 30 días. Al rotar el JWT_SECRET, ese token deja de valer y queda afuera.",
   },
   fail: {
     verdict: "Te hackearon.",
-    chip: "Sigue adentro",
     why: {
       A: "Una contraseña más fuerte no sirve si el atacante ya no la necesita: entra con un JWT firmado antes del cambio, válido por 30 días. Solo rotar el JWT_SECRET invalida ese token y lo saca.",
       C: "Bloquear la IP lo frena unos segundos: cambia de IP y sigue entrando con el mismo JWT, válido por 30 días. Solo rotar el JWT_SECRET invalida ese token y lo saca.",

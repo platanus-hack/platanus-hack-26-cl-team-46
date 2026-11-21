@@ -1,12 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { ArrowDown } from "lucide-react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { useGSAP } from "@gsap/react";
-import { AttackTerminal, MaydayAlert, QuestionCard, Stopwatch, type QuestionOption } from "@/components/mayday";
-import { ATTACK_SCRIPT, QUESTION, type OptionId } from "./content";
+import {
+  AttackTerminal,
+  Button,
+  Hud,
+  MaydayAlert,
+  PixelTransition,
+  QuestionCard,
+  ResultSplit,
+  Stopwatch,
+  formatElapsed,
+  type QuestionOption,
+} from "@/components/mayday";
+import { ATTACK_SCRIPT, QUESTION, RESULT, type OptionId } from "./content";
 import { CurtainPixels, type CurtainHandle } from "./CurtainPixels";
 import { HeroSplit } from "./HeroSplit";
 
@@ -23,9 +35,13 @@ gsap.registerPlugin(ScrollTrigger, useGSAP);
  * un timeline con scrub abre las cortinas, sube la pregunta y la deja quieta para responder.
  * gsap.matchMedia separa desktop (izq/der), mobile (arriba/abajo) y reduced-motion (sin pin:
  * las capas quedan apiladas por CSS con `motion-reduce:` y se corta directo).
+ *
+ * Cierre: al responder aparece la escena 4 debajo. Al llegar a ella con scroll, o con el botón
+ * "Ve tu resultado", pasa PixelTransition a pantalla completa y, con la pantalla tapada, se corta
+ * al ResultSplit (solo la primera vez).
  */
 
-/** Momento del timeline (de 0 a TL_END) desde el que la pregunta ya está a la vista. */
+/** Momento del timeline (en sus unidades, ~0–1) desde el que la pregunta ya está a la vista. */
 const CARD_READY = 0.62;
 
 export function Landing() {
@@ -47,6 +63,33 @@ export function Landing() {
   const overlayRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const curtain = useRef<CurtainHandle>(null);
+  const resultRef = useRef<HTMLElement>(null);
+
+  // Escena 4: transición a pantalla completa (pixel-lg en desktop, pixel-md en mobile).
+  const [resultRun, setResultRun] = useState(0);
+  const [resultCell, setResultCell] = useState<"lg" | "md">("lg");
+  const [resultShown, setResultShown] = useState(false);
+  const resultState = useRef<"idle" | "running" | "shown">("idle");
+
+  const goToResult = useCallback(() => {
+    const el = resultRef.current;
+    if (!el) return;
+    if (resultState.current === "shown") {
+      el.scrollIntoView({ behavior: "smooth" });
+      return;
+    }
+    if (resultState.current === "running") return;
+    resultState.current = "running";
+    setResultCell(window.matchMedia("(min-width: 768px)").matches ? "lg" : "md");
+    setResultRun((n) => n + 1);
+  }, []);
+
+  const onResultCovered = useCallback(() => {
+    resultState.current = "shown";
+    setResultShown(true);
+    const el = resultRef.current;
+    if (el) window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY, behavior: "instant" });
+  }, []);
 
   useGSAP(
     () => {
@@ -54,6 +97,7 @@ export function Landing() {
       mm.add(
         {
           motion: "(prefers-reduced-motion: no-preference)",
+          reduce: "(prefers-reduced-motion: reduce)", // sin esta, en mobile + reduce no calza nada y no corre
           desktop: "(min-width: 768px)",
         },
         (ctx) => {
@@ -77,7 +121,6 @@ export function Landing() {
               end: "+=220%",
               pin: true,
               scrub: 0.4,
-              invalidateOnRefresh: true,
               onUpdate(self) {
                 const t = self.progress * tl.duration();
                 // La alerta sólida dura poco: al hacer scroll baja a la variante por defecto.
@@ -89,8 +132,9 @@ export function Landing() {
             },
           });
 
-          tl.to(overlayRef.current, { autoAlpha: 0, y: -48, duration: 0.18 }, 0)
-            .to(proxy, { p: 1, duration: 0.55, onUpdate: () => curtain.current?.update(proxy.p) }, 0.04)
+          // fromTo explícitos: si ScrollTrigger recalcula, nada se re-registra desde el estado actual.
+          tl.fromTo(overlayRef.current, { autoAlpha: 1, y: 0 }, { autoAlpha: 0, y: -48, duration: 0.18 }, 0)
+            .fromTo(proxy, { p: 0 }, { p: 1, duration: 0.55, onUpdate: () => curtain.current?.update(proxy.p) }, 0.04)
             .fromTo(
               cardRef.current,
               { y: "32vh", autoAlpha: 0 },
@@ -109,6 +153,23 @@ export function Landing() {
     },
     { scope: mainRef },
   );
+
+  // Al responder se agrega la escena 4 (debajo del pin, así que no mueve nada de arriba):
+  // escuchar cuándo se llega a ella.
+  useGSAP(
+    () => {
+      if (!answer || !resultRef.current) return;
+      ScrollTrigger.create({
+        trigger: resultRef.current,
+        start: "top 85%",
+        once: true,
+        onEnter: goToResult,
+      });
+    },
+    { dependencies: [answer], scope: mainRef },
+  );
+
+  const ok = answer?.option.correct ?? false;
 
   return (
     <main ref={mainRef} className="flex-1">
@@ -153,12 +214,50 @@ export function Landing() {
                 onAnswer={(option) =>
                   setAnswer({ option, seconds: Math.round((Date.now() - (startedAt ?? Date.now())) / 1000) })
                 }
-                footer={<span className="md-index">{answer ? "BAJA PARA VER TU RESULTADO ↓" : ""}</span>}
+                footer={
+                  <div className="flex flex-wrap items-center gap-4">
+                    <Button onClick={goToResult} icon={<ArrowDown strokeWidth={1.5} aria-hidden="true" />}>
+                      Ve tu resultado
+                    </Button>
+                    <span className="md-index">O SIGUE BAJANDO</span>
+                  </div>
+                }
               />
             </SceneSlot>
           </div>
         </div>
       </section>
+
+      {answer && (
+        <section ref={resultRef} aria-label="Tu resultado" className={resultShown ? "" : "invisible"}>
+          <ResultSplit
+            className="min-h-svh!"
+            outcome={ok ? "ok" : "fail"}
+            verdict={ok ? RESULT.ok.verdict : RESULT.fail.verdict}
+            hud={
+              <Hud
+                fluid
+                items={[
+                  { label: "Tiempo de respuesta", value: formatElapsed(answer.seconds), tone: ok ? "defense" : "attack" },
+                  { label: "Atacante", value: ok ? "Afuera" : "Adentro", tone: ok ? "defense" : "attack" },
+                ]}
+              />
+            }
+            disclaimer={RESULT.disclaimer}
+            ctaTitle={RESULT.ctaTitle}
+            ctaLine={RESULT.ctaLine}
+            ctaLabel={RESULT.ctaButton}
+            ctaHref={RESULT.ctaHref}
+          >
+            <p>{ok ? RESULT.ok.why : RESULT.fail.why[answer.option.id]}</p>
+            <p>
+              <strong>{RESULT.invite}</strong> {RESULT.inviteCta}
+            </p>
+          </ResultSplit>
+        </section>
+      )}
+
+      <PixelTransition runKey={resultRun} cell={resultCell} fixed duration={700} onCovered={onResultCovered} />
       <TeamFooter />
     </main>
   );

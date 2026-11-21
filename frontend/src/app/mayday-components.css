@@ -93,6 +93,14 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-result__text { margin: 0; font: 400 18px/28px var(--font-sans, var(--font-geist-sans)); color: var(--ink-muted); max-width: 44ch; }
 .md-result__text strong { color: var(--ink); font-weight: 500; }
 
+@media (max-width: 767px) {
+  .md-result { grid-template-columns: 1fr; }
+  .md-result__side { padding: var(--space-12) var(--space-4); }
+  .md-result__side + .md-result__side { border-left: 0; border-top: 1px solid var(--line); }
+  .md-result__verdict { font-size: 48px; }
+  .md-result__text { font-size: 15px; line-height: 22px; }
+}
+
 /* ---------- Transición de pixeles ---------- */
 .md-pixels { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--cols, 24), 1fr); pointer-events: none; }
 .md-pixels > i { background: var(--bg-000); opacity: 0; }
@@ -226,3 +234,5 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 @keyframes md-drop { from { transform: translateY(-16px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes md-type { from { clip-path: inset(0 100% 0 0); } 70%, to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* Sin animación, la marquesina queda quieta con el texto a la vista (si no, el padding la deja fuera). */
+@media (prefers-reduced-motion: reduce) { .md-marquee > span { padding-left: 0; } }
