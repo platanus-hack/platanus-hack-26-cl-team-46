@@ -19,18 +19,27 @@ export function buildAttackPlan(diag: DiagnosisResult, plugin: EnginePlugin, rec
   const findings = diag.results
     .map((r) => {
       const m = plugin.catalog[r.vuln_id];
+      const story = plugin.storylines[r.vuln_id] ?? [];
       return {
         vuln_id: r.vuln_id,
         title: m.title,
         severity: m.severity,
         difficulty: m.difficulty,
         order: m.order,
+        // 'where' = ubicación en el código; se enriquece con repo_ref (archivo:línea real) en el CLI.
         location: m.code_location,
+        evidence: r.steps[0]?.response_summary ?? m.code_location,
         confirmed: r.confirmed,
+        confidence: r.confidence,
         owasp: m.owasp,
         mitre_attack: m.mitre_attack,
         entry_point: r.steps[0]?.request ?? null,
-        summary: r.summary,
+        exploit_summary: r.summary,
+        // Campos que el observador/debrief necesitan para la enseñanza:
+        real_case: m.real_case,
+        correct_fix: m.fix_correct,
+        wrong_fixes: m.fix_wrong,
+        symptoms: story.map((b) => b.symptom),
       };
     })
     .sort((a, b) => a.order - b.order);
