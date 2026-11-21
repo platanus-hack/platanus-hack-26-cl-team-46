@@ -44,6 +44,9 @@ export interface ReconReport {
   endpoints: EndpointProbe[];
   findings: ReconFinding[];
   surface_summary: { probed: number; present: number; auth_gaps: number; injectable: number };
+  /** Requests HTTP emitidos por el recon (para el cost ledger). */
+  requests: number;
+  duration_ms: number;
 }
 
 export async function recon(
@@ -184,6 +187,8 @@ export async function recon(
     endpoints,
     findings,
     surface_summary: { probed: candidates.length, present, auth_gaps, injectable },
+    requests: http.exchanges.length,
+    duration_ms: Date.parse(finished_at) - Date.parse(started_at),
     telemetry: http.exchanges,
   } as ReconReport & { telemetry: unknown };
 }

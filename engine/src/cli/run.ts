@@ -12,6 +12,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { diagnose } from '../core/diagnose.ts';
 import { buildAttackPlan } from '../core/events.ts';
+import { CostLedger } from '../core/ledger.ts';
 import { recon } from '../core/recon.ts';
 import { renderGuide } from '../core/report.ts';
 import { buildScenarioPack } from '../core/scenario.ts';
@@ -32,6 +33,7 @@ Obligatorio:
 Opciones:
   --profile <p>         noisy | normal | fast | stealth        (default: fast)
   --seed <s>            Semilla para reproducibilidad            (default: "default")
+  --budget <usd>        Tope de costo LLM por corrida             (default: 5)
   --read-only           Correr solo módulos no mutantes (no crea/modifica estado)
   --only <ids>          CSV de vuln_id a correr (p. ej. idor,sql-injection)
   --weak-email <email>  Credencial conocida para fuerza bruta / sesión de baja privilegia
@@ -81,6 +83,7 @@ async function main() {
   const only = arg('only')?.split(',').map((s) => s.trim());
   const profile = (arg('profile', 'fast') ?? 'fast') as 'noisy' | 'normal' | 'fast' | 'stealth';
   const seed = arg('seed', 'default')!;
+  const budgetUsd = Number(arg('budget', '5'));
   const readOnly = flag('read-only');
   const outRoot = arg('out', path.resolve(import.meta.dirname, '../../out'))!;
 
@@ -101,6 +104,13 @@ async function main() {
   const plan = buildAttackPlan(diag, plugin, reconReport);
   const guide = renderGuide(diag, plugin, scenarios, reconReport);
 
+  // Cost ledger: por ahora solo cómputo local ($0); los LLM entran con los providers (M6).
+  const ledger = new CostLedger();
+  if (reconReport) ledger.recordLocal('recon', 'http+recon', { requests: reconReport.requests, wallMs: reconReport.duration_ms });
+  ledger.recordLocal('exploit', 'http-attacks', { requests: diag.summary.requests, wallMs: diag.duration_ms });
+  const ledgerSnap = ledger.snapshot();
+  const overBudget = ledger.overBudget(budgetUsd);
+
   const ts = diag.started_at.replace(/[:.]/g, '-');
   const outDir = path.join(outRoot, ts);
   await mkdir(path.join(outDir, 'scenarios'), { recursive: true });
@@ -109,6 +119,7 @@ async function main() {
   await writeFile(path.join(outDir, 'telemetry.json'), JSON.stringify(diag.telemetry, null, 2));
   if (reconReport) await writeFile(path.join(outDir, 'recon.json'), JSON.stringify(reconReport, null, 2));
   await writeFile(path.join(outDir, 'attack-plan.json'), JSON.stringify(plan, null, 2));
+  await writeFile(path.join(outDir, 'cost-ledger.json'), JSON.stringify(ledgerSnap, null, 2));
   await writeFile(path.join(outDir, 'GUIA-DEL-HACKEO.md'), guide);
   for (const sc of scenarios) {
     await writeFile(path.join(outDir, 'scenarios', `${sc.vuln_id}.json`), JSON.stringify(sc, null, 2));
@@ -129,6 +140,7 @@ async function main() {
   console.log(`   atacante activo al cierre: ${diag.summary.attacker_active ? 'sí' : 'no'}`);
   if (diag.residue.length) console.log(`   ⚠ residuo sin limpiar (${diag.residue.length}): ${diag.residue.join('; ')}`);
   console.log(`   escenarios generados: ${scenarios.length}`);
+  console.log(`   costo: $${ledgerSnap.grandTotalUsd.toFixed(4)} (LLM $0 — sin providers aún) · presupuesto $${budgetUsd}${overBudget ? ' ⚠ EXCEDIDO' : ''}`);
   console.log(`\n📁 ${outDir}\n`);
 }
 
