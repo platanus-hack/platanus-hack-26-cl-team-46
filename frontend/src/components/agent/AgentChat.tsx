@@ -49,13 +49,62 @@ export function AgentChat({
 
 function AgentHeader({ title }: { title: string }) {
   return (
-    <header className="flex h-12 flex-none items-center border-b border-sim-line px-4">
+    <header className="flex h-12 flex-none items-center gap-2.5 border-b border-sim-line px-4">
+      <AgentMascot />
       <h2 className="truncate text-[14px] font-medium text-sim-ink" title={title}>
         {title}
       </h2>
     </header>
   );
 }
+
+/**
+ * Mascota pixel del agente, animada en pixeles enteros: rebota, mueve los brazos, pisa con
+ * las patas de a pares y pestañea. Con reduced motion queda quieta.
+ */
+function AgentMascot() {
+  return (
+    <>
+      <style>{MASCOT_CSS}</style>
+    <svg viewBox="0 -1 11 9" className="agent-mascot h-5 w-auto flex-none overflow-visible" shapeRendering="crispEdges" aria-hidden>
+      <g fill="#D97757">
+        <g className="agent-mascot__legs-a">
+          <rect x="2" y="5" width="1" height="2" />
+          <rect x="6" y="5" width="1" height="2" />
+        </g>
+        <g className="agent-mascot__legs-b">
+          <rect x="4" y="5" width="1" height="2" />
+          <rect x="8" y="5" width="1" height="2" />
+        </g>
+        <g className="agent-mascot__body">
+          <rect x="2" y="0" width="7" height="5" />
+          <rect className="agent-mascot__arm-l" x="0" y="2" width="2" height="1" />
+          <rect className="agent-mascot__arm-r" x="9" y="2" width="2" height="1" />
+          <g className="agent-mascot__eyes" fill="var(--sim-100)">
+            <rect x="3" y="1" width="1" height="1.5" />
+            <rect x="7" y="1" width="1" height="1.5" />
+          </g>
+        </g>
+      </g>
+    </svg>
+    </>
+  );
+}
+
+// Movimientos de medio/un pixel del dibujo, con steps() para que se vea pixel art.
+const MASCOT_CSS = `
+.agent-mascot__body { animation: agent-mascot-bob 1.2s steps(1) infinite; }
+.agent-mascot__legs-a { animation: agent-mascot-step .6s steps(1) infinite; }
+.agent-mascot__legs-b { animation: agent-mascot-step .6s steps(1) infinite .3s; }
+.agent-mascot__arm-l { animation: agent-mascot-arm 1.2s steps(1) infinite; }
+.agent-mascot__arm-r { animation: agent-mascot-arm 1.2s steps(1) infinite .6s; }
+.agent-mascot__eyes { transform-box: fill-box; transform-origin: center; animation: agent-mascot-blink 4s steps(1) infinite; }
+@keyframes agent-mascot-bob { 50% { transform: translateY(-.5px); } }
+@keyframes agent-mascot-step { 50% { transform: translateY(-.5px); } }
+@keyframes agent-mascot-arm { 50% { transform: translateY(-1px); } }
+@keyframes agent-mascot-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(.15); } }
+@media (prefers-reduced-motion: reduce) { .agent-mascot * { animation: none !important; } }
+`;
 
 function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabled?: boolean }) {
   const [text, setText] = useState("");
