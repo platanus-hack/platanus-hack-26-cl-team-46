@@ -12,6 +12,16 @@ export const envSchema = z.object({
   DATA_DIR: z.string().default('.data'),
   /** Si está, el estado de los sandboxes se guarda en Postgres (necesario en Render, donde el disco es efímero). */
   DATABASE_URL: z.string().optional(),
+  /**
+   * Proxy de previsualización: URL pública de la app de cada sandbox bajo un
+   * dominio nuestro, con `{sandbox}` como comodín. Ej: `https://{sandbox}.preview.mayday.rip`
+   * (necesita DNS wildcard apuntando a este backend). Local: `http://{sandbox}.preview.localhost:3001`.
+   * Sin definir, el proxy está apagado y el frontend embebe la app directo.
+   */
+  PREVIEW_URL_TEMPLATE: z
+    .string()
+    .refine((v) => v.includes('{sandbox}'), 'Debe incluir {sandbox}')
+    .optional(),
 
   // Render
   RENDER_API_KEY: z.string().min(1, 'RENDER_API_KEY es obligatoria'),

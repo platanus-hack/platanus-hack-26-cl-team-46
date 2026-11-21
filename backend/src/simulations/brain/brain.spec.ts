@@ -204,7 +204,7 @@ describe('estado del observer', () => {
 describe('esquema del generador', () => {
   it('solo acepta los canales detectados y severidades válidas', () => {
     const schema = generatorSchema(['email', 'support', 'phone', 'render']);
-    const n = { title: 't', body: 'b', from: null, vuln_id: null };
+    const n = { title: 't', body: 'b', from: null, room: null, vuln_id: null };
     expect(
       schema.safeParse({
         notifications: [{ ...n, channel: 'email', severity: 'warning' }],
@@ -219,6 +219,29 @@ describe('esquema del generador', () => {
       schema.safeParse({
         notifications: [{ ...n, channel: 'email', severity: 'medium' }],
       }).success,
+    ).toBe(false);
+  });
+
+  it('acepta mensajes de slack con sala del chat del equipo', () => {
+    const schema = generatorSchema(['email', 'slack']);
+    const n = {
+      title: '¿Alguien más ve la app lenta?',
+      body: '',
+      vuln_id: null,
+    };
+    const msg = {
+      ...n,
+      channel: 'slack',
+      from: 'Tomás Vidal',
+      severity: 'info',
+    };
+    expect(
+      schema.safeParse({ notifications: [{ ...msg, room: '#general' }] })
+        .success,
+    ).toBe(true);
+    expect(
+      schema.safeParse({ notifications: [{ ...msg, room: '#random' }] })
+        .success,
     ).toBe(false);
   });
 });

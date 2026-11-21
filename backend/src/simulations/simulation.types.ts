@@ -50,9 +50,13 @@ export const NOTIFY_CHANNELS = [
 ] as const;
 export type NotifyChannel = (typeof NOTIFY_CHANNELS)[number];
 
-/** Canales que siempre existen, aunque el repo no tenga ninguna herramienta. */
+/**
+ * Canales que siempre existen, aunque el repo no tenga ninguna herramienta.
+ * `slack` es el chat del equipo: todo developer tiene compañeros que escriben.
+ */
 export const BASE_CHANNELS: NotifyChannel[] = [
   'email',
+  'slack',
   'support',
   'phone',
   'render',

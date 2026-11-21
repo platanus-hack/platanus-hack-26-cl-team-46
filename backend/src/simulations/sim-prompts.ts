@@ -253,6 +253,7 @@ Usa **solo** los de \`channels\` en \`sim context\` (salen de las herramientas q
 \`sim notify <canal> "<título>" "<cuerpo>" [--from "Nombre <email>"] [--severity info|warning|critical] [--vuln <vuln_id>] [--data '<json extra>']\`
 
 - **email / support:** \`--from\` es una persona del contexto (clientes ficticios). El cuerpo es el texto del correo, en tono natural.
+- **slack:** el chat del equipo. Un compañero (inventado, nunca un cliente del contexto) comenta lo que ve, como lo diría en el chat: "¿alguien más ve la app lenta?", "me escribió un cliente reclamando…". \`--from\` es el nombre del compañero. Con \`--data '{"room":"#general"}'\` eliges la sala: \`#general\` (conversación del equipo), \`#soporte\` (escalamientos de clientes) o \`#deploys\`. Si no pones sala, cae en \`#general\`. El título es opcional: si el mensaje es corto, pon el texto como título y deja el cuerpo vacío.
 - **sentry:** título del error. El cuerpo incluye el culprit (archivo:línea), conteo de eventos, usuarios afectados y un extracto del stack.
 - **datadog / posthog / render:** métrica, valor, umbral y ventana de tiempo, con números concretos.
 
