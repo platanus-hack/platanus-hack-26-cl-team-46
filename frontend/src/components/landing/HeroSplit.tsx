@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type CSSProperties, type ReactNode, type Ref } from "react";
-import { ButtonLink, Hud, Logo, StatusChip, useReducedMotion, type HudItem } from "@/components/mayday";
+import { Hud, Logo, StatusChip, useReducedMotion, type HudItem } from "@/components/mayday";
 import { CALM, HERO, UNDER_ATTACK, type LogRow } from "./content";
 
 /**
@@ -52,16 +52,10 @@ export function HeroSplit({
         <h1 className="max-w-[11ch] text-[clamp(40px,min(8.4vw,13svh),120px)] leading-[0.92] font-semibold tracking-[-0.045em] text-ink md:max-w-[16ch]">
           {HERO.title}
         </h1>
-        <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
-          {/* La capa del hero no recibe clics; este botón sí. */}
-          <ButtonLink href={HERO.simulate.href} className="pointer-events-auto bg-bg-000!">
-            {HERO.simulate.label}
-          </ButtonLink>
-          <span className="md-index flex items-center gap-2">
-            {HERO.scrollHint}
-            <span aria-hidden="true">↓</span>
-          </span>
-        </div>
+        <span className="md-index flex items-center gap-2">
+          {HERO.scrollHint}
+          <span aria-hidden="true">↓</span>
+        </span>
       </div>
     </>
   );
