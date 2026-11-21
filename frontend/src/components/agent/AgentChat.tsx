@@ -1,13 +1,14 @@
 "use client";
 
-import { ArrowUp, Mic, Plus, Sparkle } from "lucide-react";
+import { ArrowUp, Mic, Plus } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { SIM_ICONS } from "@/components/workspace/sim-icons";
 import type { TimelineEvent } from "@/lib/sim-api";
 import { Markdown } from "./Markdown";
 
 /**
  * Panel del agente (DESIGN.md › AgentPanel): chat con el agente de respuesta a incidentes.
- * Capa simulada: grises sim-*, sin colores de marca ni logos de proveedores de IA.
+ * Capa simulada: grises sim-*. El agente es Claude: su logo va en el header y en el estado vacío.
  * La forma sigue a una app de chat con agente de código: header con el título de la
  * conversación, respuestas en markdown sin burbuja y un composer redondeado con "+",
  * micrófono y una línea de modo debajo.
@@ -51,7 +52,8 @@ function AgentHeader({ title }: { title: string }) {
   return (
     <header className="flex h-12 flex-none items-center gap-2.5 border-b border-sim-line px-4">
       <AgentMascot />
-      <h2 className="truncate text-[14px] font-medium text-sim-ink" title={title}>
+      <span className="text-[14px] font-medium text-sim-ink">Claude</span>
+      <h2 className="truncate text-[13px] text-sim-ink-muted" title={title}>
         {title}
       </h2>
     </header>
@@ -147,7 +149,7 @@ function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabl
           className="max-h-48 min-h-8 flex-1 resize-none bg-transparent px-1 py-[5px] text-[14px] leading-[22px] text-sim-ink placeholder:text-sim-ink-faint"
           // El :focus-visible global (sin capa) le gana a las utilidades de Tailwind; el foco ya lo marca el borde del composer.
           style={{ outline: "none" }}
-          placeholder="Escríbele al agente…"
+          placeholder="Escríbele a Claude…"
           value={text}
           disabled={disabled}
           onChange={(e) => setText(e.target.value)}
@@ -178,7 +180,7 @@ function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabl
       </form>
       <div className="mt-2 flex items-center justify-end gap-4 pr-2 text-[12px] leading-4">
         <span className="text-sim-ink">
-          Agente <span className="text-sim-ink-faint">Medio</span>
+          Claude <span className="text-sim-ink-faint">Medio</span>
         </span>
         <span className="text-sim-ink">Automático</span>
         <span aria-hidden className="size-3 rounded-full border-[1.5px] border-sim-ink-faint" />
@@ -190,10 +192,15 @@ function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabl
 function EmptyState() {
   return (
     <div className="m-auto flex max-w-[260px] flex-col items-center gap-2 text-center text-sim-ink-muted">
-      <Sparkle className="size-5 text-sim-ink-faint" strokeWidth={1.6} />
-      <p className="text-[13px] leading-5">Pídele al agente que revise logs, cambie configuración o despliegue un fix.</p>
+      <ClaudeMark className="size-8 rounded-lg" />
+      <p className="text-[13px] leading-5">Pídele a Claude que revise logs, cambie configuración o despliegue un fix.</p>
     </div>
   );
+}
+
+function ClaudeMark({ className }: { className: string }) {
+  // eslint-disable-next-line @next/next/no-img-element -- ícono de app de 24–32px desde public/
+  return <img src={SIM_ICONS.claude} alt="" className={`shrink-0 object-contain ${className}`} />;
 }
 
 function ChatItem({ e }: { e: TimelineEvent }) {

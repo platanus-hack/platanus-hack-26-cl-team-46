@@ -14,7 +14,7 @@ export interface ChatChannel {
 }
 
 /** Avatar de una integración (ver components/workspace/BotAvatar). */
-export type BotKind = "sentry" | "datadog" | "posthog" | "render" | "github" | "deploy" | "support";
+export type BotKind = "sentry" | "datadog" | "posthog" | "render" | "github" | "deploy" | "support" | "phone";
 
 export interface ChatMessage {
   /** Único dentro del chat. Los mensajes en vivo usan `ev-<seq>`. */
@@ -38,7 +38,7 @@ export interface ChatMessage {
 export const CHANNELS: ChatChannel[] = [
   { id: "general", name: "general", kind: "channel", topic: "Todo el equipo" },
   { id: "alertas", name: "alertas", kind: "channel", topic: "Monitoreo: errores, métricas y plataforma" },
-  { id: "soporte", name: "soporte", kind: "channel", topic: "Tickets y escalamientos de clientes" },
+  { id: "soporte", name: "soporte", kind: "channel", topic: "Tickets, llamadas y escalamientos de clientes" },
   { id: "deploys", name: "deploys", kind: "channel", topic: "Commits, deploys y cambios de config" },
   { id: "dm-camila", name: "Camila Herrera", kind: "dm", topic: "Mensaje directo" },
 ];
@@ -70,7 +70,7 @@ function slackChannel(raw: Record<string, unknown>): string {
 
 /**
  * Qué eventos califican para el chat y dónde caen. Devuelve null si el evento
- * no es del chat (correos, llamadas, chat con el agente, internos…).
+ * no es del chat (correos, chat con el agente, internos…).
  */
 export function eventToMessage(e: TimelineEvent): ChatMessage | null {
   const base = { id: `ev-${e.seq}`, t: e.t, live: true, severity: e.severity };
@@ -88,6 +88,10 @@ export function eventToMessage(e: TimelineEvent): ChatMessage | null {
     }
     if (channel === "support") {
       return { ...base, channel: "soporte", author: "Mesa de ayuda", bot: true, avatar: "support", title: e.title, text: withFrom(e) };
+    }
+    // Como una central telefónica integrada al chat: el resumen de la llamada cae en #soporte.
+    if (channel === "phone") {
+      return { ...base, channel: "soporte", author: "Central telefónica", bot: true, avatar: "phone", title: e.title, text: withFrom(e) };
     }
     if (channel in ALERT_SOURCES) {
       return {

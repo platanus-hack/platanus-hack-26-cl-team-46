@@ -70,8 +70,10 @@ Escala: `display-xl` 120 / `display-lg` 72 / `heading-1` 48 / `heading-2` 32 / `
 
 ## Iconografía e imágenes
 
-- Íconos de línea de 1.5px, cuadrados, del set Lucide (ya viene con shadcn). En la capa simulada, favicons genéricos con una letra sobre `sim-300`.
-- Sin logos de terceros reales dentro del escritorio, salvo el de GitHub en el botón de login. El panel del agente dice "Agente" con un ícono genérico.
+- Íconos de línea de 1.5px, cuadrados, del set Lucide (ya viene con shadcn), en la capa Mayday.
+- **En la capa simulada, las apps de terceros llevan su logo real**, para que el escritorio se sienta como el de un developer de verdad: Gmail (correo), Slack (chat del equipo), Claude (panel del agente), Zendesk (soporte), teléfono (llamadas), Sentry, Datadog, PostHog, Render y GitHub (integraciones) y Google Calendar (remitente de correo). Los archivos están en `public/sim-icons/` y el mapa en `src/components/workspace/sim-icons.ts`; los avatares de las integraciones se arman en `BotAvatar`. Lo que no es una app real (la app del developer, pestañas sin URL, personas) va con una letra sobre `sim-300`.
+- Los logos se usan tal cual (sin recolorear ni deformar). Si un glifo no se lee sobre gris oscuro, va en blanco sobre el color de su marca, como los avatares de `BotAvatar`.
+- En la capa Mayday, los logos de terceros son el de GitHub en el botón de login y la fila de apps del simulacro (`AppLogos`, en la landing y en /como-funciona), que muestra por dónde te llega el incidente.
 - Sin fotos, ilustraciones 3D, emojis decorativos ni gradientes de color. La única imagen grande es el fondo de pantalla del avión (Assets › Fondos).
 
 ## Voz y copy
@@ -258,7 +260,7 @@ Capa simulada. Un navegador tipo Chrome en modo oscuro: semáforo de macOS, pest
 - Grises neutros `sim-*`, nunca los azul-negros de la marca. Tiene que parecer Chrome, no Mayday.
 - Pestañas: "Google" (decorativa) + la pestaña de la repo, activa, con la ruta real del archivo. Se pueden sumar pestañas que el escenario necesite (el dashboard del proveedor, el correo), siempre simples.
 - La línea comprometida se marca con fondo `attack-soft` y una barra ámbar de 3px en el número de línea. El resto del código se ve como en GitHub.
-- Sin logos de terceros reales: favicons genéricos (`sim-300`) con una letra.
+- Pestañas de apps de terceros con su logo real (Gmail, Slack); las demás, una letra sobre `sim-300`.
 - Cuando el atacante toca el navegador: `is-compromised` (glow ámbar), más un cambio de contenido que lo explique.
 
 ### AgentPanel
@@ -266,11 +268,11 @@ Capa simulada. Un navegador tipo Chrome en modo oscuro: semáforo de macOS, pest
 Capa simulada. El chat con el agente de respuesta a incidentes, a la derecha del escritorio, de alto completo. El usuario le escribe para que lo ayude o resuelve a mano en el navegador.
 
 - **La IA viene integrada en Mayday.** El usuario no conecta su propio Claude ni ninguna cuenta de IA: el agente ya está en el simulacro. No lo digas de otra forma en ningún copy ("conecta tu Claude", "tu agente de código", etc.).
-- Grises `sim-*`. Header con ícono genérico, el nombre "Agente" y el contexto ("Respuesta a incidente").
+- Grises `sim-*`. Header con la mascota pixel animada de Claude Code, el nombre "Claude" y el contexto (el nombre del proyecto). El logo de Claude va en el estado vacío del chat.
 - Mensajes del usuario en burbuja `sim-200` a la derecha. Las respuestas del agente van sin burbuja: texto plano con negritas, secciones en mono mayúscula ("AHORA · PRIMEROS 5 MINUTOS") y pasos numerados.
 - No uses colores de marca adentro. Si el agente sugiere algo correcto, se nota en los logs (fila OK), no en el chat.
-- Composer abajo, con placeholder "Escríbele al agente…" y botón de enviar.
-- Sin logos de proveedores de IA: va el ícono genérico.
+- Composer abajo, con placeholder "Escríbele a Claude…" y botón de enviar.
+- El logo de Claude es el único color de marca permitido en el panel; los mensajes siguen en grises `sim-*`.
 
 ### DeployLogs
 

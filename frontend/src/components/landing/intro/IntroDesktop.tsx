@@ -1,5 +1,6 @@
 import type { CSSProperties, ReactNode } from "react";
 import { AttackTerminal, Browser, DeployLogs, SimWindow, SystemToast } from "@/components/mayday";
+import { SIM_ICONS } from "@/components/workspace/sim-icons";
 import { ATTACK_SCRIPT, INTRO } from "../content";
 
 /**
@@ -49,6 +50,12 @@ function Pop({
   );
 }
 
+/** Favicon real de una pestaña (Google, GitHub). Apuntes es la app del developer: va con su letra. */
+function TabLogo({ src }: { src: string }) {
+  // eslint-disable-next-line @next/next/no-img-element -- favicon de 14px desde public/
+  return <img src={src} alt="" className="size-3.5 shrink-0 object-contain" />;
+}
+
 export function IntroDesktop() {
   return (
     <div className="absolute inset-0 overflow-hidden">
@@ -75,8 +82,8 @@ export function IntroDesktop() {
             <Browser
               style={style}
               tabs={[
-                { title: "Google", fav: "G" },
-                { title: "apuntes-dev/apuntes", fav: "A", active: true },
+                { title: "Google", fav: <TabLogo src={SIM_ICONS.google} /> },
+                { title: "apuntes-dev/apuntes", fav: <TabLogo src={SIM_ICONS.githubWhite} />, active: true },
               ]}
               url={
                 <>

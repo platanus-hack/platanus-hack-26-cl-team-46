@@ -5,7 +5,7 @@ import { CHANNELS, type ChatMessage } from "@/lib/workspace-chat";
 import { BotAvatar } from "./BotAvatar";
 
 /**
- * Chat empresarial simulado (capa simulada: grises sim-*, sin marca).
+ * Slack simulado (capa simulada: grises sim-*; los logos reales van en la pestaña y en las integraciones).
  * Inspirado en los chats de equipo de siempre: barra lateral con canales y
  * mensajes directos, no leídos en negrita con contador, y el canal activo a la derecha.
  */

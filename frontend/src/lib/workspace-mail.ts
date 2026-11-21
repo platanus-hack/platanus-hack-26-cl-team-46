@@ -18,6 +18,8 @@ export interface Mail {
   /** Los semilla ya leídos se muestran en peso normal. */
   read: boolean;
   label?: string;
+  /** Remitente que es una app real: se muestra con su logo (ver MailApp). */
+  app?: "calendar" | "github" | "render";
 }
 
 /** "Diego Fuentes <diego@x.com>" → { name, email }. */
@@ -54,17 +56,18 @@ export function seedMails(project: string, start: Date): Mail[] {
     mail("m1", 35, "Camila Herrera", "camila@equipo.dev", `Notas del planning de ${project}`,
       `Hola!\n\nTe dejo el resumen del planning:\n\n- Terminar las notas compartidas esta semana.\n- Revisar los tiempos de carga del dashboard.\n- Jueves 10:00 demo con el cliente.\n\nSaludos,\nCamila`,
       { read: false }),
-    mail("m2", 2 * 60, "Plataforma de hosting", "no-reply@hosting.app", "Tu factura de noviembre está disponible",
+    mail("m2", 2 * 60, "Render", "no-reply@render.com", "Tu factura de noviembre está disponible",
       "Tu factura por US$ 19,00 del plan Starter ya está disponible. Se cargará automáticamente a tu tarjeta terminada en 4242.",
-      { label: "Facturas" }),
+      { label: "Facturas", app: "render" }),
     mail("m3", 5 * 60, "Tomás Vidal", "tomas@equipo.dev", "Re: PR #212 — paginación de notas",
       "Lo revisé y está bien. Dejé un par de comentarios menores, nada bloqueante. Dale merge cuando puedas.",
     ),
-    mail("m4", 20 * 60, "Calendario", "calendar@equipo.dev", "Invitación: Planning semanal (jue 10:00)",
-      "Camila Herrera te invitó a «Planning semanal».\nJueves, 10:00 – 11:00\nSala virtual: meet.equipo.dev/planning"),
-    mail("m5", 26 * 60, "Repositorio", "noreply@git.app", `[${project}] 3 nuevas alertas de dependencias`,
-      `Encontramos 3 dependencias con versiones vulnerables en ${project}. Revisa la pestaña Security del repositorio para más detalles.`,
-      { label: "Notificaciones" }),
+    mail("m4", 20 * 60, "Google Calendar", "calendar-notification@google.com", "Invitación: Planning semanal (jue 10:00)",
+      "Camila Herrera te invitó a «Planning semanal».\nJueves, 10:00 – 11:00\nSala virtual: meet.equipo.dev/planning",
+      { app: "calendar" }),
+    mail("m5", 26 * 60, "GitHub", "noreply@github.com", `[${project}] 3 nuevas alertas de dependencias`,
+      `Dependabot encontró 3 dependencias con versiones vulnerables en ${project}. Revisa la pestaña Security del repositorio para más detalles.`,
+      { label: "Notificaciones", app: "github" }),
     mail("m6", 2 * 24 * 60, "Newsletter Dev Semanal", "hola@devsemanal.cl", "Lo mejor de la semana: Node 24, Postgres 18 y más",
       "Esta semana: qué trae Node 24, índices parciales en Postgres y una guía para rotar secretos sin downtime.",
       { label: "Promociones" }),
