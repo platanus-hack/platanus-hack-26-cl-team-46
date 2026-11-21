@@ -7,11 +7,13 @@ export const MARKS: Record<string, { use: string; shape: string }> = {
   },
   ring: {
     use: 'encierra UNA cosa: una celda, un botón, una palabra',
-    shape: '{"type":"ring","target":ID,"label":"máx 3 palabras"}',
+    shape:
+      '{"type":"ring","target":ID,"label":"máx 3 palabras","tone":"opcional"}',
   },
   frame: {
     use: 'marca una ZONA: una fila, un panel, un grupo',
-    shape: '{"type":"frame","target":ID,"label":"máx 3 palabras"}',
+    shape:
+      '{"type":"frame","target":ID,"label":"máx 3 palabras","tone":"opcional"}',
   },
   highlight: {
     use: 'pasa destacador sobre un texto o número',
@@ -19,15 +21,32 @@ export const MARKS: Record<string, { use: string; shape: string }> = {
   },
   underline: {
     use: 'subraya un texto',
-    shape: '{"type":"underline","target":ID}',
+    shape: '{"type":"underline","target":ID,"tone":"opcional"}',
+  },
+  scribble: {
+    use: 'garabato de plumón bajo lo que falla, preocupa o confunde (rojo por defecto)',
+    shape: '{"type":"scribble","target":ID,"label":"opcional"}',
+  },
+  cross: {
+    use: 'tacha lo que está mal, sobra o no hay que hacer (rojo)',
+    shape: '{"type":"cross","target":ID,"label":"opcional"}',
+  },
+  check: {
+    use: 'tick junto a lo que está bien o ya quedó resuelto (verde)',
+    shape: '{"type":"check","target":ID,"label":"opcional"}',
+  },
+  question: {
+    use: 'signo de pregunta junto a lo que no se sabe todavía o no calza (ámbar)',
+    shape: '{"type":"question","target":ID,"label":"opcional"}',
   },
   num: {
     use: 'número de paso al lado de algo',
     shape: '{"type":"num","target":ID,"n":1}',
   },
   arrow: {
-    use: 'flecha entre dos elementos',
-    shape: '{"type":"arrow","from":ID,"to":ID,"label":"opcional"}',
+    use: 'flecha entre dos elementos: conecta causa y efecto, o lleva del problema a su arreglo',
+    shape:
+      '{"type":"arrow","from":ID,"to":ID,"label":"opcional","tone":"opcional"}',
   },
   target: {
     use: 'anillo que late: "haz clic aquí" para el siguiente paso del usuario',
@@ -67,6 +86,26 @@ export const MARKS: Record<string, { use: string; shape: string }> = {
   },
 };
 
+/**
+ * Color con significado, como HeyClicky: "problem" (rojo) lo que falla, "ok" (verde) lo que está
+ * bien, "doubt" (ámbar) lo que no se sabe; sin tone, el color de la ayuda (el del cursor).
+ */
+export const TONES = ['problem', 'ok', 'doubt', 'help'] as const;
+const TONED = new Set([
+  'ring',
+  'frame',
+  'underline',
+  'scribble',
+  'cross',
+  'check',
+  'question',
+  'arrow',
+]);
+const toneOf = (m: any) =>
+  TONED.has(m.type) && TONES.includes(m.tone) && m.tone !== 'help'
+    ? (m.tone as string)
+    : undefined;
+
 const str = (v: unknown, n: number) =>
   (typeof v === 'string' || typeof v === 'number' ? String(v) : '')
     .trim()
@@ -86,6 +125,10 @@ function cleanMark(m: any, ids: Set<string>): Mark | null {
     'frame',
     'highlight',
     'underline',
+    'scribble',
+    'cross',
+    'check',
+    'question',
     'num',
     'target',
   ];
@@ -96,6 +139,7 @@ function cleanMark(m: any, ids: Set<string>): Mark | null {
       target: m.target,
       label: m.label ? str(m.label, 32) : undefined,
       n: m.type === 'num' ? (num(m.n) ?? 1) : undefined,
+      tone: toneOf(m),
     };
   }
   switch (m.type) {
@@ -106,6 +150,7 @@ function cleanMark(m: any, ids: Set<string>): Mark | null {
             from: m.from,
             to: m.to,
             label: m.label ? str(m.label, 24) : undefined,
+            tone: toneOf(m),
           }
         : null;
     case 'chart': {
@@ -283,12 +328,15 @@ export function anchorWord(say: string, at: unknown): number {
  * (`word`): la que nombró el modelo en `at` o, si no, repartidas a lo largo de la frase,
  * como HeyClicky reparte los trazos sobre la línea que se está diciendo.
  */
+/** Una explicación completa, como las de HeyClicky, no un resumen de 3 frases. */
+export const MAX_BEATS = 10;
+
 export function cleanBeat(
   b: any,
   ids: Set<string>,
   budget: Budget,
 ): Beat | null {
-  if (typeof b?.say !== 'string' || !b.say.trim() || budget.beats >= 7)
+  if (typeof b?.say !== 'string' || !b.say.trim() || budget.beats >= MAX_BEATS)
     return null;
   const say = str(b.say, 220);
   const total = say.split(/\s+/).length;

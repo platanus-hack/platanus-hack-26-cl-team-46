@@ -255,6 +255,36 @@ export class ClickyService {
   }
 }
 
+const GESTURE = {
+  circle: 'encerró',
+  underline: 'subrayó',
+  point: 'señaló',
+} as const;
+
+/** Lo que el usuario marcó con el cursor, dicho para el modelo (su trazo también va en la captura). */
+export function describeAnnotation({
+  annotation,
+  elements,
+  screenshot,
+}: LessonBody): string {
+  if (!annotation) return '';
+  const byId = new Map(elements.map((e) => [e.id, e]));
+  const marked = annotation.elements
+    .map((id) => byId.get(id))
+    .filter((e) => !!e)
+    .map((e) => `- ${e.id} (${e.kind}): ${e.text.slice(0, 160)}`);
+  const { x, y, w, h } = annotation.box;
+  return [
+    `El usuario ${GESTURE[annotation.shape]} algo en la pantalla mientras preguntaba` +
+      (screenshot ? ' (su trazo amarillo se ve en la captura)' : '') +
+      `, en la zona x=${Math.round(x)} y=${Math.round(y)} de ${Math.round(w)}×${Math.round(h)} px.`,
+    marked.length
+      ? `Lo que quedó marcado:\n${marked.join('\n')}`
+      : 'No cubre ningún elemento de la lista: guíate por la captura.',
+    'Empieza por eso: tu primer beat lo marca y lo nombra.',
+  ].join('\n');
+}
+
 /**
  * La simulación es un ejercicio: mientras corre, Clicky explica lo que se ve pero no
  * entrega la contención (descubrirla es la lección, como con el agente de código).
@@ -277,6 +307,7 @@ export function buildMessages(
     phaseNote(simStatus),
     `Página: ${input.page.title} (${input.page.path})`,
     `Elementos en pantalla:\n${screen || '(ninguno)'}`,
+    describeAnnotation(input),
     `Pregunta: ${input.question}`,
   ]
     .filter(Boolean)
@@ -303,10 +334,36 @@ export function buildMessages(
 }
 
 /** Respuesta de ensayo (CLICKY_MOCK=true): usa lo que hay en pantalla, sin IA, con pausas como el modelo. */
-async function* mockBeats({ elements, page, screenshot }: LessonBody) {
+async function* mockBeats({
+  elements,
+  page,
+  screenshot,
+  annotation,
+}: LessonBody) {
   const title = elements.find((e) => e.kind.includes('título')) ?? elements[0];
   const button = elements.find((e) => e.kind === 'botón');
+  const marked =
+    annotation && elements.find((e) => annotation.elements.includes(e.id));
+  const other = elements.find(
+    (e) => e !== marked && e !== title && e.kind !== 'botón',
+  );
   const beats = [
+    ...(marked
+      ? [
+          {
+            say: `Esto que marcaste es ${marked.kind}: ${marked.text.slice(0, 40)}.`,
+            marks: [
+              {
+                type: 'ring',
+                target: marked.id,
+                tone: 'problem',
+                label: 'lo tuyo',
+                at: 'esto que marcaste',
+              },
+            ],
+          },
+        ]
+      : []),
     {
       say: `Estás en ${page.title || 'esta página'}; mira primero este título de aquí arriba.`,
       marks: title
@@ -335,6 +392,14 @@ async function* mockBeats({ elements, page, screenshot }: LessonBody) {
             },
           ]
         : [],
+    },
+    {
+      say: 'Esto de aquí está bien, esto otro preocupa y esto no lo sabemos.',
+      marks: [
+        title && { type: 'check', target: title.id, at: 'está bien' },
+        other && { type: 'scribble', target: other.id, at: 'preocupa' },
+        button && { type: 'question', target: button.id, at: 'no lo sabemos' },
+      ].filter(Boolean),
     },
     {
       say: 'Te dibujo cómo funciona un token de sesión.',

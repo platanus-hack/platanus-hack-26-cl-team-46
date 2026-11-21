@@ -39,6 +39,23 @@ export const lessonSchema = z.object({
   context: z.string().max(1500).default(''),
   /** false: el usuario apagó la voz, no se gasta ElevenLabs. */
   voice: z.boolean().default(true),
+  /**
+   * Lo que el usuario marcó con el cursor mientras preguntaba (Control + Option, como en
+   * HeyClicky): la forma, dónde quedó y los elementos que cubre. Su trazo se ve en la captura.
+   */
+  annotation: z
+    .object({
+      shape: z.enum(['circle', 'underline', 'point']),
+      box: z.object({
+        x: z.number().finite(),
+        y: z.number().finite(),
+        w: z.number().finite().min(0),
+        h: z.number().finite().min(0),
+      }),
+      elements: z.array(z.string().max(80)).max(6).default([]),
+    })
+    .nullable()
+    .default(null),
 });
 
 export type LessonBody = z.infer<typeof lessonSchema>;

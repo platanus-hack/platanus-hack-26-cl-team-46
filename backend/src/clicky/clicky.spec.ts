@@ -4,9 +4,13 @@ import { describe, expect, it, vi } from 'vitest';
 import { ClickyAccessGuard } from './clicky-access.guard.js';
 import { lessonSchema } from './clicky.schemas.js';
 import { BeatScanner } from './brain.js';
-import { ClickyService, type LessonEvent } from './clicky.service.js';
+import {
+  ClickyService,
+  describeAnnotation,
+  type LessonEvent,
+} from './clicky.service.js';
 import { liveSttUrl, wordStarts } from './elevenlabs.js';
-import { anchorWord, cleanLesson } from './protocol.js';
+import { anchorWord, cleanLesson, MAX_BEATS } from './protocol.js';
 
 const ctx = (headers: Record<string, string>, ip = '1.2.3.4') => {
   const req = { headers, ip } as never;
@@ -312,10 +316,11 @@ describe('ClickyService.lesson (ensayo)', () => {
       page: { title: 'Mayday', path: '/simulate' },
       context: '',
       voice: true,
+      annotation: null,
     }))
       events.push(e);
     expect(events.map((e) => e.type)).toEqual([
-      ...Array(7).fill('beat'),
+      ...Array(9).fill('beat'),
       'done',
     ]);
     const second = events[1] as Extract<LessonEvent, { type: 'beat' }>;
@@ -337,8 +342,143 @@ describe('ClickyService.lesson (ensayo)', () => {
       page: { title: '', path: '' },
       context: '',
       voice: false,
+      annotation: null,
     });
     await expect(it.next()).rejects.toThrow(/máximo de preguntas/);
+  });
+});
+
+describe('marcas con color y formas variadas', () => {
+  const ids = new Set(['err', 'ok', 'dato']);
+
+  it('acepta garabato, tacha, tick y pregunta, con el tono que corresponde', () => {
+    const [beat] = cleanLesson(
+      {
+        beats: [
+          {
+            say: 'El error preocupa, lo viejo sobra y el dato no calza',
+            marks: [
+              { type: 'scribble', target: 'err', at: 'preocupa' },
+              { type: 'cross', target: 'ok', at: 'sobra' },
+              { type: 'question', target: 'dato', at: 'no calza' },
+              { type: 'check', target: 'nope', at: 'dato' },
+            ],
+          },
+        ],
+      },
+      ids,
+    );
+    expect(beat.marks.map((m) => m.type)).toEqual([
+      'scribble',
+      'cross',
+      'question',
+    ]);
+    expect(beat.marks.map((m) => m.word)).toEqual([2, 5, 9]);
+  });
+
+  it('el tono solo vale en las marcas que lo usan y con valores conocidos', () => {
+    const [beat] = cleanLesson(
+      {
+        beats: [
+          {
+            say: 'Mira este error y este dato',
+            marks: [
+              {
+                type: 'ring',
+                target: 'err',
+                tone: 'problem',
+                at: 'este error',
+              },
+              {
+                type: 'highlight',
+                target: 'dato',
+                tone: 'problem',
+                at: 'este dato',
+              },
+              { type: 'underline', target: 'ok', tone: 'rojo', at: 'mira' },
+              { type: 'arrow', from: 'err', to: 'dato', tone: 'help', at: 'y' },
+            ],
+          },
+        ],
+      },
+      ids,
+    );
+    expect(beat.marks.find((m) => m.type === 'ring')?.tone).toBe('problem');
+    expect(
+      beat.marks.find((m) => m.type === 'highlight')?.tone,
+    ).toBeUndefined();
+    expect(
+      beat.marks.find((m) => m.type === 'underline')?.tone,
+    ).toBeUndefined();
+    expect(beat.marks.find((m) => m.type === 'arrow')?.tone).toBeUndefined();
+  });
+
+  it('deja explicar completo: hasta MAX_BEATS frases', () => {
+    const beats = Array.from({ length: 14 }, (_, i) => ({
+      say: `Frase número ${i} de la explicación`,
+      marks: [],
+    }));
+    expect(cleanLesson({ beats }, ids)).toHaveLength(MAX_BEATS);
+  });
+});
+
+describe('lo que marca el usuario (Control + Option)', () => {
+  const body = (annotation: unknown) =>
+    lessonSchema.safeParse({
+      question: '¿qué es esto?',
+      elements: [
+        { id: 'e1', kind: 'texto', text: 'Token expirado' },
+        { id: 'e2', kind: 'botón', text: 'Rotar' },
+      ],
+      annotation,
+    });
+
+  it('valida la forma del gesto', () => {
+    expect(
+      body({
+        shape: 'circle',
+        box: { x: 10, y: 20, w: 80, h: 40 },
+        elements: ['e1'],
+      }).success,
+    ).toBe(true);
+    expect(
+      body({ shape: 'spiral', box: { x: 0, y: 0, w: 1, h: 1 } }).success,
+    ).toBe(false);
+    expect(body(undefined).data?.annotation).toBeNull();
+  });
+
+  it('le dice al modelo qué encerró y que parta por ahí', () => {
+    const parsed = body({
+      shape: 'circle',
+      box: { x: 10, y: 20, w: 80, h: 40 },
+      elements: ['e1', 'zz'],
+    });
+    const text = describeAnnotation(parsed.data!);
+    expect(text).toMatch(/encerró/);
+    expect(text).toMatch(/e1 \(texto\): Token expirado/);
+    expect(text).not.toMatch(/zz/);
+    expect(text).toMatch(/primer beat/);
+  });
+
+  it('el ensayo empieza por lo que marcó', async () => {
+    const s = new ClickyService({
+      get: vi.fn(
+        (k: string) =>
+          ({ CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 5 })[k],
+      ),
+    } as never);
+    const parsed = body({
+      shape: 'underline',
+      box: { x: 0, y: 0, w: 90, h: 6 },
+      elements: ['e1'],
+    });
+    const first = await s
+      .lesson('sim-0a1b2c3d', { ...parsed.data!, voice: false })
+      .next();
+    expect(first.value).toMatchObject({
+      type: 'beat',
+      marks: [{ type: 'ring', target: 'e1', tone: 'problem' }],
+    });
   });
 });
 

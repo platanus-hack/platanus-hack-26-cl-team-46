@@ -5,7 +5,7 @@ import { prepareAudio, speak } from './voice.js';
 // time it has before the next mark's word, as HeyClicky paces its strokes to the line being said.
 const COST = {
   ring: 1.3, frame: 1.4, highlight: 0.6, underline: 0.7, num: 0.5, arrow: 1.1, target: 0.7, spotlight: 0.4,
-  note: 0.5, button: 0.2,
+  note: 0.5, button: 0.2, scribble: 0.9, cross: 0.6, check: 0.45, question: 0.5,
   card: m => 0.5 + 0.6 * (m.items?.length || 0),
   chart: m => 1 + 0.55 * (m.bars?.length || 0) + (m.note ? 0.6 : 0),
   board: 0.5, node: 0.9, edge: m => (m.label ? 0.75 : 0.55),
