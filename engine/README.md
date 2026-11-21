@@ -135,8 +135,8 @@ shapes y tablas exactas), el payload SQLi (esquema Postgres), `catalog.ts`
 - [x] **M0** — separación framework ↔ plugins (`core/` + `plugins/apuntes/`, contrato `EnginePlugin`).
 - [x] **M1** — cost ledger por corrida (`core/ledger.ts`).
 - [x] **M2** — discovery del repo (`discovery/`: manifests, rutas Express/Flask, OpenAPI, señales) + correlación hallazgo↔archivo/línea (JS/TS + Python).
-- [ ] **M3** — scheduler (DAG/lanes, rate budget).
-- [ ] **M4** — variantes de ataque + diagnosis ampliado (veredicto/confianza/causa raíz).
-- [ ] **M5** — 2º dummy stack (Flask+SQLite) para generalización.
-- [ ] **M6** — providers LLM con gate + fuentes externas (`semgrep` → `nuclei` → ARTEX, tras review).
-- [ ] **M7** — Render (pendiente de créditos).
+- [x] **M3** — scheduler (DAG/lanes, mutex/baseline, explica paralelo vs secuencial).
+- [x] **M4** — variantes de ataque (F) + diagnóstico estructurado (I): veredicto/confianza/causa raíz(FileRef)/remediación/re-verify.
+- [x] **M5** — 2º target "Tasks" (plugin+fixture) con vulns solapadas/no solapadas → generalización del core.
+- [x] **M6** — providers (interfaz + tier Haiku/Sonnet/Opus) + **gate** de artefactos generados + **provenance** de fuentes externas (`semgrep`/`nuclei`/ARTEX **no aprobadas hasta review supervisado**; LLM real inerte hasta habilitar).
+- [ ] **M7** — Render (pendiente de créditos). Correr providers LLM reales, bajar/correr ARTEX/scanners y 2º stack en contenedor son checkpoints supervisados con Sebastián.
