@@ -152,6 +152,11 @@ export interface TargetConfig {
   seed_users: Array<{ email: string; password?: string; role?: string }>;
   /** Credencial débil conocida para la demo de fuerza bruta (si la hay). */
   weak_login?: { email: string; password: string };
+  /** Rutas para los módulos destructivos (opcionales; defaults razonables). */
+  dos_path?: string; // endpoint a estresar (default '/')
+  ssrf_path?: string; // endpoint que hace fetch de una URL del usuario (default '/fetch')
+  chat_path?: string; // endpoint LLM para prompt injection (default '/chat')
+  redirect_path?: string; // endpoint de redirect para phishing (default '/go')
 }
 
 /** Contexto que recibe cada módulo de ataque. */
@@ -188,6 +193,9 @@ export interface Attack {
   meta: VulnMeta;
   /** true si crea/modifica estado en el target (cuentas, notas, roles). */
   mutating: boolean;
+  /** true si genera daño real (DoS, etc.): solo corre en modo --destructive y
+   *  contra un contenedor desechable autorizado. */
+  destructive?: boolean;
   /** Metadata de scheduling (si falta, se asume independiente y paralelizable). */
   scheduling?: SchedulingMeta;
   /** Ejecuta el ataque real y devuelve el resultado con evidencia. */

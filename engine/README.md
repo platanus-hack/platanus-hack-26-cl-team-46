@@ -139,4 +139,5 @@ shapes y tablas exactas), el payload SQLi (esquema Postgres), `catalog.ts`
 - [x] **M4** — variantes de ataque (F) + diagnóstico estructurado (I): veredicto/confianza/causa raíz(FileRef)/remediación/re-verify.
 - [x] **M5** — 2º target "Tasks" (plugin+fixture) con vulns solapadas/no solapadas → generalización del core.
 - [x] **M6** — providers (interfaz + tier Haiku/Sonnet/Opus) + **gate** de artefactos generados + **provenance** de fuentes externas (`semgrep`/`nuclei`/ARTEX **no aprobadas hasta review supervisado**; LLM real inerte hasta habilitar).
-- [ ] **M7** — Render (pendiente de créditos). Correr providers LLM reales, bajar/correr ARTEX/scanners y 2º stack en contenedor son checkpoints supervisados con Sebastián.
+- [x] **M8** — modo agresivo/destructivo (`--destructive`): DoS acotado, SSRF→secrets+lateral, prompt-injection (ATLAS), phishing (open-redirect, entrega simulada) + análisis de deploy/CICD; cascada LLM Sonnet 4.5→DeepSeek→GLM; despliegue del motor (Dockerfile + render.yaml + modal_app.py, server `/run`).
+- [ ] **M7** — Render (pendiente de créditos) + ejecución live de providers LLM, ARTEX/scanners y corridas destructivas (checkpoints supervisados; ahora bloqueados por key LLM ausente / Docker daemon / reset del sandbox).

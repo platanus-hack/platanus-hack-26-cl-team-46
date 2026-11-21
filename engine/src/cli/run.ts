@@ -21,9 +21,14 @@ import { renderGuide } from '../core/report.ts';
 import { buildScenarioPack } from '../core/scenario.ts';
 import type { TargetConfig } from '../core/types.ts';
 import { apuntesPlugin } from '../plugins/apuntes/index.ts';
+import { tasksPlugin } from '../plugins/tasks/index.ts';
+import { analyzeCicd, destructivePlugin } from '../plugins/destructive/index.ts';
 
-// Plugin activo. En el futuro se seleccionará según el repo del EngagementSpec.
-const plugin = apuntesPlugin;
+const PLUGINS: Record<string, typeof apuntesPlugin> = {
+  apuntes: apuntesPlugin,
+  tasks: tasksPlugin,
+  destructive: destructivePlugin,
+};
 
 const HELP = `Motor de hacking — diagnóstico real contra una app controlada y autorizada.
 
@@ -34,6 +39,8 @@ Obligatorio:
   --url <url>            Target autorizado. SOLO se ataca este host (scope guard).
 
 Opciones:
+  --plugin <p>          apuntes | tasks | destructive           (default: apuntes)
+  --destructive         Habilita módulos que GENERAN DAÑO (DoS, SSRF, etc.). Solo contenedor desechable.
   --profile <p>         noisy | normal | fast | stealth        (default: fast)
   --seed <s>            Semilla para reproducibilidad            (default: "default")
   --budget <usd>        Tope de costo LLM por corrida             (default: 5)
@@ -90,6 +97,8 @@ async function main() {
   const seed = arg('seed', 'default')!;
   const budgetUsd = Number(arg('budget', '5'));
   const readOnly = flag('read-only');
+  const destructive = flag('destructive');
+  const plugin = PLUGINS[arg('plugin', 'apuntes')!] ?? apuntesPlugin;
   const outRoot = arg('out', path.resolve(import.meta.dirname, '../../out'))!;
 
   const target: TargetConfig = {
@@ -99,8 +108,12 @@ async function main() {
     weak_login: weakEmail && weakPass ? { email: weakEmail, password: weakPass } : undefined,
   };
 
-  console.log(`\n🎯 Motor de hacking → ${target.url}  (scope: ${parsed.origin})`);
-  console.log(`   solo se ataca este host autorizado · perfil ${profile} · seed ${seed}${readOnly ? ' · read-only' : ''}\n`);
+  console.log(`\n🎯 Motor de hacking → ${target.url}  (scope: ${parsed.origin}) · plugin ${plugin.id}`);
+  console.log(`   solo se ataca este host autorizado · perfil ${profile} · seed ${seed}${readOnly ? ' · read-only' : ''}`);
+  if (destructive) {
+    console.log('   ⚠️  MODO DESTRUCTIVO: genera daño real. Solo contra un contenedor desechable autorizado (no producción, no infra compartida sin permiso).');
+  }
+  console.log('');
 
   // Fase discovery (A): el repo participa. Correlaciona hallazgos con archivo/línea.
   const repoPath = arg('repo');
@@ -114,7 +127,14 @@ async function main() {
   }
 
   const reconReport = flag('no-recon') ? undefined : await recon(target, plugin.reconCandidates, { seed, log: (m) => console.log(m) });
-  const diag = await diagnose(target, plugin, { only, profile, seed, readOnly, log: (m) => console.log(m) });
+  const diag = await diagnose(target, plugin, { only, profile, seed, readOnly, destructive, log: (m) => console.log(m) });
+
+  // Análisis de deploy/CICD del repo (read-only).
+  let cicd;
+  if (repoPath) {
+    cicd = await analyzeCicd(path.resolve(repoPath), arg('commit'));
+    if (cicd.length) console.log(`▶ cicd: ${cicd.length} hallazgo(s) en workflows (${[...new Set(cicd.map((c) => c.kind))].join(', ')})`);
+  }
 
   const scenarios = buildScenarioPack(diag, plugin);
   const plan = buildAttackPlan(diag, plugin, reconReport);
@@ -187,6 +207,7 @@ async function main() {
   await writeFile(path.join(outDir, 'cost-ledger.json'), JSON.stringify(ledgerSnap, null, 2));
   await writeFile(path.join(outDir, 'diagnoses.json'), JSON.stringify(diagnoses, null, 2));
   if (repoModel) await writeFile(path.join(outDir, 'repo-model.json'), JSON.stringify(repoModel, null, 2));
+  if (cicd && cicd.length) await writeFile(path.join(outDir, 'cicd.json'), JSON.stringify(cicd, null, 2));
   if (llmAngles) await writeFile(path.join(outDir, 'llm-angles.json'), JSON.stringify(llmAngles, null, 2));
   await writeFile(path.join(outDir, 'GUIA-DEL-HACKEO.md'), guide);
   for (const sc of scenarios) {

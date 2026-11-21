@@ -43,6 +43,8 @@ export interface DiagnoseOpts {
   profile?: ProfileName;
   seed?: string;
   readOnly?: boolean;
+  /** Habilita los módulos destructivos (DoS, etc.). Default: OFF. */
+  destructive?: boolean;
   clock?: Clock;
 }
 
@@ -58,6 +60,8 @@ export async function diagnose(target: TargetConfig, plugin: EnginePlugin, opts:
 
   let toRun: Attack[] = opts.only ? plugin.attacks.filter((a) => opts.only!.includes(a.meta.id)) : plugin.attacks;
   if (opts.readOnly) toRun = toRun.filter((a) => !a.mutating);
+  // Los módulos destructivos solo corren en modo --destructive (contenedor desechable).
+  if (!opts.destructive) toRun = toRun.filter((a) => !a.destructive);
   if (profile.shuffle) toRun = shuffle(makeRng(`${seed}:order`), toRun);
 
   log(`perfil: ${profile.name} · seed: ${seed}${opts.readOnly ? ' · read-only' : ''} (concurrencia ${profile.concurrency}, jitter ${profile.minDelayMs}-${profile.maxDelayMs}ms, identidad ${profile.rotateIdentity})`);

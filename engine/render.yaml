@@ -1,0 +1,19 @@
+# Despliegue del motor en Render (primario). El fallback es Modal (modal_app.py).
+services:
+  - type: web
+    name: hack26-engine
+    runtime: docker
+    dockerfilePath: ./engine/Dockerfile
+    dockerContext: ./engine
+    plan: starter        # el motor corre ataques: no usar free para cargas reales
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 8080
+      # Keys de la cascada LLM (configurar en el dashboard, NO en el repo):
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: GLM_API_KEY
+        sync: false
