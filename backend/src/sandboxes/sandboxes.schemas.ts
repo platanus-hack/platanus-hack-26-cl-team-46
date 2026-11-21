@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
-const envKey = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'nombre de variable inválido');
+const envKey = z
+  .string()
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'nombre de variable inválido');
 
 export const createSandboxSchema = z.object({
   repo_url: z
@@ -15,7 +17,9 @@ export const createSandboxSchema = z.object({
 
 /** Valores que el agente le pidió al usuario (API keys, etc.). */
 export const provideInputsSchema = z.object({
-  env: z.record(envKey, z.string().min(1)).refine((v) => Object.keys(v).length > 0, 'Indica al menos una variable'),
+  env: z
+    .record(envKey, z.string().min(1))
+    .refine((v) => Object.keys(v).length > 0, 'Indica al menos una variable'),
 });
 export type ProvideInputsBody = z.infer<typeof provideInputsSchema>;
 
@@ -24,7 +28,11 @@ export const redeploySchema = z
     /** Diff unificado (formato `git diff`), relativo a la raíz del repo. */
     patch: z.string().min(1).optional(),
     /** Alternativa al diff: contenido completo de archivos. content null = borrar. */
-    files: z.array(z.object({ path: z.string().min(1), content: z.string().nullable() })).optional(),
+    files: z
+      .array(
+        z.object({ path: z.string().min(1), content: z.string().nullable() }),
+      )
+      .optional(),
     message: z.string().min(1).max(200).optional(),
     clear_cache: z.boolean().optional(),
   })
@@ -39,12 +47,22 @@ export const setEnvSchema = z
     /** Gatillar un deploy para que los cambios tomen efecto (default true). */
     deploy: z.boolean().optional(),
   })
-  .refine((v) => v.env || v.generate?.length || v.unset?.length, 'Indica env, generate o unset');
+  .refine(
+    (v) => v.env || v.generate?.length || v.unset?.length,
+    'Indica env, generate o unset',
+  );
 
 const csv = z
   .string()
   .optional()
-  .transform((v) => (v ? v.split(',').map((x) => x.trim()).filter(Boolean) : undefined));
+  .transform((v) =>
+    v
+      ? v
+          .split(',')
+          .map((x) => x.trim())
+          .filter(Boolean)
+      : undefined,
+  );
 
 export const logsQuerySchema = z.object({
   startTime: z.iso.datetime().optional(),

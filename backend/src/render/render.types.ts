@@ -1,6 +1,7 @@
 /** Subconjunto tipado de la API v1 de Render que usamos. https://api-docs.render.com */
 
-export type RenderRegion = 'oregon' | 'ohio' | 'virginia' | 'frankfurt' | 'singapore';
+export type RenderRegion =
+  'oregon' | 'ohio' | 'virginia' | 'frankfurt' | 'singapore';
 
 export interface RenderOwner {
   id: string;
@@ -10,8 +11,7 @@ export interface RenderOwner {
 }
 
 export type RenderEnvVarInput =
-  | { key: string; value: string }
-  | { key: string; generateValue: true };
+  { key: string; value: string } | { key: string; generateValue: true };
 
 export interface CreateWebServiceInput {
   name: string;

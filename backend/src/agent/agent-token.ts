@@ -10,15 +10,25 @@ export function signAgentToken(secret: string, sandboxId: string): string {
   return `${sandboxId}.${mac(secret, sandboxId)}`;
 }
 
-export function verifyAgentToken(secret: string, token: string, sandboxId: string): boolean {
+export function verifyAgentToken(
+  secret: string,
+  token: string,
+  sandboxId: string,
+): boolean {
   const dot = token.lastIndexOf('.');
   if (dot <= 0) return false;
   const id = token.slice(0, dot);
   const given = Buffer.from(token.slice(dot + 1));
   const expected = Buffer.from(mac(secret, sandboxId));
-  return id === sandboxId && given.length === expected.length && timingSafeEqual(given, expected);
+  return (
+    id === sandboxId &&
+    given.length === expected.length &&
+    timingSafeEqual(given, expected)
+  );
 }
 
 function mac(secret: string, sandboxId: string): string {
-  return createHmac('sha256', secret).update(`agent:${sandboxId}`).digest('base64url');
+  return createHmac('sha256', secret)
+    .update(`agent:${sandboxId}`)
+    .digest('base64url');
 }

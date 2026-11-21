@@ -7,7 +7,9 @@ async function bootstrap() {
     instrument: ObserveInstrument,
   });
   app.useGlobalPipes(new StandardSchemaValidationPipe());
-  app.enableCors({ origin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(',') });
+  app.enableCors({
+    origin: (process.env.CORS_ORIGIN ?? 'http://localhost:3000').split(','),
+  });
   app.enableShutdownHooks();
   await app.listen(process.env.PORT ?? 3001);
 }

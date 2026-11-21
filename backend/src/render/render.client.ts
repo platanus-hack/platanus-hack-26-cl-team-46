@@ -15,10 +15,20 @@ import type {
 } from './render.types.js';
 
 function envSpecificDetails(
-  input: Pick<CreateWebServiceInput, 'runtime' | 'buildCommand' | 'startCommand' | 'dockerfilePath' | 'dockerContext'>,
+  input: Pick<
+    CreateWebServiceInput,
+    | 'runtime'
+    | 'buildCommand'
+    | 'startCommand'
+    | 'dockerfilePath'
+    | 'dockerContext'
+  >,
 ) {
   return input.runtime === 'docker'
-    ? { dockerfilePath: input.dockerfilePath ?? './Dockerfile', dockerContext: input.dockerContext ?? '.' }
+    ? {
+        dockerfilePath: input.dockerfilePath ?? './Dockerfile',
+        dockerContext: input.dockerContext ?? '.',
+      }
     : { buildCommand: input.buildCommand, startCommand: input.startCommand };
 }
 
@@ -63,10 +73,18 @@ export class RenderClient {
     this.ownerIdPromise ??= (async () => {
       const configured = this.config.get('RENDER_OWNER_ID', { infer: true });
       if (configured) return configured;
-      const owners = await this.request<Listed<'owner', RenderOwner>>('GET', '/owners?limit=20');
+      const owners = await this.request<Listed<'owner', RenderOwner>>(
+        'GET',
+        '/owners?limit=20',
+      );
       const first = owners[0]?.owner;
-      if (!first) throw new Error('La API key de Render no tiene ningún workspace asociado');
-      this.logger.log(`Usando workspace de Render "${first.name}" (${first.id})`);
+      if (!first)
+        throw new Error(
+          'La API key de Render no tiene ningún workspace asociado',
+        );
+      this.logger.log(
+        `Usando workspace de Render "${first.name}" (${first.id})`,
+      );
       return first.id;
     })();
     return this.ownerIdPromise;
@@ -74,7 +92,9 @@ export class RenderClient {
 
   // -------------------------------------------------------------- services
 
-  async createWebService(input: CreateWebServiceInput): Promise<{ service: RenderService; deployId?: string }> {
+  async createWebService(
+    input: CreateWebServiceInput,
+  ): Promise<{ service: RenderService; deployId?: string }> {
     const body = {
       type: 'web_service',
       name: input.name,
@@ -92,11 +112,9 @@ export class RenderClient {
         envSpecificDetails: envSpecificDetails(input),
       },
     };
-    const res = await this.request<{ service?: RenderService; deployId?: string } & Partial<RenderService>>(
-      'POST',
-      '/services',
-      body,
-    );
+    const res = await this.request<
+      { service?: RenderService; deployId?: string } & Partial<RenderService>
+    >('POST', '/services', body);
     // La API devuelve { service, deployId }; por si acaso aceptamos también el servicio plano.
     const service = (res.service ?? res) as RenderService;
     return { service, deployId: res.deployId };
@@ -107,7 +125,13 @@ export class RenderClient {
     serviceId: string,
     input: Pick<
       CreateWebServiceInput,
-      'runtime' | 'rootDir' | 'healthCheckPath' | 'buildCommand' | 'startCommand' | 'dockerfilePath' | 'dockerContext'
+      | 'runtime'
+      | 'rootDir'
+      | 'healthCheckPath'
+      | 'buildCommand'
+      | 'startCommand'
+      | 'dockerfilePath'
+      | 'dockerContext'
     >,
   ): Promise<RenderService> {
     return this.request('PATCH', `/services/${serviceId}`, {
@@ -121,7 +145,10 @@ export class RenderClient {
   }
 
   /** Reemplaza TODAS las env vars del servicio. No despliega. */
-  async replaceEnvVars(serviceId: string, envVars: RenderEnvVarInput[]): Promise<void> {
+  async replaceEnvVars(
+    serviceId: string,
+    envVars: RenderEnvVarInput[],
+  ): Promise<void> {
     await this.request('PUT', `/services/${serviceId}/env-vars`, envVars);
   }
 
@@ -130,22 +157,38 @@ export class RenderClient {
   }
 
   async deleteService(serviceId: string): Promise<void> {
-    await this.request('DELETE', `/services/${serviceId}`, undefined, { allow404: true });
+    await this.request('DELETE', `/services/${serviceId}`, undefined, {
+      allow404: true,
+    });
   }
 
   async restartService(serviceId: string): Promise<void> {
     await this.request('POST', `/services/${serviceId}/restart`);
   }
 
-  async setEnvVar(serviceId: string, key: string, value: string | { generate: true }): Promise<void> {
-    const body = typeof value === 'string' ? { value } : { generateValue: true };
-    await this.request('PUT', `/services/${serviceId}/env-vars/${encodeURIComponent(key)}`, body);
+  async setEnvVar(
+    serviceId: string,
+    key: string,
+    value: string | { generate: true },
+  ): Promise<void> {
+    const body =
+      typeof value === 'string' ? { value } : { generateValue: true };
+    await this.request(
+      'PUT',
+      `/services/${serviceId}/env-vars/${encodeURIComponent(key)}`,
+      body,
+    );
   }
 
   async deleteEnvVar(serviceId: string, key: string): Promise<void> {
-    await this.request('DELETE', `/services/${serviceId}/env-vars/${encodeURIComponent(key)}`, undefined, {
-      allow404: true,
-    });
+    await this.request(
+      'DELETE',
+      `/services/${serviceId}/env-vars/${encodeURIComponent(key)}`,
+      undefined,
+      {
+        allow404: true,
+      },
+    );
   }
 
   // --------------------------------------------------------------- deploys
@@ -155,10 +198,14 @@ export class RenderClient {
     serviceId: string,
     opts: { commitId?: string; clearCache?: boolean } = {},
   ): Promise<RenderDeploy | undefined> {
-    const res = await this.request<RenderDeploy | undefined>('POST', `/services/${serviceId}/deploys`, {
-      clearCache: opts.clearCache ? 'clear' : 'do_not_clear',
-      commitId: opts.commitId,
-    });
+    const res = await this.request<RenderDeploy | undefined>(
+      'POST',
+      `/services/${serviceId}/deploys`,
+      {
+        clearCache: opts.clearCache ? 'clear' : 'do_not_clear',
+        commitId: opts.commitId,
+      },
+    );
     return res && 'id' in res ? res : undefined;
   }
 
@@ -167,7 +214,10 @@ export class RenderClient {
   }
 
   async latestDeploy(serviceId: string): Promise<RenderDeploy | undefined> {
-    const list = await this.request<Listed<'deploy', RenderDeploy>>('GET', `/services/${serviceId}/deploys?limit=1`);
+    const list = await this.request<Listed<'deploy', RenderDeploy>>(
+      'GET',
+      `/services/${serviceId}/deploys?limit=1`,
+    );
     return list[0]?.deploy;
   }
 
@@ -191,7 +241,10 @@ export class RenderClient {
   async findPostgresByName(name: string): Promise<RenderPostgres | undefined> {
     const ownerId = await this.ownerId();
     const qs = new URLSearchParams({ name, ownerId, limit: '20' });
-    const list = await this.request<Listed<'postgres', RenderPostgres>>('GET', `/postgres?${qs}`);
+    const list = await this.request<Listed<'postgres', RenderPostgres>>(
+      'GET',
+      `/postgres?${qs}`,
+    );
     return list.map((x) => x.postgres).find((p) => p.name === name);
   }
 
@@ -199,12 +252,16 @@ export class RenderClient {
     return this.request('GET', `/postgres/${postgresId}`);
   }
 
-  getPostgresConnectionInfo(postgresId: string): Promise<RenderPostgresConnectionInfo> {
+  getPostgresConnectionInfo(
+    postgresId: string,
+  ): Promise<RenderPostgresConnectionInfo> {
     return this.request('GET', `/postgres/${postgresId}/connection-info`);
   }
 
   async deletePostgres(postgresId: string): Promise<void> {
-    await this.request('DELETE', `/postgres/${postgresId}`, undefined, { allow404: true });
+    await this.request('DELETE', `/postgres/${postgresId}`, undefined, {
+      allow404: true,
+    });
   }
 
   // ------------------------------------------------------------------ logs
@@ -243,8 +300,11 @@ export class RenderClient {
 
       // Rate limit: reintenta con backoff.
       if (res.status === 429 && attempt < 5) {
-        const retryAfter = Number(res.headers.get('retry-after')) || 2 ** attempt;
-        this.logger.warn(`Render rate limit en ${method} ${path}; reintento en ${retryAfter}s`);
+        const retryAfter =
+          Number(res.headers.get('retry-after')) || 2 ** attempt;
+        this.logger.warn(
+          `Render rate limit en ${method} ${path}; reintento en ${retryAfter}s`,
+        );
         await new Promise((r) => setTimeout(r, retryAfter * 1000));
         continue;
       }

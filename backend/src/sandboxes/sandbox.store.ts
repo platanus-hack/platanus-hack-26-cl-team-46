@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
@@ -22,7 +27,10 @@ export class SandboxStore implements OnModuleInit, OnModuleDestroy {
   private writing: Promise<void> = Promise.resolve();
 
   constructor(config: ConfigService<Env, true>) {
-    this.file = path.resolve(config.get('DATA_DIR', { infer: true }), 'sandboxes.json');
+    this.file = path.resolve(
+      config.get('DATA_DIR', { infer: true }),
+      'sandboxes.json',
+    );
     this.databaseUrl = config.get('DATABASE_URL', { infer: true });
   }
 
@@ -31,7 +39,9 @@ export class SandboxStore implements OnModuleInit, OnModuleDestroy {
       this.pool = new pg.Pool({
         connectionString: this.databaseUrl,
         // La URL interna de Render no usa SSL; la externa sí.
-        ssl: this.databaseUrl.includes('.render.com') ? { rejectUnauthorized: false } : undefined,
+        ssl: this.databaseUrl.includes('.render.com')
+          ? { rejectUnauthorized: false }
+          : undefined,
         max: 3,
       });
       await this.pool.query(
@@ -41,18 +51,25 @@ export class SandboxStore implements OnModuleInit, OnModuleDestroy {
            updated_at timestamptz NOT NULL DEFAULT now()
          )`,
       );
-      const { rows } = await this.pool.query<{ data: SandboxRecord }>('SELECT data FROM sandboxes');
-      for (const r of rows) this.items.set(r.data.sandbox_id, normalize(r.data));
+      const { rows } = await this.pool.query<{ data: SandboxRecord }>(
+        'SELECT data FROM sandboxes',
+      );
+      for (const r of rows)
+        this.items.set(r.data.sandbox_id, normalize(r.data));
       this.logger.log(`Cargados ${rows.length} sandboxes desde Postgres`);
       return;
     }
     if (!existsSync(this.file)) return;
     try {
-      const list = JSON.parse(await readFile(this.file, 'utf8')) as SandboxRecord[];
+      const list = JSON.parse(
+        await readFile(this.file, 'utf8'),
+      ) as SandboxRecord[];
       for (const s of list) this.items.set(s.sandbox_id, normalize(s));
       this.logger.log(`Cargados ${list.length} sandboxes desde ${this.file}`);
     } catch (err) {
-      this.logger.error(`No se pudo leer ${this.file}: ${(err as Error).message}`);
+      this.logger.error(
+        `No se pudo leer ${this.file}: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -66,11 +83,16 @@ export class SandboxStore implements OnModuleInit, OnModuleDestroy {
   }
 
   list(): SandboxRecord[] {
-    return [...this.items.values()].sort((a, b) => b.created_at.localeCompare(a.created_at));
+    return [...this.items.values()].sort((a, b) =>
+      b.created_at.localeCompare(a.created_at),
+    );
   }
 
   /** Aplica un cambio parcial y persiste. */
-  update(id: string, patch: Partial<SandboxRecord> | ((s: SandboxRecord) => void)): SandboxRecord {
+  update(
+    id: string,
+    patch: Partial<SandboxRecord> | ((s: SandboxRecord) => void),
+  ): SandboxRecord {
     const current = this.items.get(id);
     if (!current) throw new Error(`Sandbox ${id} no existe`);
     if (typeof patch === 'function') patch(current);
@@ -98,7 +120,11 @@ export class SandboxStore implements OnModuleInit, OnModuleDestroy {
             [record.sandbox_id, json],
           );
         })
-        .catch((err) => this.logger.error(`No se pudo persistir ${record.sandbox_id}: ${(err as Error).message}`));
+        .catch((err) =>
+          this.logger.error(
+            `No se pudo persistir ${record.sandbox_id}: ${(err as Error).message}`,
+          ),
+        );
       return;
     }
     const snapshot = JSON.stringify(this.list(), null, 2);
@@ -109,7 +135,9 @@ export class SandboxStore implements OnModuleInit, OnModuleDestroy {
         await writeFile(tmp, snapshot);
         await rename(tmp, this.file);
       })
-      .catch((err) => this.logger.error(`No se pudo persistir: ${(err as Error).message}`));
+      .catch((err) =>
+        this.logger.error(`No se pudo persistir: ${(err as Error).message}`),
+      );
   }
 }
 

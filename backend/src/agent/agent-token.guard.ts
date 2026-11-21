@@ -1,4 +1,10 @@
-import { CanActivate, ExecutionContext, Injectable, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import type { Env } from '../config/env.js';
@@ -14,13 +20,18 @@ export class AgentTokenGuard implements CanActivate {
 
   canActivate(ctx: ExecutionContext): boolean {
     const secret = this.config.get('AGENT_API_SECRET', { infer: true });
-    if (!secret) throw new ServiceUnavailableException('AGENT_API_SECRET no está configurado');
+    if (!secret)
+      throw new ServiceUnavailableException(
+        'AGENT_API_SECRET no está configurado',
+      );
     const req = ctx.switchToHttp().getRequest<Request>();
     const header = req.headers.authorization ?? '';
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
     const id = String(req.params.id ?? '');
     if (!token || !id || !verifyAgentToken(secret, token, id)) {
-      throw new UnauthorizedException('Token de agente inválido para este sandbox');
+      throw new UnauthorizedException(
+        'Token de agente inválido para este sandbox',
+      );
     }
     return true;
   }

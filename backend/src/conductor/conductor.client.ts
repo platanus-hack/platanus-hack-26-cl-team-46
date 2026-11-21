@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
 
 export type ConductorSessionStatus = 'idle' | 'working' | 'error';
+export type ConductorWorkspaceStatus =
+  'initializing' | 'ready' | 'sleeping' | 'archived' | 'deleted' | 'updating';
 
 export interface CreateWorkspaceInput {
   name: string;
@@ -21,11 +23,15 @@ export class ConductorClient {
   private readonly apiKey?: string;
 
   constructor(private readonly config: ConfigService<Env, true>) {
-    this.baseUrl = this.config.get('CONDUCTOR_API_URL', { infer: true }).replace(/\/+$/, '');
+    this.baseUrl = this.config
+      .get('CONDUCTOR_API_URL', { infer: true })
+      .replace(/\/+$/, '');
     this.apiKey = this.config.get('CONDUCTOR_API_KEY', { infer: true });
   }
 
-  createWorkspace(input: CreateWorkspaceInput): Promise<{ workspaceId: string; sessionId: string; deepLink: string }> {
+  createWorkspace(
+    input: CreateWorkspaceInput,
+  ): Promise<{ workspaceId: string; sessionId: string; deepLink: string }> {
     const branch = this.config.get('CONDUCTOR_PROJECT_BRANCH', { infer: true });
     return this.request('POST', '/v0/workspaces', {
       projectId: this.config.get('CONDUCTOR_PROJECT_ID', { infer: true }),
@@ -40,19 +46,48 @@ export class ConductorClient {
     });
   }
 
-  sessionStatus(sessionId: string): Promise<{ status: ConductorSessionStatus; errorMessage?: string; lastError?: string }> {
-    return this.request('GET', `/v0/sessions/${encodeURIComponent(sessionId)}/status`);
+  sessionStatus(
+    sessionId: string,
+  ): Promise<{
+    status: ConductorSessionStatus;
+    errorMessage?: string;
+    lastError?: string;
+  }> {
+    return this.request(
+      'GET',
+      `/v0/sessions/${encodeURIComponent(sessionId)}/status`,
+    );
+  }
+
+  workspaceStatus(
+    workspaceId: string,
+  ): Promise<{ status: ConductorWorkspaceStatus; errorMessage?: string }> {
+    return this.request(
+      'GET',
+      `/v0/workspaces/${encodeURIComponent(workspaceId)}/status`,
+    );
   }
 
   sendMessage(sessionId: string, message: string): Promise<unknown> {
-    return this.request('POST', `/v0/sessions/${encodeURIComponent(sessionId)}/messages`, { message });
+    return this.request(
+      'POST',
+      `/v0/sessions/${encodeURIComponent(sessionId)}/messages`,
+      { message },
+    );
   }
 
   archiveWorkspace(workspaceId: string): Promise<unknown> {
-    return this.request('POST', `/v0/workspaces/${encodeURIComponent(workspaceId)}/archive`);
+    return this.request(
+      'POST',
+      `/v0/workspaces/${encodeURIComponent(workspaceId)}/archive`,
+    );
   }
 
-  private async request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<T> {
     if (!this.apiKey) throw new Error('CONDUCTOR_API_KEY no está configurada');
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
@@ -63,7 +98,8 @@ export class ConductorClient {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     const text = await res.text();
-    if (!res.ok) throw new Error(`Conductor ${method} ${path} → ${res.status}: ${text}`);
+    if (!res.ok)
+      throw new Error(`Conductor ${method} ${path} → ${res.status}: ${text}`);
     return (text ? JSON.parse(text) : undefined) as T;
   }
 }

@@ -121,7 +121,9 @@ export interface SandboxContract {
   mirror_repo_url: string | null;
   manifest_source: SandboxRecord['manifest_source'] | null;
   current_deploy: SandboxDeployInfo | null;
-  agent: (Omit<SandboxAgentInfo, 'idle_since' | 'nudged'> & { active: boolean }) | null;
+  agent:
+    | (Omit<SandboxAgentInfo, 'idle_since' | 'nudged'> & { active: boolean })
+    | null;
   pending_inputs: InputRequest[];
   created_at: string;
   updated_at: string;

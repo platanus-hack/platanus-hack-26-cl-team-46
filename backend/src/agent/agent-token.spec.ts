@@ -4,11 +4,15 @@ describe('agent token', () => {
   const secret = 'un-secreto-suficientemente-largo';
 
   it('valida el token de su propio sandbox', () => {
-    expect(verifyAgentToken(secret, signAgentToken(secret, 'sbx-1'), 'sbx-1')).toBe(true);
+    expect(
+      verifyAgentToken(secret, signAgentToken(secret, 'sbx-1'), 'sbx-1'),
+    ).toBe(true);
   });
 
   it('no sirve para otro sandbox', () => {
-    expect(verifyAgentToken(secret, signAgentToken(secret, 'sbx-1'), 'sbx-2')).toBe(false);
+    expect(
+      verifyAgentToken(secret, signAgentToken(secret, 'sbx-1'), 'sbx-2'),
+    ).toBe(false);
   });
 
   it('no sirve con otro secreto ni manipulado', () => {

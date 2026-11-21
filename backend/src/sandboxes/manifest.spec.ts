@@ -19,7 +19,10 @@ describe('loadManifest', () => {
       path.join(dir, '.sandbox', 'manifest.json'),
       JSON.stringify({
         needs_postgres: true,
-        env: { JWT_SECRET: { generate: true }, NODE_ENV: { value: 'production' } },
+        env: {
+          JWT_SECRET: { generate: true },
+          NODE_ENV: { value: 'production' },
+        },
         seed_users: [{ email: 'a@b.cl', password: 'x', role: 'admin' }],
       }),
     );
@@ -34,7 +37,10 @@ describe('loadManifest', () => {
 
   it('rechaza un manifest inválido con un mensaje útil', async () => {
     await mkdir(path.join(dir, '.sandbox'));
-    await writeFile(path.join(dir, '.sandbox', 'manifest.json'), JSON.stringify({ runtime: 'cobol' }));
+    await writeFile(
+      path.join(dir, '.sandbox', 'manifest.json'),
+      JSON.stringify({ runtime: 'cobol' }),
+    );
     await expect(loadManifest(dir)).rejects.toThrow(ManifestError);
   });
 
@@ -48,7 +54,10 @@ describe('loadManifest', () => {
   it('infiere node + postgres desde package.json', async () => {
     await writeFile(
       path.join(dir, 'package.json'),
-      JSON.stringify({ scripts: { build: 'tsc', start: 'node dist' }, dependencies: { pg: '^8' } }),
+      JSON.stringify({
+        scripts: { build: 'tsc', start: 'node dist' },
+        dependencies: { pg: '^8' },
+      }),
     );
     const { manifest } = await loadManifest(dir);
     expect(manifest.runtime).toBe('node');

@@ -32,7 +32,10 @@ export class GitService {
   constructor(config: ConfigService<Env, true>) {
     this.token = config.get('GITHUB_TOKEN', { infer: true });
     this.org = config.get('GITHUB_ORG', { infer: true });
-    this.reposDir = path.resolve(config.get('DATA_DIR', { infer: true }), 'repos');
+    this.reposDir = path.resolve(
+      config.get('DATA_DIR', { infer: true }),
+      'repos',
+    );
   }
 
   get mirrorsEnabled(): boolean {
@@ -48,13 +51,26 @@ export class GitService {
   }
 
   /** Clona (shallow) el repo fuente en el workdir del sandbox y devuelve el sha. */
-  async cloneSource(sandboxId: string, repoUrl: string, ref?: string): Promise<{ dir: string; sha: string }> {
+  async cloneSource(
+    sandboxId: string,
+    repoUrl: string,
+    ref?: string,
+  ): Promise<{ dir: string; sha: string }> {
     const dir = this.workdir(sandboxId);
     await rm(dir, { recursive: true, force: true });
     await mkdir(this.reposDir, { recursive: true });
-    const args = ['clone', '--depth', '1', ...(ref ? ['--branch', ref] : []), repoUrl, dir];
+    const args = [
+      'clone',
+      '--depth',
+      '1',
+      ...(ref ? ['--branch', ref] : []),
+      repoUrl,
+      dir,
+    ];
     // Con token, también se pueden clonar repos privados a los que el token tenga acceso.
-    await this.git(args, this.reposDir, { auth: repoUrl.startsWith('https://github.com/') });
+    await this.git(args, this.reposDir, {
+      auth: repoUrl.startsWith('https://github.com/'),
+    });
     const sha = (await this.git(['rev-parse', 'HEAD'], dir)).trim();
     return { dir, sha };
   }
@@ -81,7 +97,10 @@ export class GitService {
     await this.git(['init', '-b', 'main'], dir);
     await this.git(['add', '-A'], dir);
     await this.commit(dir, `Snapshot de ${source.url}@${source.sha}`);
-    await this.git(['remote', 'add', 'origin', `${this.mirrorUrl(repoName)}.git`], dir);
+    await this.git(
+      ['remote', 'add', 'origin', `${this.mirrorUrl(repoName)}.git`],
+      dir,
+    );
     await this.git(['push', '-u', 'origin', 'main'], dir, { auth: true });
     const sha = (await this.git(['rev-parse', 'HEAD'], dir)).trim();
     return { mirrorUrl: this.mirrorUrl(repoName), sha };
@@ -98,16 +117,23 @@ export class GitService {
 
     if (change.patch) {
       const patchFile = path.join(this.reposDir, `${sandboxId}.patch`);
-      await writeFile(patchFile, change.patch.endsWith('\n') ? change.patch : `${change.patch}\n`);
+      await writeFile(
+        patchFile,
+        change.patch.endsWith('\n') ? change.patch : `${change.patch}\n`,
+      );
       try {
-        await this.git(['apply', '--whitespace=nowarn', '--recount', patchFile], dir);
+        await this.git(
+          ['apply', '--whitespace=nowarn', '--recount', patchFile],
+          dir,
+        );
       } finally {
         await unlink(patchFile).catch(() => undefined);
       }
     }
     for (const f of change.files ?? []) {
       const target = path.resolve(dir, f.path);
-      if (!target.startsWith(dir + path.sep)) throw new Error(`Ruta fuera del repo: ${f.path}`);
+      if (!target.startsWith(dir + path.sep))
+        throw new Error(`Ruta fuera del repo: ${f.path}`);
       if (f.content === null) {
         await rm(target, { force: true });
       } else {
@@ -117,8 +143,11 @@ export class GitService {
     }
 
     await this.git(['add', '-A'], dir);
-    const changed = (await this.git(['diff', '--cached', '--name-only'], dir)).split('\n').filter(Boolean);
-    if (changed.length === 0) throw new Error('El cambio no modifica ningún archivo');
+    const changed = (await this.git(['diff', '--cached', '--name-only'], dir))
+      .split('\n')
+      .filter(Boolean);
+    if (changed.length === 0)
+      throw new Error('El cambio no modifica ningún archivo');
     await this.commit(dir, change.message);
     await this.git(['push', 'origin', 'HEAD:main'], dir, { auth: true });
     const sha = (await this.git(['rev-parse', 'HEAD'], dir)).trim();
@@ -128,15 +157,22 @@ export class GitService {
   /** tar.gz del HEAD del mirror (sin .git), para que el agente lo descargue. */
   async archive(sandboxId: string, repoName: string): Promise<Buffer> {
     const dir = await this.ensureMirrorWorkdir(sandboxId, repoName);
-    const { stdout } = await exec('git', ['archive', '--format=tar.gz', 'HEAD'], {
-      cwd: dir,
-      encoding: 'buffer',
-      maxBuffer: 256 * 1024 * 1024,
-    });
+    const { stdout } = await exec(
+      'git',
+      ['archive', '--format=tar.gz', 'HEAD'],
+      {
+        cwd: dir,
+        encoding: 'buffer',
+        maxBuffer: 256 * 1024 * 1024,
+      },
+    );
     return stdout;
   }
 
-  async readFileFromWorkdir(sandboxId: string, relPath: string): Promise<string | undefined> {
+  async readFileFromWorkdir(
+    sandboxId: string,
+    relPath: string,
+  ): Promise<string | undefined> {
     const file = path.join(this.workdir(sandboxId), relPath);
     return existsSync(file) ? readFile(file, 'utf8') : undefined;
   }
@@ -147,7 +183,9 @@ export class GitService {
       await this.github('DELETE', `/repos/${this.org}/${repoName}`);
     } catch (err) {
       // El token puede no tener permiso de borrado; no es crítico.
-      this.logger.warn(`No se pudo borrar el mirror ${repoName}: ${(err as Error).message}`);
+      this.logger.warn(
+        `No se pudo borrar el mirror ${repoName}: ${(err as Error).message}`,
+      );
     }
   }
 
@@ -158,7 +196,10 @@ export class GitService {
   // -------------------------------------------------------------- privados
 
   /** Si el workdir se perdió (reinicio, otra máquina), vuelve a clonar el mirror. */
-  private async ensureMirrorWorkdir(sandboxId: string, repoName: string): Promise<string> {
+  private async ensureMirrorWorkdir(
+    sandboxId: string,
+    repoName: string,
+  ): Promise<string> {
     const dir = this.workdir(sandboxId);
     if (existsSync(path.join(dir, '.git'))) {
       await this.git(['fetch', 'origin', 'main'], dir, { auth: true });
@@ -167,22 +208,41 @@ export class GitService {
     }
     await rm(dir, { recursive: true, force: true });
     await mkdir(this.reposDir, { recursive: true });
-    await this.git(['clone', `${this.mirrorUrl(repoName)}.git`, dir], this.reposDir, { auth: true });
+    await this.git(
+      ['clone', `${this.mirrorUrl(repoName)}.git`, dir],
+      this.reposDir,
+      { auth: true },
+    );
     return dir;
   }
 
   private commit(dir: string, message: string) {
     return this.git(
-      ['-c', 'user.name=hack26-deployer', '-c', 'user.email=deployer@hack26.local', 'commit', '-m', message],
+      [
+        '-c',
+        'user.name=hack26-deployer',
+        '-c',
+        'user.email=deployer@hack26.local',
+        'commit',
+        '-m',
+        message,
+      ],
       dir,
     );
   }
 
   private assertToken(): void {
-    if (!this.token) throw new Error('GITHUB_TOKEN no configurado: los mirrors están deshabilitados');
+    if (!this.token)
+      throw new Error(
+        'GITHUB_TOKEN no configurado: los mirrors están deshabilitados',
+      );
   }
 
-  private async git(args: string[], cwd: string, opts: { auth?: boolean } = {}): Promise<string> {
+  private async git(
+    args: string[],
+    cwd: string,
+    opts: { auth?: boolean } = {},
+  ): Promise<string> {
     // El token va como header HTTP de una sola invocación: nunca queda escrito en .git/config.
     const authArgs =
       opts.auth && this.token
@@ -202,12 +262,19 @@ export class GitService {
       return stdout;
     } catch (err) {
       const e = err as { stderr?: string; message: string };
-      const stderr = (e.stderr ?? e.message).replaceAll(this.token ?? '\0', '***');
+      const stderr = (e.stderr ?? e.message).replaceAll(
+        this.token ?? '\0',
+        '***',
+      );
       throw new Error(`git ${args[0]} falló: ${stderr.trim()}`);
     }
   }
 
-  private async github(method: string, apiPath: string, body?: unknown): Promise<unknown> {
+  private async github(
+    method: string,
+    apiPath: string,
+    body?: unknown,
+  ): Promise<unknown> {
     const res = await fetch(`https://api.github.com${apiPath}`, {
       method,
       headers: {
@@ -219,7 +286,8 @@ export class GitService {
       body: body ? JSON.stringify(body) : undefined,
     });
     const text = await res.text();
-    if (!res.ok) throw new Error(`GitHub ${method} ${apiPath} → ${res.status}: ${text}`);
+    if (!res.ok)
+      throw new Error(`GitHub ${method} ${apiPath} → ${res.status}: ${text}`);
     return text ? JSON.parse(text) : undefined;
   }
 }

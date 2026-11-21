@@ -46,13 +46,18 @@ export const envSchema = z.object({
    * Secreto maestro de los endpoints /agent/*. Cada agente recibe un token
    * derivado (HMAC) que solo sirve para su propio sandbox.
    */
-  AGENT_API_SECRET: z.string().min(16, 'AGENT_API_SECRET debe tener al menos 16 caracteres').optional(),
+  AGENT_API_SECRET: z
+    .string()
+    .min(16, 'AGENT_API_SECRET debe tener al menos 16 caracteres')
+    .optional(),
   /** URL pública del backend, a la que llaman los agentes desde sus VMs. */
   PUBLIC_BACKEND_URL: z.url().optional(),
   CONDUCTOR_API_KEY: z.string().optional(),
   CONDUCTOR_API_URL: z.url().default('https://api.conductor.build'),
   /** Proyecto de Conductor desde el que se crean las VMs de los agentes. */
-  CONDUCTOR_PROJECT_ID: z.string().default('250d6454-3b06-4b69-bc80-f0c6e7307a34'),
+  CONDUCTOR_PROJECT_ID: z
+    .string()
+    .default('250d6454-3b06-4b69-bc80-f0c6e7307a34'),
   CONDUCTOR_PROJECT_BRANCH: z.string().optional(),
   AGENT_MODEL: z.string().default('opus-5-5-1m'),
   AGENT_EFFORT: z.string().default('medium'),

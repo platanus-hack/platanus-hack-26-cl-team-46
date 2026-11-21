@@ -21,13 +21,20 @@ export const manifestSchema = z.object({
   env: z
     .record(
       z.string(),
-      z.union([z.object({ value: z.string() }), z.object({ generate: z.literal(true) })]),
+      z.union([
+        z.object({ value: z.string() }),
+        z.object({ generate: z.literal(true) }),
+      ]),
     )
     .default({}),
   seed_users: z
     .array(
       z
-        .object({ email: z.string(), password: z.string(), role: z.string().optional() })
+        .object({
+          email: z.string(),
+          password: z.string(),
+          role: z.string().optional(),
+        })
         .loose(),
     )
     .default([]),
@@ -37,14 +44,18 @@ export type SandboxManifest = z.infer<typeof manifestSchema>;
 
 export class ManifestError extends Error {}
 
-export async function loadManifest(repoDir: string): Promise<{ manifest: SandboxManifest; source: 'file' | 'inferred' }> {
+export async function loadManifest(
+  repoDir: string,
+): Promise<{ manifest: SandboxManifest; source: 'file' | 'inferred' }> {
   const file = path.join(repoDir, '.sandbox', 'manifest.json');
   if (existsSync(file)) {
     let raw: unknown;
     try {
       raw = JSON.parse(await readFile(file, 'utf8'));
     } catch (err) {
-      throw new ManifestError(`.sandbox/manifest.json no es JSON válido: ${(err as Error).message}`);
+      throw new ManifestError(
+        `.sandbox/manifest.json no es JSON válido: ${(err as Error).message}`,
+      );
     }
     const parsed = manifestSchema.safeParse(raw);
     if (!parsed.success) {
@@ -69,7 +80,8 @@ async function inferManifest(repoDir: string): Promise<SandboxManifest> {
       dependencies?: Record<string, string>;
     };
     const deps = pkg.dependencies ?? {};
-    const needsPostgres = 'pg' in deps || 'postgres' in deps || '@prisma/client' in deps;
+    const needsPostgres =
+      'pg' in deps || 'postgres' in deps || '@prisma/client' in deps;
     const hasBuild = Boolean(pkg.scripts?.build);
     return manifestSchema.parse({
       runtime: 'node',

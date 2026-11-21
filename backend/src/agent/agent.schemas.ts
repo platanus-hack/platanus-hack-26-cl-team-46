@@ -4,7 +4,11 @@ import { manifestSchema } from '../sandboxes/manifest.js';
 export const agentChangesSchema = z
   .object({
     patch: z.string().min(1).optional(),
-    files: z.array(z.object({ path: z.string().min(1), content: z.string().nullable() })).optional(),
+    files: z
+      .array(
+        z.object({ path: z.string().min(1), content: z.string().nullable() }),
+      )
+      .optional(),
     message: z.string().min(1).max(200),
   })
   .refine((v) => v.patch || v.files?.length, 'Indica patch o files');

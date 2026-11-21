@@ -53,12 +53,16 @@ export class SandboxEventsService {
   sseStream(sandboxId: string): ReadableStream<string> {
     let unsubscribe = () => {};
     let heartbeat: NodeJS.Timeout;
-    const format = (e: SandboxEvent) => `event: ${e.source}\ndata: ${JSON.stringify(e)}\n\n`;
+    const format = (e: SandboxEvent) =>
+      `event: ${e.source}\ndata: ${JSON.stringify(e)}\n\n`;
     return new ReadableStream<string>({
       start: (controller) => {
         controller.enqueue(': connected\n\n');
-        for (const e of this.getHistory(sandboxId)) controller.enqueue(format(e));
-        unsubscribe = this.subscribe(sandboxId, (e) => controller.enqueue(format(e)));
+        for (const e of this.getHistory(sandboxId))
+          controller.enqueue(format(e));
+        unsubscribe = this.subscribe(sandboxId, (e) =>
+          controller.enqueue(format(e)),
+        );
         heartbeat = setInterval(() => controller.enqueue(': ping\n\n'), 15_000);
       },
       cancel: () => {

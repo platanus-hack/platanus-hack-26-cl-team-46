@@ -1,4 +1,16 @@
-import { Body, ConflictException, Controller, Delete, Get, Header, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
+import {
+  Body,
+  ConflictException,
+  Controller,
+  Delete,
+  Get,
+  Header,
+  HttpCode,
+  Param,
+  Post,
+  Put,
+  Query,
+} from '@nestjs/common';
 import { AgentOrchestrator } from '../agent/agent.orchestrator.js';
 import { SandboxEventsService } from './sandbox-events.service.js';
 import {
@@ -32,12 +44,17 @@ export class SandboxesController {
 
   @Get()
   async list() {
-    return Promise.all(this.sandboxes.list().map((s) => this.sandboxes.toContract(s)));
+    return Promise.all(
+      this.sandboxes.list().map((s) => this.sandboxes.toContract(s)),
+    );
   }
 
   @Post()
   @HttpCode(202)
-  async create(@Body({ schema: createSandboxSchema }) body: CreateSandboxBody, @Query('wait') wait?: string) {
+  async create(
+    @Body({ schema: createSandboxSchema }) body: CreateSandboxBody,
+    @Query('wait') wait?: string,
+  ) {
     const s = this.sandboxes.create(body);
     return this.respond(s.sandbox_id, wait);
   }
@@ -71,7 +88,11 @@ export class SandboxesController {
 
   @Put(':id/env')
   @HttpCode(202)
-  async setEnv(@Param('id') id: string, @Body({ schema: setEnvSchema }) body: SetEnvBody, @Query('wait') wait?: string) {
+  async setEnv(
+    @Param('id') id: string,
+    @Body({ schema: setEnvSchema }) body: SetEnvBody,
+    @Query('wait') wait?: string,
+  ) {
     this.sandboxes.setEnv(id, body);
     return this.respond(id, wait);
   }
@@ -85,7 +106,10 @@ export class SandboxesController {
 
   /** Logs de la app desde la API de Render (paginados). */
   @Get(':id/logs')
-  logs(@Param('id') id: string, @Query({ schema: logsQuerySchema }) query: LogsQuery) {
+  logs(
+    @Param('id') id: string,
+    @Query({ schema: logsQuerySchema }) query: LogsQuery,
+  ) {
     return this.sandboxes.logs(id, query);
   }
 
@@ -94,16 +118,23 @@ export class SandboxesController {
   @Header('Content-Type', 'text/event-stream')
   @Header('Cache-Control', 'no-cache')
   @Header('X-Accel-Buffering', 'no')
-  logsStream(@Param('id') id: string, @Query({ schema: logsStreamQuerySchema }) query: LogsStreamQuery) {
+  logsStream(
+    @Param('id') id: string,
+    @Query({ schema: logsStreamQuerySchema }) query: LogsStreamQuery,
+  ) {
     return this.sandboxes.logsStream(id, query);
   }
 
   /** El usuario entrega los secretos que pidió el agente (status needs_input). */
   @Post(':id/inputs')
   @HttpCode(200)
-  async provideInputs(@Param('id') id: string, @Body({ schema: provideInputsSchema }) body: ProvideInputsBody) {
+  async provideInputs(
+    @Param('id') id: string,
+    @Body({ schema: provideInputsSchema }) body: ProvideInputsBody,
+  ) {
     const s = this.sandboxes.get(id);
-    if (!this.sandboxes.agentActive(s)) throw new ConflictException('No hay un agente esperando datos');
+    if (!this.sandboxes.agentActive(s))
+      throw new ConflictException('No hay un agente esperando datos');
     this.agents.provideInputs(id, body.env);
     return this.sandboxes.toContract(this.sandboxes.get(id));
   }

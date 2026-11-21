@@ -39,33 +39,56 @@ export class DatabaseProvisioner {
     return this.config.get('RENDER_POSTGRES_MODE', { infer: true });
   }
 
-  async provision(sandboxId: string, onProgress: (msg: string) => void): Promise<ProvisionedDatabase> {
+  async provision(
+    sandboxId: string,
+    onProgress: (msg: string) => void,
+  ): Promise<ProvisionedDatabase> {
     return this.mode === 'shared'
       ? this.provisionShared(sandboxId, onProgress)
       : this.provisionDedicated(sandboxId, onProgress);
   }
 
   /** URLs de conexión de una base ya aprovisionada. */
-  async urlsFor(db: { postgres_id: string; database_name?: string }): Promise<{ internal_url: string; external_url: string }> {
+  async urlsFor(db: {
+    postgres_id: string;
+    database_name?: string;
+  }): Promise<{ internal_url: string; external_url: string }> {
     const info = await this.render.getPostgresConnectionInfo(db.postgres_id);
     return db.database_name
       ? {
-          internal_url: withDatabase(info.internalConnectionString, db.database_name),
-          external_url: withDatabase(info.externalConnectionString, db.database_name),
+          internal_url: withDatabase(
+            info.internalConnectionString,
+            db.database_name,
+          ),
+          external_url: withDatabase(
+            info.externalConnectionString,
+            db.database_name,
+          ),
         }
-      : { internal_url: info.internalConnectionString, external_url: info.externalConnectionString };
+      : {
+          internal_url: info.internalConnectionString,
+          external_url: info.externalConnectionString,
+        };
   }
 
-  async release(db: { postgres_id: string; database_name?: string }): Promise<void> {
+  async release(db: {
+    postgres_id: string;
+    database_name?: string;
+  }): Promise<void> {
     if (db.database_name) {
       const info = await this.render.getPostgresConnectionInfo(db.postgres_id);
-      await this.withAdminClient(info.externalConnectionString, async (client) => {
-        await client.query(
-          `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
-          [db.database_name],
-        );
-        await client.query(`DROP DATABASE IF EXISTS ${quoteIdent(db.database_name!)}`);
-      });
+      await this.withAdminClient(
+        info.externalConnectionString,
+        async (client) => {
+          await client.query(
+            `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+            [db.database_name],
+          );
+          await client.query(
+            `DROP DATABASE IF EXISTS ${quoteIdent(db.database_name!)}`,
+          );
+        },
+      );
     } else {
       await this.render.deletePostgres(db.postgres_id);
     }
@@ -73,16 +96,28 @@ export class DatabaseProvisioner {
 
   // ---------------------------------------------------------------- shared
 
-  private async provisionShared(sandboxId: string, onProgress: (msg: string) => void) {
+  private async provisionShared(
+    sandboxId: string,
+    onProgress: (msg: string) => void,
+  ) {
     const instance = await this.ensureSharedInstance(onProgress);
     const info = await this.render.getPostgresConnectionInfo(instance.id);
     const databaseName = sandboxId.replace(/[^a-z0-9]/gi, '_').toLowerCase();
 
-    onProgress(`Creando base de datos ${databaseName} en la instancia compartida`);
-    await this.withAdminClient(info.externalConnectionString, async (client) => {
-      const exists = await client.query('SELECT 1 FROM pg_database WHERE datname = $1', [databaseName]);
-      if (exists.rowCount === 0) await client.query(`CREATE DATABASE ${quoteIdent(databaseName)}`);
-    });
+    onProgress(
+      `Creando base de datos ${databaseName} en la instancia compartida`,
+    );
+    await this.withAdminClient(
+      info.externalConnectionString,
+      async (client) => {
+        const exists = await client.query(
+          'SELECT 1 FROM pg_database WHERE datname = $1',
+          [databaseName],
+        );
+        if (exists.rowCount === 0)
+          await client.query(`CREATE DATABASE ${quoteIdent(databaseName)}`);
+      },
+    );
 
     return {
       postgres_id: instance.id,
@@ -92,12 +127,18 @@ export class DatabaseProvisioner {
     };
   }
 
-  private ensureSharedInstance(onProgress: (msg: string) => void): Promise<RenderPostgres> {
+  private ensureSharedInstance(
+    onProgress: (msg: string) => void,
+  ): Promise<RenderPostgres> {
     this.sharedPromise ??= (async () => {
-      const name = this.config.get('RENDER_SHARED_POSTGRES_NAME', { infer: true });
+      const name = this.config.get('RENDER_SHARED_POSTGRES_NAME', {
+        infer: true,
+      });
       let instance = await this.render.findPostgresByName(name);
       if (!instance) {
-        onProgress(`Creando instancia Postgres compartida "${name}" (solo la primera vez, tarda unos minutos)`);
+        onProgress(
+          `Creando instancia Postgres compartida "${name}" (solo la primera vez, tarda unos minutos)`,
+        );
         instance = await this.render.createPostgres({
           name,
           ownerId: await this.render.ownerId(),
@@ -116,7 +157,10 @@ export class DatabaseProvisioner {
 
   // ------------------------------------------------------------- dedicated
 
-  private async provisionDedicated(sandboxId: string, onProgress: (msg: string) => void) {
+  private async provisionDedicated(
+    sandboxId: string,
+    onProgress: (msg: string) => void,
+  ) {
     onProgress('Creando instancia Postgres dedicada (tarda unos minutos)');
     const created = await this.render.createPostgres({
       name: `${sandboxId}-db`,
@@ -136,12 +180,17 @@ export class DatabaseProvisioner {
 
   // ---------------------------------------------------------------- común
 
-  private async waitAvailable(instance: RenderPostgres, onProgress: (msg: string) => void) {
+  private async waitAvailable(
+    instance: RenderPostgres,
+    onProgress: (msg: string) => void,
+  ) {
     const started = Date.now();
     let current = instance;
     while (current.status !== 'available') {
       if (Date.now() - started > TIMEOUT_MS) {
-        throw new Error(`Postgres ${current.id} no quedó disponible (estado: ${current.status})`);
+        throw new Error(
+          `Postgres ${current.id} no quedó disponible (estado: ${current.status})`,
+        );
       }
       onProgress(`Postgres ${current.name}: ${current.status}`);
       await sleep(POLL_MS);
@@ -150,8 +199,14 @@ export class DatabaseProvisioner {
     return current;
   }
 
-  private async withAdminClient<T>(url: string, fn: (c: pg.Client) => Promise<T>): Promise<T> {
-    const client = new pg.Client({ connectionString: url, ssl: { rejectUnauthorized: false } });
+  private async withAdminClient<T>(
+    url: string,
+    fn: (c: pg.Client) => Promise<T>,
+  ): Promise<T> {
+    const client = new pg.Client({
+      connectionString: url,
+      ssl: { rejectUnauthorized: false },
+    });
     await client.connect();
     try {
       return await fn(client);
