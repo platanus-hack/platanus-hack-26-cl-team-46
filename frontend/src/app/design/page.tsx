@@ -11,6 +11,7 @@ import {
   StatusChip,
   Stopwatch,
 } from "@/components/mayday";
+import { HintyDockStates, HintyPieces, HintyPreview } from "./HintyPreview";
 import { PixelDemo } from "./PixelDemo";
 
 export const metadata: Metadata = { title: "Mayday · Sistema de diseño" };
@@ -109,6 +110,24 @@ export default function DesignPage() {
 
       <Section title="PixelTransition">
         <PixelDemo />
+      </Section>
+
+      <Section title="Hinty · En el simulacro">
+        <p className="max-w-[60ch] text-[15px] leading-6 text-ink-muted">
+          El profesor del simulacro, congelado a medio explicar: la isla habla, la pizarra se arma con el blip, un target
+          sobre lo que hay que apretar y un ring ámbar punteado sobre la fila del atacante. Nunca tapa el panel del Agente.
+        </p>
+        <div className="relative left-1/2 w-[min(1280px,calc(100vw-48px))] -translate-x-1/2">
+          <HintyPreview />
+        </div>
+      </Section>
+
+      <Section title="Hinty · Dock">
+        <HintyDockStates />
+      </Section>
+
+      <Section title="Hinty · Piezas">
+        <HintyPieces />
       </Section>
     </main>
   );

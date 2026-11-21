@@ -20,7 +20,7 @@ import { createDirector } from './director.js';
 // liveTranscription: while push-to-talk is held, the audio goes to the backend's realtime
 // transcription session (POST /stt-session); if that fails the clip is uploaded (POST /transcribe).
 export function createClicky({
-  api = '/clicky', headers: extraHeaders = () => ({}), theme = 'sketch', voice = true, pushToTalkKey = 'Space', cssHref = '/clicky/styles.css',
+  api = '/clicky', headers: extraHeaders = () => ({}), theme = 'mayday', voice = true, pushToTalkKey = 'Space', cssHref = '/clicky/styles.css',
   hint, screenshot, context = '', autoTag = true, ignore = '[data-clicky-ignore]', surface = 'light', liveTranscription = true,
 } = {}) {
   if (!document.querySelector('link[data-clicky-css]')) {
@@ -30,8 +30,9 @@ export function createClicky({
     link.dataset.clickyCss = '';
   }
 
+  // El destacador va en su propia capa, en modo screen: sobre fondo oscuro, multiply ensucia.
   const multiply = htmlEl('div', 'clicky-root', document.body);
-  multiply.style.mixBlendMode = 'multiply';
+  multiply.style.mixBlendMode = 'screen';
   multiply.style.zIndex = '2147482999';
   const root = htmlEl('div', 'clicky-root', document.body);
   const layers = {
@@ -42,9 +43,8 @@ export function createClicky({
     top: svgEl('svg', { class: 'clicky-layer' }, root),
   };
   layers.spot.style.opacity = 0;
-  svgEl('defs', {}, layers.marks).innerHTML = '<filter id="clicky-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
 
-  let current = THEMES[theme] || THEMES.sketch, voiceOn = voice, history = [], busy = false, answering = null;
+  let current = THEMES[theme] || THEMES.mayday, voiceOn = voice, history = [], busy = false, answering = null;
   const ctx = {
     layers, themes: THEMES, theme: () => current,
     strokes: [], items: [], fades: [], spotHoles: [], sideY: 0, board: null, actions: null, surface,
@@ -53,16 +53,18 @@ export function createClicky({
       layers.spot.innerHTML = '';
       const m = svgEl('mask', { id: 'clicky-spot-mask' }, svgEl('defs', {}, layers.spot));
       svgEl('rect', { x: 0, y: 0, width: '100%', height: '100%', fill: '#fff' }, m);
-      ctx.spotHoles.forEach(b => svgEl('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 10, fill: '#000' }, m));
+      ctx.spotHoles.forEach(b => svgEl('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 8, fill: '#000' }, m));
       const dim = (surface === 'dark' && current.onDark?.spotlight) || current.spotlight;
       svgEl('rect', { x: 0, y: 0, width: '100%', height: '100%', fill: dim, mask: 'url(#clicky-spot-mask)' }, layers.spot);
+      // el hueco lleva un borde cian de 2 px (radius-md)
+      ctx.spotHoles.forEach(b => svgEl('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 8, fill: 'none', stroke: current.mark, 'stroke-width': 2 }, layers.spot));
     },
   };
   ctx.pen = createPen(layers.top, () => current);
   const marks = createMarks(ctx), cards = createCards(ctx);
   const draw = (m, s) => (marks[m.type] || cards[m.type])?.(m, s);
 
-  const island = createIsland(root, { hint: hint ?? (pushToTalkKey === 'Space' ? 'mantén espacio' : pushToTalkKey), onType: q => ask(q) });
+  const island = createIsland(root, { hint: hint ?? (pushToTalkKey === 'Space' ? 'ESPACIO · Mantén apretado para hablar' : pushToTalkKey), onType: q => ask(q) });
   const releaseSpotlight = () => {
     if (!ctx.spotHoles.length) return;
     ctx.spotHoles = [];
@@ -74,7 +76,7 @@ export function createClicky({
     current = THEMES[name] || current;
     root.dataset.theme = multiply.dataset.theme = name;
     root.dataset.surface = surface;
-    for (const [k, v] of Object.entries({ '--c-ink': current.ink, '--c-mark': current.mark, '--c-hot': current.hot, '--c-hl': current.highlighter, '--c-pen': current.pen }))
+    for (const [k, v] of Object.entries({ '--c-ink': current.ink, '--c-mark': current.mark, '--c-hot': current.hot, '--c-hl': current.highlighter, '--c-pen': current.pen, '--c-attack': current.attack }))
       [root, multiply].forEach(r => r.style.setProperty(k, v));
   }
   setTheme(theme);
@@ -89,7 +91,7 @@ export function createClicky({
     answering = null;
     const items = ctx.items.splice(0), strokes = ctx.strokes.splice(0).reverse(), fades = ctx.fades.splice(0);
     items.forEach(el => el.classList.add('clicky-out'));
-    fades.forEach(el => animate(0.3, u => el.setAttribute('opacity', 0.08 * (1 - u))));
+    fades.forEach(el => animate(0.15, u => el.setAttribute('opacity', current.zoneOpacity * (1 - u))));
     if (ctx.spotHoles.length) animate(fast ? 0.15 : 0.3, u => layers.spot.style.opacity = 1 - u);
     if (fast) {
       await Promise.all(strokes.map(({ path }) => animate(0.15, u => path.setAttribute('opacity', 1 - u)).then(() => path.remove())));
@@ -192,7 +194,7 @@ export function createClicky({
     } catch (e) {
       if (e.name === 'AbortError') return; // another question or clear() took over
       show?.end();
-      island.caption('No pude responder: ' + e.message);
+      island.caption('No pude responder: ' + e.message, { error: true });
       island.state('idle');
     } finally {
       busy = false;
@@ -225,7 +227,7 @@ export function createClicky({
       island.caption('Te escucho…');
       island.state('listening');
       await mic.start({ url: liveTranscription ? sttUrl() : null, onLevel: v => island.level(v), onPartial: t => island.caption('“' + t + '”') });
-    } catch (e) { listening = false; island.caption('Sin micrófono: ' + e.message); island.state('idle'); }
+    } catch (e) { listening = false; island.caption('No tengo acceso al micrófono: ' + e.message, { error: true }); island.state('idle'); }
   }
   async function send() {
     if (!listening) return;
@@ -233,13 +235,13 @@ export function createClicky({
     const { text, blob } = await mic.stop();
     prefetchStt();
     if (text) return ask(text);
-    if (!blob || blob.size < 2500) { island.idle('Mantén apretado mientras hablas'); return; }
+    if (!blob || blob.size < 2500) { island.idle('Mantén apretado espacio mientras hablas'); return; }
     island.caption('Transcribiendo…');
     island.state('thinking');
     try {
       const { text: uploaded } = await post('/transcribe', blob, { 'Content-Type': blob.type });
       ask(uploaded);
-    } catch (e) { island.caption('No pude transcribir: ' + e.message); island.state('idle'); }
+    } catch (e) { island.caption('No pude transcribir lo que dijiste: ' + e.message, { error: true }); island.state('idle'); }
   }
   const typing = () => ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
   const down = e => { if (e.code === pushToTalkKey && !e.repeat && !typing()) { e.preventDefault(); listen(); } };

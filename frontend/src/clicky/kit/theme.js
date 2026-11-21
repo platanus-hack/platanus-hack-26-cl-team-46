@@ -1,53 +1,26 @@
+// Un solo tema: mayday (DESIGN.md › Hinty › 13). Hinty es capa Mayday: cian para todo lo suyo y
+// ámbar solo para señalar algo del atacante. Trazos rectos (wobble 0) de 3 px.
 export const THEMES = {
-  sketch: {
-    label: 'Sketchnote',
-    ink: '#1d1b2c',
-    mark: '#ff3d7f',
-    arrow: '#ff6b2c',
-    zone: '#00a39b',
-    palette: ['#00a39b', '#6c4cff', '#ff6b2c', '#00a39b', '#6c4cff', '#ff6b2c'],
-    hot: '#ff3d7f',
-    highlighter: '#ffe14d',
-    pen: '#6c4cff',
-    glow: null,
-    width: 3.4,
-    wobble: 1.6,
-    hatch: true,
-    spotlight: 'rgba(29, 27, 44, 0.32)',
-  },
-  ink: {
-    label: 'Tinta azul',
-    ink: '#0f172a',
-    mark: '#2563eb',
-    arrow: '#2563eb',
-    zone: '#2563eb',
-    palette: ['#bfdbfe', '#bfdbfe', '#bfdbfe', '#bfdbfe', '#bfdbfe', '#bfdbfe'],
-    hot: '#2563eb',
-    highlighter: '#bfdbfe',
-    pen: '#2563eb',
-    glow: '#2563eb',
-    width: 3.4,
-    wobble: 1.3,
+  mayday: {
+    label: 'Mayday',
+    ink: '#DDF7FA', // texto sobre marcas y pizarra
+    mark: '#2EE6FF', // ring, frame, underline, target
+    arrow: '#2EE6FF',
+    attack: '#FF8A00', // solo para lo del atacante, siempre punteado
+    zone: '#2EE6FF', // tinte del frame; se pinta al 12 % (defense-soft)
+    zoneOpacity: 0.12,
+    palette: ['#2EE6FF', '#7FF0FF', '#8FA6AE', '#50687A'],
+    hot: '#2EE6FF', // node hot y barra destacada
+    highlighter: 'rgba(46, 230, 255, 0.25)', // con mix-blend-mode: screen
+    pen: '#2EE6FF', // el blip
+    line: '#50687A', // line-strong: edges que ya no se están explicando
+    board: '#071116', // hinty-board: parche bajo las etiquetas de la pizarra
+    glow: null, // el glow va solo en el blip (styles.css); las marcas quedan nítidas
+    width: 3,
+    wobble: 0,
     hatch: false,
-    spotlight: 'rgba(15, 23, 42, 0.3)',
-    onDark: { mark: '#60a5fa', arrow: '#60a5fa', zone: '#60a5fa', spotlight: 'rgba(0, 0, 0, 0.6)' },
-  },
-  platanus: {
-    label: 'Platanus',
-    ink: '#111111',
-    mark: '#111111',
-    arrow: '#111111',
-    zone: '#111111',
-    palette: ['#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff', '#ffffff'],
-    hot: '#ffd23f',
-    highlighter: '#ffd23f',
-    pen: '#111111',
-    glow: null,
-    width: 3.8,
-    wobble: 1.1,
-    hatch: false,
-    spotlight: 'rgba(17, 17, 17, 0.38)',
-    onDark: { mark: '#ffd23f', arrow: '#ffd23f', zone: '#ffd23f', spotlight: 'rgba(0, 0, 0, 0.6)' },
+    spotlight: 'rgba(5, 10, 13, 0.72)', // hinty-spotlight
+    onDark: null, // el tema ya es oscuro: no hay colores aparte para superficies oscuras
   },
 };
 

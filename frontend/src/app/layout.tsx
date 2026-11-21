@@ -27,7 +27,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="flex min-h-full flex-col bg-bg-000 font-sans text-ink">
         {children}
-        {/* Clicky: copiloto que ve la pantalla. Dónde aparece se define en src/clicky/config.ts */}
+        {/* Hinty (antes Clicky): el profesor que ve la pantalla. Dónde aparece se define en src/clicky/config.ts */}
         <Suspense fallback={null}>
           <ClickyDock />
         </Suspense>
