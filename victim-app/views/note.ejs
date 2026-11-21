@@ -1,0 +1,13 @@
+<%- include('header') %>
+<p><a href="/">← Volver</a></p>
+<article class="note">
+  <h1><%= note.title %></h1>
+  <div class="muted">Actualizada <%= new Date(note.updated_at).toLocaleString('es-CL') %></div>
+  <div style="white-space: pre-wrap; margin-top: 1rem"><%- note.body %></div>
+</article>
+<% if (note.user_id === user.id) { %>
+  <form method="post" action="/notes/<%= note.id %>/delete" onsubmit="return confirm('¿Borrar esta nota?')">
+    <button>Borrar</button>
+  </form>
+<% } %>
+<%- include('footer') %>

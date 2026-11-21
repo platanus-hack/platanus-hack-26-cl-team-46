@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: apuntes
+      POSTGRES_PASSWORD: apuntes
+      POSTGRES_DB: apuntes
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apuntes -d apuntes"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build: .
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+      DATABASE_URL: postgres://apuntes:apuntes@db:5432/apuntes
+      JWT_SECRET: ${JWT_SECRET:-solo-para-desarrollo-local}
+      SEED_RESET: ${SEED_RESET:-false}
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

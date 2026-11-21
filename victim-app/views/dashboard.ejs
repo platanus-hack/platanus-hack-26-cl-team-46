@@ -1,0 +1,25 @@
+<%- include('header') %>
+<h1>Hola, <%= user.name %></h1>
+
+<form method="get" action="/">
+  <input name="q" placeholder="Buscar en mis notas..." value="<%= q %>">
+</form>
+
+<h2>Nueva nota</h2>
+<form method="post" action="/notes">
+  <input name="title" placeholder="Título" required>
+  <textarea name="body" placeholder="Escribe tu nota (puedes usar HTML simple: <b>, <i>, <a>)"></textarea>
+  <button>Guardar</button>
+</form>
+
+<h2>Mis notas <% if (q) { %><span class="muted">— resultados para "<%= q %>"</span><% } %></h2>
+<% if (notes.length === 0) { %>
+  <p class="muted">No hay notas todavía.</p>
+<% } %>
+<% notes.forEach(function (note) { %>
+  <div class="note">
+    <a href="/notes/<%= note.id %>"><strong><%= note.title %></strong></a>
+    <div class="muted"><%= new Date(note.updated_at).toLocaleString('es-CL') %></div>
+  </div>
+<% }) %>
+<%- include('footer') %>

@@ -1,0 +1,17 @@
+{
+  "port_env": "PORT",
+  "healthcheck_path": "/health",
+  "runtime": "docker",
+  "needs_postgres": true,
+  "env": {
+    "JWT_SECRET": { "generate": true },
+    "NODE_ENV": { "value": "production" }
+  },
+  "seed_users": [
+    { "email": "catalina.rojas@example.com", "password": "Apuntes-Admin-2026!", "role": "admin" },
+    { "email": "martin.soto@example.com", "password": "qwerty123", "role": "user" },
+    { "email": "javiera.munoz@example.com", "password": "Jm!8vQ2#rTz9", "role": "user" },
+    { "email": "diego.fuentes@example.com", "password": "Df-2026-montaña-azul", "role": "user" },
+    { "email": "fernanda.castillo@example.com", "password": "FerCast#2026*notas", "role": "user" }
+  ]
+}
