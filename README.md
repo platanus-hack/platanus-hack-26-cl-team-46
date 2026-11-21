@@ -61,13 +61,13 @@ pnpm dev                                  # backend :3001 + frontend :3000
 
 | Servicio | URL | Build |
 |---|---|---|
-| `hack26-frontend` | https://mayday.rip | Docker, `frontend/Dockerfile` (contexto: raíz) |
-| `hack26-backend` | https://api.mayday.rip | Docker, `backend/Dockerfile` (contexto: raíz) |
+| `hack26-frontend` | https://mayday.rip (también https://hack26-frontend.onrender.com) | Docker, `frontend/Dockerfile` (contexto: raíz) |
+| `hack26-backend` | https://api.mayday.rip (también https://hack26-backend.onrender.com) | Docker, `backend/Dockerfile` (contexto: raíz) |
 
 - Los dos despliegan automáticamente con cada push a `main`.
-- DNS en Cloudflare (zona `mayday.rip`), CNAME en modo "DNS only" para que Render emita los certificados.
+- Dominio: `mayday.rip` en Cloudflare, con CNAME "DNS only" hacia los servicios de Render (`@` y `www` → frontend, `api` → backend). Render emite los certificados.
 - El backend guarda el estado en la base `hack26_backend` de la instancia compartida `hack26-shared-pg` (`DATABASE_URL`), porque el disco de Render es efímero.
-- Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, a la que llaman los agentes. `CONDUCTOR_PROJECT_BRANCH=main` es la rama desde la que Conductor crea sus VMs.
+- Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, a la que llaman los agentes. Conductor crea las VMs de los agentes desde `main` (se puede cambiar con `CONDUCTOR_PROJECT_BRANCH`).
 - El frontend recibe `NEXT_PUBLIC_API_URL` al buildear. Si cambia, hay que redesplegarlo.
 - **Plan free:** los servicios se duermen tras 15 minutos sin tráfico y tardan ~1 minuto en despertar. Antes del demo, ábrelos (frontend, backend y el sandbox), o pasa a `starter` cuando lleguen los créditos.
 

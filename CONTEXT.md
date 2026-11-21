@@ -266,7 +266,14 @@ App de notas personales **deliberadamente insegura** (estilo Juice Shop / DVWA):
 | **`main`** (default en GitHub) | Deploy + fallback agéntico + **simulación multi-agente** + consola `/simulate`. Último: `ea829a4`. | ✅ Render (backend y frontend) con cada push |
 | `rmena1/render-despliegue-autom-tico` | Rama original del deploy + **PR #1 de Benjamín mergeado** (shadcn/ui, rutas del flujo `/login`, `/connect-claude`, `/projects/[id]/{analysis,preview,simulation,report}`, `/dev/components`, `frontend/README.md`). **No** tiene la simulación. | ❌ ya no despliega |
 
-⚠️ **Las dos ramas divergieron desde `ee5119d`.** El PR #1 se mergeó a la rama vieja después de que `main` ya existía. Hay que traer esos 3 commits (`8b4c8a2`, `51880bf`, `0859b66`) a `main` (merge o cherry-pick; los conflictos esperables son `README.md`, `frontend/src/app/page.tsx`, `layout.tsx`, `globals.css`, `package.json` y `pnpm-lock.yaml`). Hasta entonces `frontend/README.md` y la UI de shadcn **no existen en `main`**.
+⚠️ **Las dos ramas divergieron desde `ee5119d`.** El PR #1 se mergeó a la rama vieja después de que `main` ya existía. Hasta que se mergeen los PRs que lo traen, `frontend/README.md` y la UI de shadcn **no existen en `main`**:
+
+| PR | Qué trae | Estado |
+|---|---|---|
+| #4 (Benjamín) | Re-porta la base de UI del PR #1 contra `main` | abierto |
+| #2 (Clemente) | Diseño Mayday: `frontend/DESIGN.md`, `CLAUDE.md` raíz ("antes de tocar UI, leer DESIGN.md; solo tokens") y 8 ADR en `frontend/docs/adr/`. Incluye también la base de UI del PR #1. | abierto |
+
+Pregunta abierta del ADR 0007 (PR #2): los eventos `attack.*` del timeline son `visibility: "internal"`, así que el escritorio del developer no los recibe. Hay que decidir de dónde salen las filas ATTACK de los logs.
 
 ---
 
@@ -291,7 +298,7 @@ App de notas personales **deliberadamente insegura** (estilo Juice Shop / DVWA):
 **Urgentes**
 
 1. **`CONDUCTOR_API_KEY` de producción es un parche.** La key original se invalidó (las keys de workspace las rota Conductor) y se puso la de un workspace que dejará de servir al archivarse. Generar un **token personal** de Conductor y ponerlo en `hack26-backend`. Lo usan la simulación y el fallback del deploy.
-2. **Traer el PR #1 a `main`** (§9) y que el workspace de producto trabaje sobre `main`.
+2. **Mergear la base de UI a `main`** (PRs #4 y #2, §9) y que producto trabaje sobre `main`.
 3. **Rotar credenciales después del hackathon:** las keys de Render, GitHub, Cloudflare y Conductor quedaron pegadas en chats de Conductor.
 
 **Producto / integración**

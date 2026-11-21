@@ -95,7 +95,6 @@ cloudflared tunnel --url http://localhost:3001     # copiar la URL https://….t
 # backend/.env:
 #   AGENT_API_SECRET=<≥16 caracteres>
 #   PUBLIC_BACKEND_URL=<url del túnel>
-#   CONDUCTOR_PROJECT_BRANCH=<rama existente del repo hack-26>   # mientras no exista main
 pnpm --filter backend build && node --env-file=backend/.env backend/dist/main
 pnpm --filter frontend dev   # → http://localhost:3000/simulate
 ```
