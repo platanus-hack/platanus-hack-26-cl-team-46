@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDown } from "lucide-react";
 import gsap from "gsap";
@@ -23,6 +22,7 @@ import { ATTACK_SCRIPT, QUESTION, RESULT, type OptionId } from "./content";
 import { CurtainPixels, type CurtainHandle } from "./CurtainPixels";
 import { StartCta } from "@/components/onboarding/StartCta";
 import { HeroSplit } from "./HeroSplit";
+import { AfterClose } from "./AfterClose";
 import { IntroHack } from "./intro/IntroHack";
 import { useIntroGate } from "./intro/useIntroGate";
 
@@ -40,6 +40,9 @@ gsap.registerPlugin(ScrollTrigger, useGSAP);
  * un timeline con scrub abre las cortinas, sube la pregunta y la deja quieta para responder.
  * gsap.matchMedia separa desktop (izq/der), mobile (arriba/abajo) y reduced-motion (sin pin:
  * las capas quedan apiladas por CSS con `motion-reduce:` y se corta directo).
+ *
+ * Debajo del cierre (AfterClose): 4 pasos, "se aprende haciendo", CTA final y SiteFooter, con
+ * scroll normal.
  *
  * Cierre: al responder aparece la escena 4 debajo. Al llegar a ella con scroll, o con el botón
  * "Ve tu resultado", pasa PixelTransition a pantalla completa y, con la pantalla tapada, se corta
@@ -301,7 +304,8 @@ export function Landing() {
               cta={<StartCta />}
             >
               <p>{ok ? RESULT.ok.why : RESULT.fail.why[answer.option.id]}</p>
-              <p>
+              {/* En mobile sobra: el CTA queda justo abajo. */}
+              <p className="max-md:hidden">
                 <strong>{RESULT.invite}</strong> {RESULT.inviteCta}
               </p>
             </ResultSplit>
@@ -310,7 +314,7 @@ export function Landing() {
       </div>
 
       <PixelTransition runKey={resultRun} cell={resultCell} fixed duration={700} onCovered={onResultCovered} />
-      <TeamFooter onReplayIntro={intro.replay} />
+      <AfterClose onReplayIntro={intro.replay} />
     </main>
   );
 }
@@ -322,35 +326,5 @@ function SceneSlot({ ref, children }: { ref?: React.Ref<HTMLDivElement>; childre
         {children}
       </div>
     </div>
-  );
-}
-
-/** Accesos del equipo a las consolas de desarrollo (los mismos que tenía la portada anterior). */
-function TeamFooter({ onReplayIntro }: { onReplayIntro: () => void }) {
-  return (
-    <footer className="flex flex-wrap items-center gap-6 border-t border-line px-4 py-6 md:px-12">
-      <span className="md-index">EQUIPO</span>
-      <Link className="text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline" href="/start">
-        Onboarding: tu repo → sandbox →
-      </Link>
-      <Link className="text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline" href="/deploy">
-        Consola del servicio de deploy →
-      </Link>
-      <Link className="text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline" href="/simulate">
-        Consola de la simulación (multi-agente) →
-      </Link>
-      {/* /#intro también la fuerza (para la demo del pitch). */}
-      <a
-        className="text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline md:ml-auto"
-        href="#intro"
-        onClick={(e) => {
-          e.preventDefault();
-          window.history.replaceState(null, "", "#intro");
-          onReplayIntro();
-        }}
-      >
-        Ver la intro de nuevo
-      </a>
-    </footer>
   );
 }

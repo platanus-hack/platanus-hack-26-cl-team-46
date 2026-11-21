@@ -4,7 +4,8 @@ import { ShieldCheck } from "lucide-react";
 /**
  * El cierre de la landing (DESIGN.md › ResultSplit). Pantalla dividida 50/50 (apilada en mobile).
  * - Izquierda (bg-000): veredicto en display-lg (cian si acertaste, ámbar si no), el porqué en
- *   2 frases y la pregunta que lleva a la derecha. Abajo, chico, el disclaimer de seguridad.
+ *   2 frases y la pregunta que lleva a la derecha. Abajo, chico, el disclaimer de seguridad
+ *   (en mobile va debajo del botón, a la derecha).
  * - Derecha (bg-100): siempre igual. Título, una línea de apoyo y el único botón primario.
  */
 export function ResultSplit({
@@ -43,10 +44,7 @@ export function ResultSplit({
           <h2 className={`md-result__verdict md-result__verdict--${outcome}`}>{verdict}</h2>
           <div className="md-result__text flex flex-col gap-4">{children}</div>
         </div>
-        <p className="flex max-w-[56ch] items-start gap-3 text-[13px] leading-5 text-ink-muted">
-          <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-defense" strokeWidth={1.5} />
-          <span>{disclaimer}</span>
-        </p>
+        <Disclaimer className="max-md:hidden">{disclaimer}</Disclaimer>
       </div>
 
       <div className="md-result__side">
@@ -55,7 +53,18 @@ export function ResultSplit({
         </h2>
         <p className="max-w-[40ch] text-[18px] leading-7 text-ink-muted">{ctaLine}</p>
         <div className="pt-2">{cta}</div>
+        {/* En mobile el disclaimer va después del botón. */}
+        <Disclaimer className="pt-2 md:hidden">{disclaimer}</Disclaimer>
       </div>
     </div>
+  );
+}
+
+function Disclaimer({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <p className={`flex max-w-[56ch] items-start gap-3 text-[13px] leading-5 text-ink-muted ${className ?? ""}`}>
+      <ShieldCheck aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-defense" strokeWidth={1.5} />
+      <span>{children}</span>
+    </p>
   );
 }
