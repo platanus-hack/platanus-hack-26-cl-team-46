@@ -38,6 +38,8 @@ export interface Simulation {
     last_error?: string | null;
   }[];
   channels: string[];
+  /** Herramientas de monitoreo detectadas en el código (null = aún no se revisa). */
+  tools_detected: string[] | null;
   context: Record<string, unknown> | null;
   attack_plan: { findings?: { vuln_id: string; file: string; line?: number; severity: string }[] } | null;
   state: {

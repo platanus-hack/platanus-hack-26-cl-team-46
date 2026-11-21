@@ -101,7 +101,7 @@ export function createClicky({
     await sleep(fast ? 160 : 300);
     items.forEach(el => el.remove());
     fades.forEach(el => el.remove());
-    ctx.spotHoles = []; ctx.sideY = 0; ctx.board = null; ctx.actions = null;
+    ctx.spotHoles = []; ctx.sideY = 0; ctx.board = null; ctx.flow = null; ctx.actions = null;
     layers.spot.innerHTML = ''; layers.spot.style.opacity = 0;
     ctx.pen.hide();
   }
