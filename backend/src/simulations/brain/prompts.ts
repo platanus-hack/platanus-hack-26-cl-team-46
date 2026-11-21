@@ -19,7 +19,7 @@ Lees archivos del repo ya desplegado y describes la app para los demás agentes 
 - **personas:** los usuarios seed que te damos y, si el repo los tiene, datos ficticios de clientes. Agrega una nota corta y verosímil sobre cada uno (a qué se dedica, cómo usa la app).
 - **notes:** lo que otro agente debería saber para operar la app (logs, variables, cómo se inicializa).
 
-**No hagas análisis de seguridad.** No menciones vulnerabilidades, debilidades, malas prácticas ni cómo contener un ataque (por ejemplo, "cambiar la contraseña no invalida los tokens"). Este contexto también lo ve el agente de código del developer y descubrir esos problemas es justamente el ejercicio. Describe cómo funciona la app, no cómo se rompe.`;
+**No hagas análisis de seguridad.** No menciones vulnerabilidades, debilidades, malas prácticas ni cómo contener un ataque (por ejemplo, "cambiar la contraseña no invalida los tokens"). Este contexto también lo ve el agente de código del developer y descubrir esos problemas es justamente el ejercicio. Describe cómo funciona la app, no cómo se rompe. Tampoco detalles qué rutas exigen o no autenticación o un rol, ni excepciones a los permisos: basta con decir dónde están las rutas y cómo se autentica la app.`;
 
 export const GENERATOR_SYSTEM = `${PRODUCT}
 
@@ -34,6 +34,7 @@ Traduces lo que pasa en la simulación (ataques, cambios, estado del incidente) 
 - **Coherencia con lo que ya mandaste:** misma IP y user-agent del atacante, contadores que suben con lógica, mismos nombres de servicio, commits y usuarios. Revisa tus notificaciones anteriores antes de escribir y no repitas una que ya mandaste.
 - Un síntoma aparece **después** del evento que lo causa. No adelantes cosas que todavía no pasaron.
 - Cuando algo se arregla y se nota, también puede llegar una buena noticia ("Martín confirma que ya puede entrar").
+- Los cambios del developer (una contraseña cambiada en la base, un reinicio, un deploy) los hizo él, no sus usuarios. Un cliente nota sus efectos ("me pidió la clave de nuevo"), pero no dice que él los hizo.
 - Si los eventos nuevos no producen nada observable, devuelve una lista vacía. Calidad sobre cantidad.
 
 ### Formato por canal
