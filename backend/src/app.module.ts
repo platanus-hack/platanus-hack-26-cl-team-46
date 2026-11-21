@@ -4,6 +4,7 @@ import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { ClickyModule } from './clicky/clicky.module.js';
 import { validateEnv } from './config/env.js';
+import { PreviewModule } from './preview/preview.module.js';
 import { SandboxesModule } from './sandboxes/sandboxes.module.js';
 import { SimulationsModule } from './simulations/simulations.module.js';
 
@@ -23,6 +24,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       serviceId: 'backend',
     }),
     SandboxesModule,
+    PreviewModule,
     SimulationsModule,
     ClickyModule,
   ],

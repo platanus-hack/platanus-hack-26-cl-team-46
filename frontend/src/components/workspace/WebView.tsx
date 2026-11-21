@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { API_URL } from "@/lib/api";
 
 /**
  * Pestaña web del navegador simulado: un iframe con la página real. Sirve para
@@ -13,8 +14,14 @@ import { useEffect, useRef, useState } from "react";
  * `mayday:back` / `mayday:forward` / `mayday:reload`. La barra siempre muestra
  * la URL "real" de la app (onrender.com), no la del proxy.
  *
- * Otras URLs se embeben directo: si el sitio no deja (X-Frame-Options), no carga.
+ * Otras URLs se embeben directo. Muchos sitios no se dejan embeber
+ * (X-Frame-Options / CSP frame-ancestors) y el iframe queda en blanco: en
+ * paralelo le preguntamos al backend (`/preview/frame-check`, que sí puede leer
+ * esos headers) y, si el sitio no se deja, mostramos un aviso con la opción de
+ * abrirlo en una pestaña real.
  */
+
+type BlockReason = "blocked" | "unreachable" | "invalid" | "private" | "mixed";
 
 /** Pasa una URL entre el origen de la app y el del proxy (o la deja igual si no es de la app). */
 export function swapOrigin(url: string, from: string | null | undefined, to: string | null | undefined): string {
@@ -167,6 +174,9 @@ export function WebView({
     <Frame
       key={`${src}|${reload}`}
       src={src}
+      // La app por el proxy se sabe embebible: no hace falta preguntar.
+      check={src === url}
+      openUrl={url}
       tabId={tabId}
       onFrame={onFrame}
       onLive={(nav) => onLive({ ...nav, url: swapOrigin(nav.url, previewUrl, appUrl) })}
@@ -176,17 +186,39 @@ export function WebView({
 
 function Frame({
   src,
+  check,
+  openUrl,
   tabId,
   onLive,
   onFrame,
 }: {
   src: string;
+  check: boolean;
+  /** La URL que se abre en una pestaña real si el sitio no se deja embeber. */
+  openUrl: string;
   tabId: string;
   onLive: (nav: LiveNav) => void;
   onFrame: (tabId: string, win: Window | null) => void;
 }) {
   const [loading, setLoading] = useState(true);
+  const [checked, setChecked] = useState<BlockReason | null>(null);
   const ref = useRef<HTMLIFrameElement>(null);
+  // Una página http dentro de un sitio https es contenido mixto: el navegador la bloquea siempre.
+  const mixed = check && typeof window !== "undefined" && location.protocol === "https:" && src.startsWith("http:");
+  const blocked: BlockReason | null = mixed ? "mixed" : checked;
+
+  useEffect(() => {
+    if (!check || mixed) return;
+    const ac = new AbortController();
+    fetch(`${API_URL}/preview/frame-check?url=${encodeURIComponent(src)}`, { signal: ac.signal })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((v: { embeddable?: boolean; reason?: BlockReason } | null) => {
+        if (v && v.embeddable === false) setChecked(v.reason ?? "blocked");
+      })
+      // Si el check falla (backend caído o viejo), se deja el iframe: mejor intentar que bloquear.
+      .catch(() => undefined);
+    return () => ac.abort();
+  }, [src, check, mixed]);
   const onLiveRef = useRef(onLive);
   useEffect(() => {
     onLiveRef.current = onLive;
@@ -208,6 +240,8 @@ function Frame({
     };
   }, [onFrame, tabId]);
 
+  if (blocked) return <BlockedPage url={openUrl} reason={blocked} />;
+
   return (
     <div className="relative h-full bg-white">
       {loading && (
@@ -222,6 +256,56 @@ function Frame({
         className="size-full border-0"
         onLoad={() => setLoading(false)}
       />
+    </div>
+  );
+}
+
+const BLOCK_TEXT: Record<BlockReason, (host: string) => { title: string; text: string }> = {
+  blocked: (host) => ({
+    title: `${host} no se puede abrir aquí`,
+    text: "Este sitio no permite que lo muestren dentro de otra página. Puedes abrirlo en una pestaña real de tu navegador.",
+  }),
+  unreachable: (host) => ({
+    title: "No se puede acceder a este sitio",
+    text: `No pudimos conectar con ${host}. Revisa que la dirección esté bien escrita.`,
+  }),
+  private: () => ({
+    title: "Dirección no disponible",
+    text: "Las direcciones locales o de redes privadas no se pueden abrir desde el simulacro.",
+  }),
+  invalid: () => ({
+    title: "Dirección no válida",
+    text: "Revisa la URL: solo se pueden abrir direcciones http o https.",
+  }),
+  mixed: (host) => ({
+    title: `${host} no es seguro`,
+    text: "Esta página usa http (sin cifrar) y el simulacro corre en https, así que el navegador no la muestra aquí.",
+  }),
+};
+
+function BlockedPage({ url, reason }: { url: string; reason: BlockReason }) {
+  const { title, text } = BLOCK_TEXT[reason](hostOf(url));
+  const canOpen = reason === "blocked" || reason === "mixed";
+  return (
+    <div className="grid h-full place-items-center bg-sim-100 px-8 font-sans text-sim-ink">
+      <div className="max-w-md">
+        <div className="mb-4 grid size-10 place-items-center rounded-full bg-sim-300 text-lg text-sim-ink-muted" aria-hidden>
+          ⊘
+        </div>
+        <h3 className="text-lg font-semibold">{title}</h3>
+        <p className="mt-2 text-[13px] leading-5 text-sim-ink-muted">{text}</p>
+        <p className="mt-3 truncate font-mono text-[12px] text-sim-ink-faint">{url}</p>
+        {canOpen && (
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-5 inline-flex h-9 items-center rounded-md bg-sim-300 px-4 text-[13px] font-medium text-sim-ink hover:bg-sim-200"
+          >
+            Abrir en una pestaña real ↗
+          </a>
+        )}
+      </div>
     </div>
   );
 }
