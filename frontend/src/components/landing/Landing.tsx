@@ -21,11 +21,14 @@ import {
 import { ATTACK_SCRIPT, QUESTION, RESULT, type OptionId } from "./content";
 import { CurtainPixels, type CurtainHandle } from "./CurtainPixels";
 import { HeroSplit } from "./HeroSplit";
+import { IntroHack } from "./intro/IntroHack";
+import { useIntroGate } from "./intro/useIntroGate";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
 /**
  * Landing de Mayday (DESIGN.md › "La landing, escena por escena").
+ *   0. Intro "te están hackeando" (~2,5 s al abrir, una vez por sesión; capa encima del hero).
  *   1. Hero partido en dos: tú (cian) / el atacante (ámbar).
  *   2. Cortinas: las mitades se abren con el scroll y aparece el AttackTerminal.
  *   3. La pregunta (QuestionCard).
@@ -45,12 +48,15 @@ gsap.registerPlugin(ScrollTrigger, useGSAP);
 const CARD_READY = 0.62;
 
 export function Landing() {
-  // Cuándo arrancó el simulacro (cronómetro y tiempo de respuesta). Se fija en el cliente al cargar.
+  // Intro: el cronómetro (y la MaydayAlert a la vista) arrancan recién cuando termina.
+  const intro = useIntroGate();
+  // Cuándo arrancó el simulacro (cronómetro y tiempo de respuesta).
   const [startedAt, setStartedAt] = useState<number>();
   useEffect(() => {
+    if (intro.phase !== "done") return;
     const id = requestAnimationFrame(() => setStartedAt(Date.now()));
     return () => cancelAnimationFrame(id);
-  }, []);
+  }, [intro.phase, intro.runId]);
 
   const [alertSolid, setAlertSolid] = useState(true);
   const [cardActive, setCardActive] = useState(false);
@@ -173,12 +179,27 @@ export function Landing() {
 
   return (
     <main ref={mainRef} className="flex-1">
+      {/* Contenedor fijo: ScrollTrigger mueve la sección de abajo a un pin-spacer, y React no puede
+          insertar nodos "antes" de ella. Así la intro monta y desmonta dentro de su propio div. */}
+      <div>
+        <IntroHack phase={intro.phase} device={intro.device} runId={intro.runId} onDone={intro.finish} />
+      </div>
+
       <section
         ref={stageRef}
         className="relative flex h-svh flex-col overflow-hidden motion-reduce:h-auto motion-reduce:overflow-visible"
       >
         <div className="relative z-40 shrink-0">
-          <MaydayAlert solid={alertSolid} right={<Stopwatch since={startedAt} className="shrink-0" />} />
+          <MaydayAlert
+            solid={alertSolid}
+            right={
+              startedAt ? (
+                <Stopwatch since={startedAt} className="shrink-0" />
+              ) : (
+                <span className="md-mono shrink-0">T+00:00</span>
+              )
+            }
+          />
         </div>
 
         <div className="relative flex-1 overflow-hidden motion-reduce:flex-none motion-reduce:overflow-visible">
@@ -228,37 +249,39 @@ export function Landing() {
         </div>
       </section>
 
-      {answer && (
-        <section ref={resultRef} aria-label="Tu resultado" className={resultShown ? "" : "invisible"}>
-          <ResultSplit
-            className="min-h-svh!"
-            outcome={ok ? "ok" : "fail"}
-            verdict={ok ? RESULT.ok.verdict : RESULT.fail.verdict}
-            hud={
-              <Hud
-                fluid
-                items={[
-                  { label: "Tiempo de respuesta", value: formatElapsed(answer.seconds), tone: ok ? "defense" : "attack" },
-                  { label: "Atacante", value: ok ? "Afuera" : "Adentro", tone: ok ? "defense" : "attack" },
-                ]}
-              />
-            }
-            disclaimer={RESULT.disclaimer}
-            ctaTitle={RESULT.ctaTitle}
-            ctaLine={RESULT.ctaLine}
-            ctaLabel={RESULT.ctaButton}
-            ctaHref={RESULT.ctaHref}
-          >
-            <p>{ok ? RESULT.ok.why : RESULT.fail.why[answer.option.id]}</p>
-            <p>
-              <strong>{RESULT.invite}</strong> {RESULT.inviteCta}
-            </p>
-          </ResultSplit>
-        </section>
-      )}
+      <div>
+        {answer && (
+          <section ref={resultRef} aria-label="Tu resultado" className={resultShown ? "" : "invisible"}>
+            <ResultSplit
+              className="min-h-svh!"
+              outcome={ok ? "ok" : "fail"}
+              verdict={ok ? RESULT.ok.verdict : RESULT.fail.verdict}
+              hud={
+                <Hud
+                  fluid
+                  items={[
+                    { label: "Tiempo de respuesta", value: formatElapsed(answer.seconds), tone: ok ? "defense" : "attack" },
+                    { label: "Atacante", value: ok ? "Afuera" : "Adentro", tone: ok ? "defense" : "attack" },
+                  ]}
+                />
+              }
+              disclaimer={RESULT.disclaimer}
+              ctaTitle={RESULT.ctaTitle}
+              ctaLine={RESULT.ctaLine}
+              ctaLabel={RESULT.ctaButton}
+              ctaHref={RESULT.ctaHref}
+            >
+              <p>{ok ? RESULT.ok.why : RESULT.fail.why[answer.option.id]}</p>
+              <p>
+                <strong>{RESULT.invite}</strong> {RESULT.inviteCta}
+              </p>
+            </ResultSplit>
+          </section>
+        )}
+      </div>
 
       <PixelTransition runKey={resultRun} cell={resultCell} fixed duration={700} onCovered={onResultCovered} />
-      <TeamFooter />
+      <TeamFooter onReplayIntro={intro.replay} />
     </main>
   );
 }
@@ -274,7 +297,7 @@ function SceneSlot({ ref, children }: { ref?: React.Ref<HTMLDivElement>; childre
 }
 
 /** Accesos del equipo a las consolas de desarrollo (los mismos que tenía la portada anterior). */
-function TeamFooter() {
+function TeamFooter({ onReplayIntro }: { onReplayIntro: () => void }) {
   return (
     <footer className="flex flex-wrap items-center gap-6 border-t border-line px-4 py-6 md:px-12">
       <span className="md-index">EQUIPO</span>
@@ -284,6 +307,18 @@ function TeamFooter() {
       <Link className="text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline" href="/simulate">
         Consola de la simulación (multi-agente) →
       </Link>
+      {/* /#intro también la fuerza (para la demo del pitch). */}
+      <a
+        className="text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline md:ml-auto"
+        href="#intro"
+        onClick={(e) => {
+          e.preventDefault();
+          window.history.replaceState(null, "", "#intro");
+          onReplayIntro();
+        }}
+      >
+        Ver la intro de nuevo
+      </a>
     </footer>
   );
 }

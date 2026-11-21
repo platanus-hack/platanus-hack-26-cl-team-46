@@ -1,3 +1,5 @@
+import type { DeployLogRow } from "@/components/mayday";
+
 /**
  * Copy y datos de la landing. Datos de ataque ficticios pero verosímiles (DESIGN.md › Voz y copy):
  * IPs de documentación (203.0.113.0/24, 198.51.100.0/24), keys y tokens truncados.
@@ -167,4 +169,50 @@ export const RESULT = {
   ctaButton: "Entra con GitHub",
   /** No hay login con GitHub en la repo todavía: ruta placeholder. */
   ctaHref: "/login",
+};
+
+/**
+ * Intro "te están hackeando" (antes del hero). Mismo proyecto ficticio, mismos datos del ataque.
+ */
+export const INTRO = {
+  chip: "Simulacro",
+  skip: "Saltar",
+  env: [
+    { key: "NODE_ENV", value: "production" },
+    { key: "DATABASE_URL", value: "postgres://apuntes:••••••@db.internal:5432/apuntes" },
+    { key: "JWT_SECRET", value: "a8f3c1e9b47d…d27b", leaked: true },
+    { key: "RESEND_API_KEY", value: "re_••••••••••••" },
+    { key: "SENTRY_DSN", value: "https://••••@o0.ingest.example.io/1" },
+  ],
+  repoFiles: ["src/", "views/", "docker-compose.yml", ".env.example", "package.json", "tsconfig.json"],
+  logs: [
+    { time: "03:12:04.112", level: "INFO", message: "GET /notes 200 18ms" },
+    { time: "03:12:04.380", level: "ATTACK", message: "POST /api/auth/login 401 · 203.0.113.42 · ×1.204" },
+    { time: "03:12:06.017", level: "ATTACK", message: "login_success admin@apuntes.dev · 203.0.113.42" },
+    { time: "03:12:07.442", level: "WARN", message: "rate limit no configurado en /api/auth/login" },
+    { time: "03:12:09.905", level: "ATTACK", message: "GET /api/admin/users/export 200 · 2,1 MB" },
+    { time: "03:47:12.230", level: "ATTACK", message: "GET /api/admin/users 200 · token_iat=03:12:44" },
+  ] satisfies DeployLogRow[] as DeployLogRow[],
+  adminUsers: [
+    { email: "catalina.rojas@example.com", role: "admin" },
+    { email: "martin.soto@example.com", role: "user" },
+    { email: "fernanda.diaz@example.com", role: "user" },
+    { email: "diego.paredes@example.com", role: "user" },
+  ],
+  toastLogin: {
+    app: "Apuntes · Seguridad",
+    time: "ahora",
+    title: "Nuevo inicio de sesión en tu cuenta",
+    text: "admin@apuntes.dev · Linux · 203.0.113.42",
+    icon: "A",
+  },
+  toastPassword: {
+    app: "Apuntes · Seguridad",
+    time: "ahora",
+    title: "Tu contraseña fue cambiada",
+    text: "Si no fuiste tú, revisa tu cuenta.",
+    icon: "A",
+  },
+  tabsFrom: 3,
+  tabsTo: 17,
 };

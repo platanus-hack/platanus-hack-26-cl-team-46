@@ -65,6 +65,7 @@ Escala: `display-xl` 120 / `display-lg` 72 / `heading-1` 48 / `heading-2` 32 / `
 - **Caída** (`md-drop`, 350 ms) = algo nuevo que llega: una notificación o una pista.
 - Easing de entrada: `cubic-bezier(.2,.8,.2,1)`. Sin rebotes ni escalas exageradas.
 - Todo se apaga con `prefers-reduced-motion`.
+- Seguridad fotosensible: nada parpadea más de 3 veces por segundo y no hay destellos de pantalla completa en colores fuertes. Si algo "tiembla", es movimiento (`transform`), no luz.
 - Ningún efecto va solo: cada efecto visual del ataque viene con un cambio de texto y una fila en los logs.
 
 ## Iconografía e imágenes
@@ -85,6 +86,7 @@ Español de Chile neutro, con los términos técnicos en inglés como los dice u
 
 ## La landing, escena por escena
 
+0. **Intro "te están hackeando"** (~2,5 s al abrir, una vez por sesión; `/#intro` la fuerza): en computador se abren ventanas de la capa simulada con el ataque y un cursor fantasma ámbar; en teléfono se abren pestañas solas y bajan notificaciones. Termina con la transición de pixeles y deja el hero. Siempre con chip "Simulacro" y botón "Saltar" (clic, toque o Esc). Sin intro con `prefers-reduced-motion`.
 1. **Llegada:** arranca el simulacro. MaydayAlert sólida en marquesina, el logo y el cronómetro T+00:00 que empieza a correr. Titular en `display-xl`.
 2. **Scroll:** transición de pixeles a pantalla completa. Se abre la pregunta (QuestionCard) con el AttackTerminal corriendo infinito detrás.
 3. **Respuesta:** eliges entre 3 opciones. Pixeles sobre el panel (`pixel-sm`) y se revela qué estaba bien (cian) y qué no (ámbar).
