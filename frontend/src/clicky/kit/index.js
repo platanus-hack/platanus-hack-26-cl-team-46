@@ -4,7 +4,7 @@ import { createPen } from './pen.js';
 import { createMarks } from './marks.js';
 import { createCards } from './cards.js';
 import { createIsland } from './island.js';
-import { createRecorder, stopSpeaking } from './voice.js';
+import { createVoiceInput, stopSpeaking } from './voice.js';
 import { createDirector } from './director.js';
 
 // Public entry point. Mount once on any page:
@@ -15,10 +15,13 @@ import { createDirector } from './director.js';
 // screenshot: async () => dataURL | null, a capture of what the user sees right now.
 // context: string (or () => string) describing the app, sent with every question.
 // headers: () => object, extra headers for every request (the backend needs x-sim-id).
-// Lessons may carry the voice already synthesized (beat.audio); otherwise the browser speaks.
+// The answer streams in (NDJSON, one beat per line) and plays as it arrives. Beats may carry
+// their voice already synthesized (beat.audio); otherwise the browser speaks.
+// liveTranscription: while push-to-talk is held, the audio goes to the backend's realtime
+// transcription session (POST /stt-session); if that fails the clip is uploaded (POST /transcribe).
 export function createClicky({
   api = '/clicky', headers: extraHeaders = () => ({}), theme = 'sketch', voice = true, pushToTalkKey = 'Space', cssHref = '/clicky/styles.css',
-  hint, screenshot, context = '', autoTag = true, ignore = '[data-clicky-ignore]', surface = 'light',
+  hint, screenshot, context = '', autoTag = true, ignore = '[data-clicky-ignore]', surface = 'light', liveTranscription = true,
 } = {}) {
   if (!document.querySelector('link[data-clicky-css]')) {
     const link = htmlEl('link', '', document.head);
@@ -41,7 +44,7 @@ export function createClicky({
   layers.spot.style.opacity = 0;
   svgEl('defs', {}, layers.marks).innerHTML = '<filter id="clicky-glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>';
 
-  let current = THEMES[theme] || THEMES.sketch, voiceOn = voice, history = [], busy = false;
+  let current = THEMES[theme] || THEMES.sketch, voiceOn = voice, history = [], busy = false, answering = null;
   const ctx = {
     layers, themes: THEMES, theme: () => current,
     strokes: [], items: [], fades: [], spotHoles: [], sideY: 0, board: null, actions: null, surface,
@@ -77,16 +80,25 @@ export function createClicky({
   setTheme(theme);
   island.idle();
 
-  async function clear() {
+  // Erases the drawing. `fast`: a quick fade instead of running the pen backwards, used when a
+  // new question comes in, so the screen is clean for the capture without making anyone wait.
+  async function clear({ fast = false } = {}) {
     director.stop();
     stopSpeaking();
+    answering?.abort();
+    answering = null;
     const items = ctx.items.splice(0), strokes = ctx.strokes.splice(0).reverse(), fades = ctx.fades.splice(0);
     items.forEach(el => el.classList.add('clicky-out'));
     fades.forEach(el => animate(0.3, u => el.setAttribute('opacity', 0.08 * (1 - u))));
-    if (ctx.spotHoles.length) animate(0.3, u => layers.spot.style.opacity = 1 - u);
-    const per = Math.min(0.14, 0.9 / Math.max(1, strokes.length));
-    for (const { path } of strokes) await ctx.pen.erase(path, per);
-    await sleep(300);
+    if (ctx.spotHoles.length) animate(fast ? 0.15 : 0.3, u => layers.spot.style.opacity = 1 - u);
+    if (fast) {
+      await Promise.all(strokes.map(({ path }) => animate(0.15, u => path.setAttribute('opacity', 1 - u)).then(() => path.remove())));
+      items.forEach(el => (el.style.transition = 'opacity .15s'));
+    } else {
+      const per = Math.min(0.14, 0.9 / Math.max(1, strokes.length));
+      for (const { path } of strokes) await ctx.pen.erase(path, per);
+    }
+    await sleep(fast ? 160 : 300);
     items.forEach(el => el.remove());
     fades.forEach(el => el.remove());
     ctx.spotHoles = []; ctx.sideY = 0; ctx.board = null; ctx.actions = null;
@@ -134,20 +146,52 @@ export function createClicky({
     question = String(question || '').trim();
     if (!question || busy) return;
     busy = true;
+    let show = null;
     try {
       island.caption('“' + question + '”');
       island.state('thinking');
-      // Erase the previous drawing first, so the capture shows the page and not our marks.
-      await clear();
+      // Clear the previous drawing first (quickly), so the capture shows the page and not our marks.
+      await clear({ fast: true });
       const image = screenshot ? await screenshot().catch(() => null) : null;
       const page = { title: document.title, path: location.pathname };
       const ctxText = typeof context === 'function' ? context() : context;
-      const { beats } = await post('/lesson', JSON.stringify({ question, elements: screenElements(), history, screenshot: image, page, context: ctxText, voice: voiceOn }), { 'Content-Type': 'application/vnd.clicky+json' });
-      history.push({ q: question, a: beats.map(b => b.say).join(' ') });
+      const abort = answering = new AbortController();
+      const res = await fetch(api + '/lesson', {
+        method: 'POST',
+        headers: { ...extraHeaders(), 'Content-Type': 'application/vnd.clicky+json' },
+        body: JSON.stringify({ question, elements: screenElements(), history, screenshot: image, page, context: ctxText, voice: voiceOn }),
+        signal: abort.signal,
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error([data.message].flat().join('; ') || data.error || res.statusText);
+      }
+      busy = false; // a new question can interrupt this answer from now on
+      show = director.start();
+      const said = [];
+      const reader = res.body.getReader(), decoder = new TextDecoder();
+      let buf = '';
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        for (let nl = buf.indexOf('\n'); nl >= 0; nl = buf.indexOf('\n')) {
+          const line = buf.slice(0, nl).trim();
+          buf = buf.slice(nl + 1);
+          if (!line) continue;
+          const evt = JSON.parse(line);
+          if (evt.type === 'beat') { said.push(evt.say); show.push(evt); }
+          else if (evt.type === 'error') show.push({ say: evt.message, marks: [] });
+        }
+      }
+      show.end();
+      history.push({ q: question, a: said.join(' ') });
       history = history.slice(-6);
-      busy = false;
-      await director.play(beats);
+      if (answering === abort) answering = null;
+      await show.done;
     } catch (e) {
+      if (e.name === 'AbortError') return; // another question or clear() took over
+      show?.end();
       island.caption('No pude responder: ' + e.message);
       island.state('idle');
     } finally {
@@ -155,25 +199,46 @@ export function createClicky({
     }
   }
 
-  const recorder = createRecorder();
+  // A live transcription session is requested ahead of time (its token lasts 15 minutes), so
+  // pressing the key starts streaming right away.
+  const mic = createVoiceInput();
+  let sttReady = null;
+  function prefetchStt() {
+    if (!liveTranscription || sttReady) return;
+    const at = Date.now();
+    sttReady = post('/stt-session', null).then(({ url }) => ({ url, at }), () => null);
+  }
+  async function sttUrl() {
+    const ready = await sttReady;
+    sttReady = null;
+    if (ready && Date.now() - ready.at < 12 * 60_000) return ready.url;
+    return liveTranscription ? post('/stt-session', null).then(r => r.url, () => null) : null;
+  }
+  prefetchStt();
+
+  let listening = false;
   async function listen() {
-    if (busy || recorder.recording) return;
+    if (busy || listening) return;
+    listening = true;
     try {
-      director.stop(); stopSpeaking();
+      clear({ fast: true }); // in parallel: the microphone must not miss the first words
       island.caption('Te escucho…');
       island.state('listening');
-      await recorder.start(v => island.level(v));
-    } catch (e) { island.caption('Sin micrófono: ' + e.message); island.state('idle'); }
+      await mic.start({ url: liveTranscription ? sttUrl() : null, onLevel: v => island.level(v), onPartial: t => island.caption('“' + t + '”') });
+    } catch (e) { listening = false; island.caption('Sin micrófono: ' + e.message); island.state('idle'); }
   }
   async function send() {
-    const blob = await recorder.stop();
-    if (!blob) return;
-    if (blob.size < 2500) { island.idle('Mantén apretado mientras hablas'); return; }
+    if (!listening) return;
+    listening = false;
+    const { text, blob } = await mic.stop();
+    prefetchStt();
+    if (text) return ask(text);
+    if (!blob || blob.size < 2500) { island.idle('Mantén apretado mientras hablas'); return; }
     island.caption('Transcribiendo…');
     island.state('thinking');
     try {
-      const { text } = await post('/transcribe', blob, { 'Content-Type': blob.type });
-      ask(text);
+      const { text: uploaded } = await post('/transcribe', blob, { 'Content-Type': blob.type });
+      ask(uploaded);
     } catch (e) { island.caption('No pude transcribir: ' + e.message); island.state('idle'); }
   }
   const typing = () => ['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
@@ -188,6 +253,6 @@ export function createClicky({
     caption: text => island.idle(text),
     setVoice(on) { voiceOn = on; },
     get theme() { return Object.keys(THEMES).find(k => THEMES[k] === current); },
-    destroy() { clear(); removeEventListener('keydown', down); removeEventListener('keyup', up); root.remove(); multiply.remove(); },
+    destroy() { clear({ fast: true }); if (listening) { listening = false; mic.stop(); } removeEventListener('keydown', down); removeEventListener('keyup', up); root.remove(); multiply.remove(); },
   };
 }

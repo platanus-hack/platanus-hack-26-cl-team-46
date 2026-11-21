@@ -3,8 +3,10 @@ import type { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ClickyAccessGuard } from './clicky-access.guard.js';
 import { lessonSchema } from './clicky.schemas.js';
-import { wordStarts } from './elevenlabs.js';
-import { cleanLesson } from './protocol.js';
+import { BeatScanner } from './brain.js';
+import { ClickyService, type LessonEvent } from './clicky.service.js';
+import { liveSttUrl, wordStarts } from './elevenlabs.js';
+import { anchorWord, cleanLesson } from './protocol.js';
 
 const ctx = (headers: Record<string, string>, ip = '1.2.3.4') => {
   const req = { headers, ip } as never;
@@ -74,6 +76,105 @@ describe('cleanLesson', () => {
       { beats: [{ say: 'Mira aquí', marks: [{ type: 'ring', target: 'a' }, { type: 'ring', target: 'x' }, { type: 'eval', code: 'alert(1)' }] }] },
       new Set(['a']),
     );
-    expect(beats[0].marks).toEqual([{ type: 'ring', target: 'a', label: undefined, n: undefined }]);
+    expect(beats[0].marks).toEqual([{ type: 'ring', target: 'a', label: undefined, n: undefined, word: 1 }]);
+  });
+
+  it('ancla cada marca a la palabra que la nombra', () => {
+    const [beat] = cleanLesson(
+      {
+        beats: [
+          {
+            say: 'Mira primero el título y después este botón rojo',
+            marks: [
+              { type: 'spotlight', target: 'a' },
+              { type: 'ring', target: 'a', at: 'el título' },
+              { type: 'target', target: 'b', at: 'Este Botón' },
+              { type: 'button', text: '¿Y ahora?' },
+            ],
+          },
+        ],
+      },
+      new Set(['a', 'b']),
+    );
+    expect(beat.marks.map((m) => m.word)).toEqual([0, 2, 6, 8]);
+  });
+
+  it('reparte a lo largo de la frase las marcas sin ancla', () => {
+    const [beat] = cleanLesson(
+      { beats: [{ say: 'uno dos tres cuatro cinco seis', marks: [{ type: 'ring', target: 'a' }, { type: 'underline', target: 'a', at: 'no está' }] }] },
+      new Set(['a']),
+    );
+    expect(beat.marks.map((m) => m.word)).toEqual([1, 4]);
+  });
+});
+
+describe('anchorWord', () => {
+  it('ignora tildes, mayúsculas y puntuación', () => {
+    expect(anchorWord('Fíjate en la sesión, arriba.', 'sesion')).toBe(3);
+    expect(anchorWord('Rota el JWT_SECRET ahora', 'jwt_secret')).toBe(2);
+    expect(anchorWord('Hola', 'nada')).toBe(-1);
+  });
+});
+
+describe('BeatScanner', () => {
+  it('entrega cada beat apenas se cierra, aunque llegue en trozos', () => {
+    const json = '{"beats":[{"say":"Mira {esto}, \\"ok\\"","marks":[{"type":"ring","target":"a"}]},{"say":"dos","marks":[]}]}';
+    const scanner = new BeatScanner();
+    const got: unknown[] = [];
+    for (let i = 0; i < json.length; i += 7) got.push(...scanner.push(json.slice(i, i + 7)));
+    expect(got).toEqual([
+      { say: 'Mira {esto}, "ok"', marks: [{ type: 'ring', target: 'a' }] },
+      { say: 'dos', marks: [] },
+    ]);
+  });
+
+  it('no entrega nada hasta que el primer beat termina', () => {
+    const scanner = new BeatScanner();
+    expect(scanner.push('{"beats":[{"say":"hola","ma')).toEqual([]);
+    expect(scanner.push('rks":[]}')).toEqual([{ say: 'hola', marks: [] }]);
+  });
+});
+
+describe('liveSttUrl', () => {
+  it('arma la conexión en español, PCM 16 kHz, con keyterms repetidos y sin la key', () => {
+    const url = new URL(liveSttUrl('scribe_v3_live', 'sutkn_x'));
+    expect(url.origin + url.pathname).toBe('wss://api.elevenlabs.io/v1/speech-to-text/realtime');
+    expect(url.searchParams.get('token')).toBe('sutkn_x');
+    expect(url.searchParams.get('audio_format')).toBe('pcm_16000');
+    expect(url.searchParams.get('language_code')).toBe('es');
+    expect(url.searchParams.getAll('keyterms')).toContain('JWT');
+  });
+});
+
+describe('ClickyService.lesson (ensayo)', () => {
+  const service = (env: Record<string, unknown>) =>
+    new ClickyService({ get: vi.fn((k: string) => env[k]) } as never);
+
+  it('manda los beats en orden, anclados, y termina con done', async () => {
+    const s = service({ CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 5 });
+    const events: LessonEvent[] = [];
+    for await (const e of s.lesson('sim-0a1b2c3d', {
+      question: 'hola',
+      elements: [
+        { id: 't', kind: 'título', text: 'Simulación' },
+        { id: 'b', kind: 'botón', text: 'Pausa' },
+      ],
+      history: [],
+      screenshot: null,
+      page: { title: 'Mayday', path: '/simulate' },
+      context: '',
+      voice: true,
+    }))
+      events.push(e);
+    expect(events.map((e) => e.type)).toEqual(['beat', 'beat', 'beat', 'done']);
+    const second = events[1] as Extract<LessonEvent, { type: 'beat' }>;
+    expect(second.index).toBe(1);
+    expect(second.marks[0]).toMatchObject({ type: 'target', target: 'b', word: 1 });
+  });
+
+  it('respeta el tope de preguntas por simulación antes de llamar al modelo', async () => {
+    const s = service({ CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 0 });
+    const it = s.lesson('sim-0a1b2c3d', { question: 'x', elements: [], history: [], screenshot: null, page: { title: '', path: '' }, context: '', voice: false });
+    await expect(it.next()).rejects.toThrow(/máximo de preguntas/);
   });
 });

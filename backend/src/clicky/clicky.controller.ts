@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Header,
   HttpCode,
   Post,
   Req,
@@ -20,8 +21,10 @@ import { ClickyService } from './clicky.service.js';
  * simulación en curso (ClickyAccessGuard).
  *
  * - POST /clicky/lesson (Content-Type application/vnd.clicky+json): pregunta, elementos
- *   visibles y captura → beats con lo que dice, lo que marca y su audio.
- * - POST /clicky/transcribe (Content-Type audio/*): audio del push-to-talk → texto.
+ *   visibles y captura → NDJSON, una línea por beat (lo que dice, lo que marca, en qué
+ *   palabra y su audio) apenas está listo, y al final `{"type":"done"}`.
+ * - POST /clicky/stt-session: dirección del WebSocket de dictado en vivo (token de un uso).
+ * - POST /clicky/transcribe (Content-Type audio/*): respaldo, el audio entero → texto.
  */
 @Controller('clicky')
 @UseGuards(ClickyAccessGuard)
@@ -30,7 +33,10 @@ export class ClickyController {
 
   @Post('lesson')
   @HttpCode(200)
-  async lesson(@Req() req: ClickyRequest, @Body() raw: unknown) {
+  @Header('Content-Type', 'application/x-ndjson; charset=utf-8')
+  @Header('Cache-Control', 'no-store')
+  @Header('X-Accel-Buffering', 'no')
+  async *lesson(@Req() req: ClickyRequest, @Body() raw: unknown) {
     const parsed = lessonSchema.safeParse(parseBody(raw));
     if (!parsed.success)
       throw new BadRequestException(
@@ -38,7 +44,13 @@ export class ClickyController {
           .map((i) => `${i.path.join('.')}: ${i.message}`)
           .join('; '),
       );
-    return { beats: await this.clicky.lesson(req.clickySimId, parsed.data) };
+    yield* this.clicky.lesson(req.clickySimId, parsed.data);
+  }
+
+  @Post('stt-session')
+  @HttpCode(200)
+  async sttSession(@Req() req: ClickyRequest) {
+    return { url: await this.clicky.liveTranscription(req.clickySimId) };
   }
 
   @Post('transcribe')

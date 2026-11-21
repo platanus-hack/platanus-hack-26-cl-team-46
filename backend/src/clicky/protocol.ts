@@ -54,18 +54,74 @@ function cleanMark(m: any, ids: Set<string>): Mark | null {
   return null;
 }
 
+/** Límites de una respuesta completa: se cuentan beat a beat, mientras llegan. */
+export type Budget = { buttons: number; boards: number; cards: number; beats: number };
+export const newBudget = (): Budget => ({ buttons: 0, boards: 0, cards: 0, beats: 0 });
+
+const fold = (w: string) =>
+  w
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9ñ%$]+/g, '');
+
+/**
+ * Palabra del "say" (separado por espacios, igual que el navegador) en que empieza `at`.
+ * Busca la frase completa; si no está, la primera palabra que la contenga. -1 si no aparece.
+ */
+export function anchorWord(say: string, at: unknown): number {
+  if (typeof at !== 'string' || !at.trim()) return -1;
+  const words = say.split(/\s+/).map(fold);
+  const want = at.split(/\s+/).map(fold).filter(Boolean);
+  if (!want.length) return -1;
+  for (let i = 0; i + want.length <= words.length; i++)
+    if (want.every((w, k) => words[i + k] === w)) return i;
+  const first = want[0];
+  return words.findIndex((w) => w && (w === first || (first.length >= 4 && w.includes(first))));
+}
+
+/**
+ * Valida un beat (lo que dice y lo que dibuja) y fija en qué palabra aparece cada marca
+ * (`word`): la que nombró el modelo en `at` o, si no, repartidas a lo largo de la frase,
+ * como HeyClicky reparte los trazos sobre la línea que se está diciendo.
+ */
+export function cleanBeat(b: any, ids: Set<string>, budget: Budget): Beat | null {
+  if (typeof b?.say !== 'string' || !b.say.trim() || budget.beats >= 7) return null;
+  const say = str(b.say, 220);
+  const total = say.split(/\s+/).length;
+  const raw: any[] = Array.isArray(b.marks) ? b.marks : [];
+  const marks = raw
+    .map((m) => ({ m, clean: cleanMark(m, ids) }))
+    .filter((x): x is { m: any; clean: Mark } => !!x.clean)
+    .filter(({ clean }) => {
+      if (clean.type === 'button') return ++budget.buttons <= 2;
+      if (clean.type === 'chart' || clean.type === 'diagram') return ++budget.boards <= 1;
+      if (clean.type === 'card') return ++budget.cards <= 1;
+      return true;
+    })
+    .slice(0, 4);
+  budget.beats++;
+  return {
+    say,
+    marks: marks.map(({ m, clean }, k) => {
+      const anchored = anchorWord(say, m.at);
+      // Sin ancla: el foco va al principio, los botones al final y el resto se reparte.
+      const word =
+        anchored >= 0
+          ? anchored
+          : clean.type === 'spotlight'
+            ? 0
+            : clean.type === 'button'
+              ? total - 1
+              : Math.min(total - 1, Math.floor(((k + 0.5) * total) / Math.max(1, marks.length)));
+      return { ...clean, word };
+    }),
+  };
+}
+
 export function cleanLesson(plan: any, ids: Set<string>): Beat[] {
-  const beats = (Array.isArray(plan?.beats) ? plan.beats : []).slice(0, 7);
-  let buttons = 0, boards = 0, cards = 0;
-  return beats
-    .filter((b: any) => typeof b?.say === 'string' && b.say.trim())
-    .map((b: any) => ({
-      say: str(b.say, 220),
-      marks: (Array.isArray(b.marks) ? b.marks : []).map((m: any) => cleanMark(m, ids)).filter((m: Mark | null): m is Mark => !!m).filter((m: Mark) => {
-        if (m.type === 'button') return ++buttons <= 2;
-        if (m.type === 'chart' || m.type === 'diagram') return ++boards <= 1;
-        if (m.type === 'card') return ++cards <= 1;
-        return true;
-      }).slice(0, 4),
-    }));
+  const budget = newBudget();
+  return (Array.isArray(plan?.beats) ? plan.beats : [])
+    .map((b: any) => cleanBeat(b, ids, budget))
+    .filter((b: Beat | null): b is Beat => !!b);
 }

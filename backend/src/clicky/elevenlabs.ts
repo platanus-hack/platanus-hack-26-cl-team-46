@@ -1,5 +1,5 @@
 // ElevenLabs: voz de Clicky (texto a voz con tiempos por carácter) y reconocimiento
-// de lo que dice el usuario (Scribe). Docs: https://elevenlabs.io/docs/api-reference
+// de lo que dice el usuario (Scribe, en vivo o al soltar). Docs: https://elevenlabs.io/docs/api-reference
 const API = 'https://api.elevenlabs.io/v1';
 
 export interface Alignment {
@@ -45,6 +45,7 @@ export async function textToSpeech(opts: {
   text: string;
   previousText?: string;
   nextText?: string;
+  timeoutMs?: number;
 }): Promise<Speech> {
   const url = `${API}/text-to-speech/${encodeURIComponent(opts.voiceId)}/with-timestamps?output_format=${encodeURIComponent(opts.format)}`;
   const res = await fetch(url, {
@@ -59,7 +60,7 @@ export async function textToSpeech(opts: {
       previous_text: opts.previousText,
       next_text: opts.nextText,
     }),
-    signal: AbortSignal.timeout(20_000),
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 20_000),
   });
   const body = await res.text();
   if (!res.ok)
@@ -138,4 +139,43 @@ export async function speechToText(opts: {
   if (!res.ok)
     throw new Error(`ElevenLabs STT ${res.status}: ${body.slice(0, 200)}`);
   return ((JSON.parse(body) as { text?: string }).text ?? '').trim();
+}
+
+/**
+ * Dirección del WebSocket de transcripción en vivo, con un token de un solo uso: el
+ * navegador manda el audio directo a ElevenLabs mientras el usuario habla, sin ver la
+ * key. El token se consume al conectar, vence en 15 minutos y la sesión se corta a los
+ * `maxSeconds`.
+ */
+export async function realtimeSttUrl(opts: {
+  key: string;
+  model: string;
+  maxSeconds: number;
+}): Promise<string> {
+  const res = await fetch(
+    `${API}/single-use-token/realtime_scribe?max_session_duration_seconds=${opts.maxSeconds}`,
+    {
+      method: 'POST',
+      headers: { 'xi-api-key': opts.key },
+      signal: AbortSignal.timeout(8_000),
+    },
+  );
+  const body = await res.text();
+  if (!res.ok)
+    throw new Error(`ElevenLabs token ${res.status}: ${body.slice(0, 200)}`);
+  const { token } = JSON.parse(body) as { token: string };
+  return liveSttUrl(opts.model, token);
+}
+
+export function liveSttUrl(model: string, token: string): string {
+  const q = new URLSearchParams({
+    model_id: model,
+    token,
+    audio_format: 'pcm_16000',
+    language_code: 'es',
+    commit_strategy: 'manual',
+    no_verbatim: 'true',
+  });
+  for (const k of KEYTERMS) q.append('keyterms', k);
+  return `wss://api.elevenlabs.io/v1/speech-to-text/realtime?${q}`;
 }

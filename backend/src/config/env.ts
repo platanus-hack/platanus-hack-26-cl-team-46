@@ -73,13 +73,24 @@ export const envSchema = z.object({
   /** Cerebro de Clicky: mira la captura y decide qué decir y qué marcar. */
   OPENAI_API_KEY: z.string().optional(),
   CLICKY_BRAIN_MODEL: z.string().default('gpt-6-luna'),
+  /**
+   * Cuánto razona el cerebro antes de responder. gpt-6-luna razona "medium" si no se
+   * le dice nada, y eso se nota en la espera: "low" responde mucho antes y alcanza para
+   * leer la pantalla. "none" es aún más rápido; "default" no manda el parámetro.
+   */
+  CLICKY_BRAIN_EFFORT: z
+    .enum(['default', 'none', 'low', 'medium', 'high'])
+    .default('low'),
   /** Voz de Clicky (texto a voz) y reconocimiento de lo que dice el usuario. */
   ELEVENLABS_API_KEY: z.string().optional(),
   /** Voz de la biblioteca de ElevenLabs. Default: "Norah" (español latino, cálida y clara). */
   CLICKY_VOICE_ID: z.string().default('kcQkGnn0HAT2JRDQ4Ljp'),
   CLICKY_TTS_MODEL: z.string().default('eleven_flash_v2_5'),
   CLICKY_TTS_FORMAT: z.string().default('mp3_22050_32'),
+  /** Transcripción de respaldo (se sube el audio entero al soltar espacio). */
   CLICKY_STT_MODEL: z.string().default('scribe_v3'),
+  /** Transcripción en vivo mientras el usuario habla (WebSocket con token de un solo uso). */
+  CLICKY_STT_LIVE_MODEL: z.string().default('scribe_v3_live'),
   /** `true`: respuestas de ensayo, sin llamar a OpenAI ni ElevenLabs. */
   CLICKY_MOCK: z
     .enum(['true', 'false', '1', '0'])
