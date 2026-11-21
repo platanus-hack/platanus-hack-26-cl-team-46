@@ -79,6 +79,9 @@ function TeamFooter() {
   return (
     <footer className="flex flex-wrap items-center gap-6 border-t border-line px-12 py-6">
       <span className="md-index">EQUIPO</span>
+      <Link className="text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline" href="/start">
+        Onboarding: tu repo → sandbox →
+      </Link>
       <Link className="text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline" href="/deploy">
         Consola del servicio de deploy →
       </Link>
