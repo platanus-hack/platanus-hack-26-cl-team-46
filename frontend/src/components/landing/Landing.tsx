@@ -46,8 +46,12 @@ gsap.registerPlugin(ScrollTrigger, useGSAP);
  * al ResultSplit (solo la primera vez).
  */
 
-/** Momento del timeline (en sus unidades, ~0–1) desde el que la pregunta ya está a la vista. */
-const CARD_READY = 0.62;
+/**
+ * Momento del timeline (en sus unidades, ~0–1) desde el que la pregunta se puede responder.
+ * Apenas empieza a aparecer (la tarjeta entra en 0.4): hay gente que no baja hasta el final del
+ * pin, y tiene que poder apretar las respuestas mientras todavía está scrolleando.
+ */
+const CARD_READY = 0.45;
 
 export function Landing() {
   // Intro: el cronómetro (y la MaydayAlert a la vista) arrancan recién cuando termina.
