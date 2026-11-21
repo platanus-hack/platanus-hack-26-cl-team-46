@@ -42,7 +42,7 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-alert--solid { background: var(--attack); color: var(--on-attack); border-color: var(--attack); }
 .md-alert--solid .md-alert__call::before { background: var(--on-attack); }
 .md-marquee { overflow: hidden; white-space: nowrap; }
-.md-marquee > span { display: inline-block; padding-left: 100%; animation: md-marquee 14s linear infinite; }
+.md-marquee > span { display: inline-block; padding-left: 100%; animation: md-marquee 26s linear infinite; }
 
 /* ---------- Terminal de ataque (fondo de la landing) ---------- */
 .md-attack-term { position: relative; overflow: hidden; background: var(--bg-000); font: 400 16px/24px var(--font-mono, var(--font-geist-mono)); color: var(--ink-faint); }
@@ -51,9 +51,12 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-attack-term .t-ok { color: var(--ink-muted); }
 .md-attack-term::after { content: ""; position: absolute; inset: 0; background: linear-gradient(var(--bg-000), #050A0D00 20%, #050A0D00 70%, var(--bg-000)); pointer-events: none; }
 
-.md-attack-term__live { position: absolute; left: 0; right: 0; bottom: var(--space-6); z-index: 1; padding: var(--space-2) var(--space-6); background: var(--bg-000); border-top: 1px solid var(--line); white-space: pre; overflow: hidden; color: var(--ink); }
+/* Modo run: un hackeo ejecutándose. Las líneas se apilan desde abajo y suben de a una, como una terminal real. */
+.md-attack-term__run { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: var(--space-4) var(--space-6) var(--space-12); white-space: pre; overflow: hidden; }
+.md-attack-term__prompt { color: var(--ink); }
+.md-attack-term--run::after { background: linear-gradient(var(--bg-000), transparent 40%); }
 .md-attack-term__cursor { color: var(--attack); animation: md-blink 1s steps(1) infinite; }
-@media (max-width: 767px) { .md-attack-term { font-size: 13px; line-height: 20px; } .md-attack-term__feed, .md-attack-term__live { padding-left: var(--space-4); padding-right: var(--space-4); } }
+@media (max-width: 767px) { .md-attack-term { font-size: 13px; line-height: 20px; } .md-attack-term__feed, .md-attack-term__run { padding-left: var(--space-4); padding-right: var(--space-4); } }
 
 /* Variante simulada: la terminal como app del escritorio (grises sim-*). */
 .md-attack-term--sim { background: var(--sim-000); color: var(--sim-ink-muted); font-size: 12px; line-height: 18px; height: 100%; }

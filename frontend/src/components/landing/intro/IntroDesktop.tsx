@@ -65,7 +65,7 @@ export function IntroDesktop() {
         <Pop at={300} left="3%" top="7%" width="min(560px, 40vw)" height="min(340px, 38vh)">
           {(style) => (
             <SimWindow title="zsh — ffuf · apuntes.dev" style={style}>
-              <AttackTerminal lines={ATTACK_SCRIPT} variant="sim" live={false} seconds={4} startAt={0.25} />
+              <AttackTerminal lines={ATTACK_SCRIPT} variant="sim" mode="feed" seconds={4} startAt={0.25} />
             </SimWindow>
           )}
         </Pop>
@@ -145,7 +145,7 @@ export function IntroDesktop() {
         <Pop at={1000} left="51%" top="38%" width="min(520px, 38vw)" height="min(300px, 34vh)">
           {(style) => (
             <SimWindow title="zsh — curl · token robado" style={style}>
-              <AttackTerminal lines={ATTACK_SCRIPT} variant="sim" live={false} seconds={3.5} startAt={0.6} />
+              <AttackTerminal lines={ATTACK_SCRIPT} variant="sim" mode="feed" seconds={3.5} startAt={0.6} />
             </SimWindow>
           )}
         </Pop>
@@ -181,7 +181,7 @@ export function IntroDesktop() {
         <Pop at={1300} left="70%" top="60%" width="min(380px, 28vw)" height="min(240px, 28vh)">
           {(style) => (
             <SimWindow title="zsh — nmap" style={style}>
-              <AttackTerminal lines={ATTACK_SCRIPT} variant="sim" live={false} seconds={5} startAt={0} />
+              <AttackTerminal lines={ATTACK_SCRIPT} variant="sim" mode="feed" seconds={5} startAt={0} />
             </SimWindow>
           )}
         </Pop>

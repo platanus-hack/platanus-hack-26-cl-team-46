@@ -24,7 +24,7 @@ export function MaydayAlert({
         <span className="md-alert__call shrink-0" aria-hidden="true" />
         <div className="md-marquee min-w-0 flex-1">
           {/* Delay negativo: el texto ya se ve al cargar en vez de entrar desde el borde. */}
-          <span style={{ animationDelay: "-6s" }}>{repeated}</span>
+          <span style={{ animationDelay: "-11s" }}>{repeated}</span>
         </div>
         {right}
       </div>

@@ -94,7 +94,7 @@ function AttackPanel() {
       hud={[{ ...first, value: attempts.toLocaleString("es-CL") }, ...rest]}
       status={UNDER_ATTACK.status}
       rows={UNDER_ATTACK.rows}
-      feedSeconds={5}
+      feedSeconds={3}
     />
   );
 }
