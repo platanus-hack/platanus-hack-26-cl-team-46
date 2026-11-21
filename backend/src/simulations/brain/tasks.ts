@@ -76,6 +76,11 @@ function section(title: string, lines: string[], empty = '(nada)') {
   return `## ${title}\n${lines.length ? lines.join('\n') : empty}`;
 }
 
+/** El observer no necesita cómo se explota cada vuln (y ese detalle gatilla los clasificadores de seguridad). */
+function planForObserver(s: SimView): Array<Record<string, unknown>> {
+  return findings(s).map(({ exploit_summary: _omit, ...rest }) => rest);
+}
+
 function findings(s: SimView): Array<Record<string, unknown>> {
   const f = s.attack_plan?.findings;
   return Array.isArray(f) ? (f as Array<Record<string, unknown>>) : [];
@@ -279,7 +284,7 @@ export function observerPrompts(
   const facts = computeFacts(s.timeline, s.attack_plan);
   const stable = [
     `## La app\n${contextBlock(s.context, app)}`,
-    `## Plan del atacante\n${clip(JSON.stringify(findings(s), null, 1), 12_000)}`,
+    `## Plan del atacante\n${clip(JSON.stringify(planForObserver(s), null, 1), 12_000)}`,
   ].join('\n\n');
   const chat = s.timeline
     .filter((e) => ['user.message', 'coder.reply'].includes(e.type))

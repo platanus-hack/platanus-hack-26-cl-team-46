@@ -56,7 +56,10 @@ export class ClickyService {
   private use(simId: string) {
     let u = this.usage.get(simId);
     if (!u)
-      this.usage.set(simId, (u = { questions: 0, ttsChars: 0, sttSessions: 0 }));
+      this.usage.set(
+        simId,
+        (u = { questions: 0, ttsChars: 0, sttSessions: 0 }),
+      );
     return u;
   }
 
@@ -64,7 +67,11 @@ export class ClickyService {
    * Beats en orden, cada uno con su voz, apenas están listos. Los errores antes del
    * primer beat se lanzan (el cliente recibe un HTTP de error); después van en el stream.
    */
-  async *lesson(simId: string, input: LessonBody): AsyncGenerator<LessonEvent> {
+  async *lesson(
+    simId: string,
+    input: LessonBody,
+    simStatus = 'running',
+  ): AsyncGenerator<LessonEvent> {
     const u = this.use(simId);
     if (u.questions >= this.cfg('CLICKY_MAX_QUESTIONS_PER_SIM'))
       throw new HttpException(
@@ -73,7 +80,9 @@ export class ClickyService {
       );
     const key = this.cfg('OPENAI_API_KEY');
     if (!this.cfg('CLICKY_MOCK') && !key)
-      throw new ServiceUnavailableException('Falta OPENAI_API_KEY en el backend');
+      throw new ServiceUnavailableException(
+        'Falta OPENAI_API_KEY en el backend',
+      );
     u.questions++;
 
     const t0 = Date.now();
@@ -86,7 +95,7 @@ export class ClickyService {
           key: key!,
           model: this.cfg('CLICKY_BRAIN_MODEL'),
           effort: this.cfg('CLICKY_BRAIN_EFFORT'),
-          messages: buildMessages(input),
+          messages: buildMessages(input, simStatus),
           signal: abort.signal,
         });
 
@@ -101,7 +110,11 @@ export class ClickyService {
         for await (const raw of source) {
           const beat = cleanBeat(raw, ids, budget);
           if (!beat) continue;
-          ready.push(input.voice ? this.speak(simId, beat, previous) : Promise.resolve(beat));
+          ready.push(
+            input.voice
+              ? this.speak(simId, beat, previous)
+              : Promise.resolve(beat),
+          );
           previous = beat.say;
           wake();
         }
@@ -130,8 +143,7 @@ export class ClickyService {
       }
       if (failure) {
         const message = this.describe(failure);
-        if (!sent)
-          throw new HttpException(message, HttpStatus.BAD_GATEWAY);
+        if (!sent) throw new HttpException(message, HttpStatus.BAD_GATEWAY);
         yield { type: 'error', message };
       }
       if (!sent && !failure)
@@ -167,7 +179,9 @@ export class ClickyService {
     if (this.cfg('CLICKY_MOCK')) return liveSttUrl(model, 'mock');
     const key = this.cfg('ELEVENLABS_API_KEY');
     if (!key)
-      throw new ServiceUnavailableException('Falta ELEVENLABS_API_KEY en el backend');
+      throw new ServiceUnavailableException(
+        'Falta ELEVENLABS_API_KEY en el backend',
+      );
     const u = this.use(simId);
     // Se piden por adelantado (uno listo para la próxima pregunta), por eso el doble.
     if (u.sttSessions >= 2 * this.cfg('CLICKY_MAX_QUESTIONS_PER_SIM'))
@@ -179,11 +193,17 @@ export class ClickyService {
     return realtimeSttUrl({ key, model, maxSeconds: STT_MAX_SECONDS });
   }
 
-  async transcribe(simId: string, audio: Buffer, mime: string): Promise<string> {
+  async transcribe(
+    simId: string,
+    audio: Buffer,
+    mime: string,
+  ): Promise<string> {
     if (this.cfg('CLICKY_MOCK')) return '¿Qué está pasando en esta pantalla?';
     const key = this.cfg('ELEVENLABS_API_KEY');
     if (!key)
-      throw new ServiceUnavailableException('Falta ELEVENLABS_API_KEY en el backend');
+      throw new ServiceUnavailableException(
+        'Falta ELEVENLABS_API_KEY en el backend',
+      );
     const t0 = Date.now();
     const text = await speechToText({
       key,
@@ -209,7 +229,10 @@ export class ClickyService {
     const key = this.cfg('ELEVENLABS_API_KEY');
     if (!key || this.cfg('CLICKY_MOCK')) return beat;
     const u = this.use(simId);
-    if (u.ttsChars + beat.say.length > this.cfg('CLICKY_MAX_TTS_CHARS_PER_SIM')) {
+    if (
+      u.ttsChars + beat.say.length >
+      this.cfg('CLICKY_MAX_TTS_CHARS_PER_SIM')
+    ) {
       this.logger.warn(`[${simId}] tope de voz alcanzado: voz del navegador`);
       return beat;
     }
@@ -232,12 +255,26 @@ export class ClickyService {
   }
 }
 
-function buildMessages(input: LessonBody): unknown[] {
+/**
+ * La simulación es un ejercicio: mientras corre, Clicky explica lo que se ve pero no
+ * entrega la contención (descubrirla es la lección, como con el agente de código).
+ */
+export function phaseNote(simStatus: string): string {
+  return simStatus === 'finished'
+    ? 'Fase: la simulación terminó. Puedes explicar todo: qué pasó, qué faltó hacer y cuál era el arreglo correcto.'
+    : 'Fase: la simulación está en curso y es un ejercicio de entrenamiento. Explica lo que muestra la pantalla y qué significa cada señal, pero no le digas qué acción tomar para contener el ataque ni nombres una vulnerabilidad que no aparezca en pantalla. Guíalo con una pregunta (por ejemplo, "¿esa sesión sigue sirviendo después del cambio?"). Si te pide la respuesta directamente, dale una pista, no la solución.';
+}
+
+export function buildMessages(
+  input: LessonBody,
+  simStatus = 'running',
+): unknown[] {
   const screen = input.elements
     .map((e) => `- ${e.id} (${e.kind}): ${e.text}`)
     .join('\n');
   const text = [
     input.context && `Contexto de la app: ${input.context}`,
+    phaseNote(simStatus),
     `Página: ${input.page.title} (${input.page.path})`,
     `Elementos en pantalla:\n${screen || '(ninguno)'}`,
     `Pregunta: ${input.question}`,
@@ -255,7 +292,10 @@ function buildMessages(input: LessonBody): unknown[] {
       content: input.screenshot
         ? [
             { type: 'text', text },
-            { type: 'image_url', image_url: { url: input.screenshot, detail: 'high' } },
+            {
+              type: 'image_url',
+              image_url: { url: input.screenshot, detail: 'high' },
+            },
           ]
         : text,
     },
@@ -272,7 +312,12 @@ async function* mockBeats({ elements, page, screenshot }: LessonBody) {
       marks: title
         ? [
             { type: 'spotlight', target: title.id },
-            { type: 'ring', target: title.id, label: 'aquí', at: 'este título' },
+            {
+              type: 'ring',
+              target: title.id,
+              label: 'aquí',
+              at: 'este título',
+            },
           ]
         : [],
     },
@@ -281,36 +326,100 @@ async function* mockBeats({ elements, page, screenshot }: LessonBody) {
         ? `Y este botón, ${button.text.slice(0, 40)}, es la siguiente acción.`
         : 'No veo botones en esta parte de la pantalla.',
       marks: button
-        ? [{ type: 'target', target: button.id, label: 'siguiente paso', at: 'este botón' }]
+        ? [
+            {
+              type: 'target',
+              target: button.id,
+              label: 'siguiente paso',
+              at: 'este botón',
+            },
+          ]
         : [],
     },
     {
       say: 'Te dibujo cómo funciona un token de sesión.',
-      marks: [{ type: 'board', title: 'Cómo funciona un token', cols: 3, rows: 2, at: 'te dibujo' }],
+      marks: [
+        {
+          type: 'board',
+          title: 'Cómo funciona un token',
+          cols: 3,
+          rows: 2,
+          at: 'te dibujo',
+        },
+      ],
     },
     {
       say: 'Primero inicias sesión con tu clave.',
-      marks: [{ type: 'node', id: 'login', text: 'Inicias sesión', col: 0, row: 0, at: 'inicias sesión' }],
+      marks: [
+        {
+          type: 'node',
+          id: 'login',
+          text: 'Inicias sesión',
+          col: 0,
+          row: 0,
+          at: 'inicias sesión',
+        },
+      ],
     },
     {
       say: 'El servidor te entrega un token firmado con JWT_SECRET.',
       marks: [
-        { type: 'node', id: 'token', text: 'Token firmado', col: 1, row: 0, at: 'un token' },
-        { type: 'edge', from: 'login', to: 'token', label: 'entrega', at: 'te entrega' },
+        {
+          type: 'node',
+          id: 'token',
+          text: 'Token firmado',
+          col: 1,
+          row: 0,
+          at: 'un token',
+        },
+        {
+          type: 'edge',
+          from: 'login',
+          to: 'token',
+          label: 'entrega',
+          at: 'te entrega',
+        },
       ],
     },
     {
       say: 'Con ese token entras a la app sin volver a escribir la clave.',
       marks: [
-        { type: 'node', id: 'app', text: 'Accedes a la app', col: 2, row: 0, at: 'entras a la app' },
-        { type: 'edge', from: 'token', to: 'app', label: 'permite', at: 'con ese token' },
+        {
+          type: 'node',
+          id: 'app',
+          text: 'Accedes a la app',
+          col: 2,
+          row: 0,
+          at: 'entras a la app',
+        },
+        {
+          type: 'edge',
+          from: 'token',
+          to: 'app',
+          label: 'permite',
+          at: 'con ese token',
+        },
       ],
     },
     {
       say: 'Pero si alguien roba el secreto, puede firmar tokens falsos.',
       marks: [
-        { type: 'node', id: 'robo', text: 'Tokens falsos', col: 1, row: 1, hot: true, at: 'tokens falsos' },
-        { type: 'edge', from: 'token', to: 'robo', label: 'si filtran', at: 'roba el secreto' },
+        {
+          type: 'node',
+          id: 'robo',
+          text: 'Tokens falsos',
+          col: 1,
+          row: 1,
+          hot: true,
+          at: 'tokens falsos',
+        },
+        {
+          type: 'edge',
+          from: 'token',
+          to: 'robo',
+          label: 'si filtran',
+          at: 'roba el secreto',
+        },
       ],
     },
     {
