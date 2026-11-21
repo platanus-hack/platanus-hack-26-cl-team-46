@@ -85,7 +85,7 @@ Las operaciones largas responden **202** al tiro y el progreso sale por SSE. Con
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| `POST` | `/simulations` | `{repo_url}` o `{sandbox_id}`, más `tools: ["sentry","datadog",…]` y `hacker: "emulated" \| "external"` |
+| `POST` | `/simulations` | `{repo_url}` o `{sandbox_id}`, más `hacker: "emulated" \| "external"`. Las herramientas de monitoreo no se eligen: se detectan en el código |
 | `GET` | `/simulations/:id` | Estado, threads, canales, contexto, plan, estado del incidente y debrief |
 | `GET` | `/simulations/:id/stream?view=user` | SSE del feed del developer (`view=all` incluye lo interno) |
 | `GET` | `/simulations/:id/timeline` | Lo mismo en JSON (`view`, `since`, `types`) |

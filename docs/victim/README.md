@@ -55,6 +55,8 @@ El SSL de Postgres se maneja así: la URL interna de Render (`dpg-xxx-a`) va sin
 | `NODE_ENV` | no | `development` | No cambia el comportamiento de los errores (ver answer key #7) |
 | `JWT_EXPIRES_IN` | no | `30d` | Formato de `jsonwebtoken` |
 | `SEED_RESET` | no | `false` | `true` = borrar y re-sembrar en cada arranque |
+| `SENTRY_DSN` | no | — | Sentry (`src/instrument.ts`). Sin DSN el SDK no envía nada; está para que el detector de herramientas vea Sentry en el repo |
+| `POSTHOG_API_KEY` / `POSTHOG_HOST` | no | — / `https://us.i.posthog.com` | PostHog (`src/lib/analytics.ts`, eventos de negocio desde `logEvent`). Sin key no envía nada |
 
 ## Credenciales seed (datos ficticios)
 

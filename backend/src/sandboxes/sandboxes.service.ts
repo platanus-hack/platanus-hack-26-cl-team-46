@@ -574,6 +574,14 @@ export class SandboxesService implements OnModuleInit {
     return this.git.archive(id, s.mirror_repo);
   }
 
+  /** Directorio local con el código actual del mirror (lo usa la detección de herramientas). */
+  sourceDir(id: string): Promise<string> {
+    const s = this.get(id);
+    if (!s.mirror_repo)
+      throw new ConflictException('Este sandbox no tiene mirror');
+    return this.git.snapshotDir(id, s.mirror_repo);
+  }
+
   /** Commitea cambios al mirror (sin desplegar). Lo usan el agente y redeploy. */
   async commitChanges(
     id: string,

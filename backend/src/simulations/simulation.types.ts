@@ -318,7 +318,7 @@ export function canPost(actor: SimActor, type: string): boolean {
 export interface SimContext {
   summary: string;
   stack?: string;
-  /** Herramientas detectadas en el repo (sentry, posthog, datadog…). */
+  /** Herramientas detectadas en el repo. La fuente de verdad es SimulationRecord.tools_detected. */
   tools_detected?: string[];
   /** Personas ficticias (clientes, usuarios seed) para las historias. */
   personas?: Array<{
@@ -365,8 +365,11 @@ export interface SimulationRecord {
   created_at: string;
   updated_at: string;
 
-  /** Herramientas que el developer dice tener (si no, se usan las detectadas). */
-  tools_requested?: string[];
+  /**
+   * Herramientas con evidencia de setup en el código (tools-detector.ts). Define
+   * los canales de la simulación; el developer no las elige. undefined = aún no se escanea.
+   */
+  tools_detected?: string[];
   hacker_mode: 'emulated' | 'external';
 
   workspace_id?: string;

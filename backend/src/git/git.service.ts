@@ -171,6 +171,11 @@ export class GitService {
     return stdout;
   }
 
+  /** Checkout del HEAD actual del mirror, para leer el código desde el backend. */
+  snapshotDir(sandboxId: string, repoName: string): Promise<string> {
+    return this.ensureMirrorWorkdir(sandboxId, repoName);
+  }
+
   async readFileFromWorkdir(
     sandboxId: string,
     relPath: string,

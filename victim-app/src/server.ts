@@ -1,9 +1,11 @@
+import './instrument';
 import { config } from './config';
 import { createApp, state } from './app';
 import { pool } from './db/pool';
 import { migrate, resetDatabase } from './db/migrate';
 import { seed } from './db/seed';
 import { logEvent } from './lib/logger';
+import { shutdownAnalytics } from './lib/analytics';
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -43,5 +45,5 @@ init().catch((err) => {
 
 process.on('SIGTERM', () => {
   logEvent('shutdown', { signal: 'SIGTERM' });
-  pool.end().finally(() => process.exit(0));
+  Promise.allSettled([pool.end(), shutdownAnalytics()]).finally(() => process.exit(0));
 });

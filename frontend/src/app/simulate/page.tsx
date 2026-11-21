@@ -5,9 +5,10 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
 
 /**
- * Consola de desarrollo de la simulación multi-agente. No es la UI final
- * (esa es de producto): sirve para jugar un incidente de punta a punta.
- * Izquierda: feed de eventos. Derecha: chat con el agente de código + acciones.
+ * Consola de la simulación multi-agente: sirve para jugar un incidente de punta a punta.
+ * Izquierda: feed de notificaciones. Derecha: chat con el agente de código, que es la
+ * única forma de actuar (como en la vida real: no hay botones que den la respuesta).
+ * La "vista interna" muestra lo que el developer no ve: ataque, estado y control de los agentes.
  */
 export default function SimulatePage() {
   return (
@@ -44,7 +45,6 @@ function SimulateConsole() {
   const [godMode, setGodMode] = useState(() => searchParams.get("view") === "all");
   const [log, setLog] = useState<{ key: string; list: TimelineEvent[] }>({ key: "", list: [] });
   const [repo, setRepo] = useState("");
-  const [tools, setTools] = useState("sentry,datadog");
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const chatEnd = useRef<HTMLDivElement>(null);
@@ -124,7 +124,7 @@ function SimulateConsole() {
             e.preventDefault();
             run(async () => {
               const body = repo.startsWith("sbx-") ? { sandbox_id: repo } : { repo_url: repo };
-              const s = await simApi.create({ ...body, tools: tools ? tools.split(",").map((t) => t.trim()) : undefined });
+              const s = await simApi.create(body);
               setSelected(s.sim_id);
             });
           }}
@@ -135,81 +135,37 @@ function SimulateConsole() {
             value={repo}
             onChange={(e) => setRepo(e.target.value)}
           />
-          <input
-            className="w-36 rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-1"
-            title="Herramientas activas del developer"
-            value={tools}
-            onChange={(e) => setTools(e.target.value)}
-          />
           <button className="rounded-md bg-defense font-medium text-on-defense hover:bg-defense-strong disabled:opacity-50 px-3 py-1" disabled={!repo}>
             Nueva
           </button>
         </form>
-        <label className="ml-auto flex items-center gap-1">
-          <input type="checkbox" checked={godMode} onChange={(e) => setGodMode(e.target.checked)} />
-          Vista interna (ataque, estado, control)
-        </label>
+        <div className="ml-auto flex items-center gap-4">
+          {sim?.status === "ready" && <Btn onClick={() => run(() => simApi.start(sim.sim_id))}>Partir</Btn>}
+          {(sim?.status === "running" || sim?.status === "paused") && (
+            <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>
+          )}
+          <label className="flex items-center gap-1">
+            <input type="checkbox" checked={godMode} onChange={(e) => setGodMode(e.target.checked)} />
+            Vista interna (ataque, estado, control)
+          </label>
+        </div>
       </header>
 
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
 
       {sim && (
-        <section className="flex flex-wrap items-center gap-3 rounded-md border border-line bg-bg-100 px-3 py-2">
-          <span className="font-mono font-semibold">{sim.status}</span>
-          {sim.sandbox.deployed_url && (
-            <a className="underline" href={sim.sandbox.deployed_url} target="_blank" rel="noreferrer">
-              app
-            </a>
-          )}
-          {sim.workspace_link && (
-            <a className="underline" href={sim.workspace_link}>
-              workspace en Conductor
-            </a>
-          )}
-          <span className="text-ink-muted">
-            threads: {sim.threads.map((t) => `${t.role}(${t.wakes})`).join(" · ")}
-          </span>
-          <span className="text-ink-muted">canales: {sim.channels.join(", ")}</span>
-          <div className="ml-auto flex gap-2">
-            {sim.status === "ready" && <Btn onClick={() => run(() => simApi.start(sim.sim_id))}>Partir</Btn>}
-            {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
-            {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
-            {(sim.status === "running" || sim.status === "paused") && (
-              <>
-                <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Siguiente vuln</Btn>
-                <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>
-              </>
-            )}
-          </div>
-        </section>
-      )}
-
-      {sim && (
         <div className="grid min-h-0 flex-1 grid-cols-[1fr_420px] gap-3">
           {/* Panel izquierdo: el incidente en vivo */}
           <section className="flex min-h-0 flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
-            {godMode && sim.state && (
-              <div className={`rounded p-2 ${sim.state.attacker_active ? "bg-attack-soft text-attack-strong" : "bg-defense-soft text-defense"}`}>
-                <b>{sim.state.attacker_active ? "Atacante adentro" : "Atacante afuera"}</b> · fase {sim.state.phase} ·
-                vuln actual {sim.state.current_vuln ?? "—"}
-                <div className="text-ink-muted">{sim.state.summary}</div>
-              </div>
-            )}
+            {godMode && <InternalPanel sim={sim} run={run} />}
             {sim.debrief && <Debrief debrief={sim.debrief} />}
             {[...feed].reverse().map((e) => (
               <FeedItem key={e.seq} e={e} />
             ))}
           </section>
 
-          {/* Panel derecho: chat con el agente de código + acciones */}
+          {/* Panel derecho: chat con el agente de código */}
           <section className="flex min-h-0 flex-col rounded-md border border-line bg-bg-100">
-            <div className="flex flex-wrap gap-1 border-b border-line p-2">
-              <Btn onClick={() => run(() => simApi.action(sim.sim_id, "rotate_secret", { key: "JWT_SECRET" }))}>
-                Rotar JWT_SECRET
-              </Btn>
-              <Btn onClick={() => run(() => simApi.action(sim.sim_id, "restart"))}>Reiniciar</Btn>
-              <Btn onClick={() => run(() => simApi.action(sim.sim_id, "revoke_sessions"))}>Cerrar sesiones</Btn>
-            </div>
             <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
               {chat.map((e) => (
                 <ChatItem key={e.seq} e={e} />
@@ -244,6 +200,43 @@ function SimulateConsole() {
         </div>
       )}
     </main>
+  );
+}
+
+/** Solo en vista interna: estado del incidente, agentes y control del ritmo. */
+function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<unknown>) => void }) {
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-dashed border-line-strong p-2 text-xs text-ink-muted">
+      {sim.state && (
+        <div className={`rounded p-2 text-sm ${sim.state.attacker_active ? "bg-attack-soft text-attack-strong" : "bg-defense-soft text-defense"}`}>
+          <b>{sim.state.attacker_active ? "Atacante adentro" : "Atacante afuera"}</b> · fase {sim.state.phase} ·
+          vuln actual {sim.state.current_vuln ?? "—"}
+          <div className="text-ink-muted">{sim.state.summary}</div>
+        </div>
+      )}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="font-mono font-semibold text-ink">{sim.status}</span>
+        {sim.sandbox.deployed_url && (
+          <a className="underline" href={sim.sandbox.deployed_url} target="_blank" rel="noreferrer">
+            app
+          </a>
+        )}
+        {sim.workspace_link && (
+          <a className="underline" href={sim.workspace_link}>
+            workspace en Conductor
+          </a>
+        )}
+        <span>threads: {sim.threads.map((t) => `${t.role}(${t.wakes})`).join(" · ")}</span>
+        <span>canales: {sim.channels.join(", ")}</span>
+        <div className="ml-auto flex gap-2">
+          {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
+          {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
+          {(sim.status === "running" || sim.status === "paused") && (
+            <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Siguiente vuln</Btn>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { NOTIFY_CHANNELS } from './simulation.types.js';
 
 const envKey = z
   .string()
@@ -28,8 +27,6 @@ export const createSimulationSchema = z
       .string()
       .regex(/^sbx-[a-f0-9]+$/)
       .optional(),
-    /** Herramientas que el developer tiene activas (si no, se usan las detectadas en el repo). */
-    tools: z.array(z.enum(NOTIFY_CHANNELS)).optional(),
     /** emulated: thread de Conductor que emula el hack. external: lo opera el motor real vía HTTP. */
     hacker: z.enum(['emulated', 'external']).default('emulated'),
   })

@@ -17,6 +17,7 @@ import { SandboxEventsService } from '../sandboxes/sandbox-events.service.js';
 import { SandboxesService } from '../sandboxes/sandboxes.service.js';
 import { buildSimPrompt } from './sim-prompts.js';
 import { signSimToken } from './sim-token.js';
+import { detectTools } from './tools-detector.js';
 import { SimulationStore } from './simulation.store.js';
 import {
   BASE_CHANNELS,
@@ -40,7 +41,6 @@ import {
 export interface CreateSimulationInput {
   repo_url?: string;
   sandbox_id?: string;
-  tools?: string[];
   hacker?: 'emulated' | 'external';
 }
 
@@ -76,8 +76,12 @@ export class SimulationsService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
-    for (const s of this.store.list())
-      if (ACTIVE.includes(s.status)) this.bridgeSandbox(s);
+    for (const s of this.store.list()) {
+      if (!ACTIVE.includes(s.status)) continue;
+      this.bridgeSandbox(s);
+      // Simulaciones creadas antes de la detección determinista.
+      if (s.deploy_ready_at && !s.tools_detected) void this.scanTools(s.sim_id);
+    }
   }
 
   // ------------------------------------------------------------ consultas
@@ -97,7 +101,7 @@ export class SimulationsService implements OnModuleInit {
   }
 
   channels(s: SimulationRecord): NotifyChannel[] {
-    const wanted = s.tools_requested ?? s.context?.tools_detected ?? [];
+    const wanted = s.tools_detected ?? [];
     const valid = wanted.filter((t): t is NotifyChannel =>
       (NOTIFY_CHANNELS as readonly string[]).includes(t),
     );
@@ -151,7 +155,8 @@ export class SimulationsService implements OnModuleInit {
         }),
       ),
       channels: this.channels(s),
-      context: s.context ?? null,
+      tools_detected: s.tools_detected ?? null,
+      context: this.contextView(s),
       attack_plan: s.attack_plan ?? null,
       state: s.state ?? null,
       debrief: s.debrief ?? null,
@@ -203,7 +208,6 @@ export class SimulationsService implements OnModuleInit {
       status: 'starting',
       created_at: now,
       updated_at: now,
-      tools_requested: input.tools,
       hacker_mode: hackerMode,
       threads: SIM_ROLES.map((role) => ({
         role,
@@ -321,6 +325,7 @@ export class SimulationsService implements OnModuleInit {
     if (s.status !== 'ready') {
       const missing = [
         !s.deploy_ready_at && 'la app desplegada',
+        !s.tools_detected && 'revisar las herramientas del repo',
         !s.attack_plan && 'el plan de ataque',
       ].filter(Boolean);
       throw new ConflictException(
@@ -446,7 +451,7 @@ export class SimulationsService implements OnModuleInit {
       repo_url: s.repo_url,
       app: view.sandbox,
       channels: view.channels,
-      context: s.context ?? null,
+      context: view.context,
       // El agente de código solo sabe lo que sabe el developer.
       ...(role === 'coder'
         ? {}
@@ -650,6 +655,7 @@ export class SimulationsService implements OnModuleInit {
             seed_users: sbx.manifest?.seed_users ?? [],
           },
         );
+        void this.scanTools(simId);
         this.maybeReady(simId);
       } else if (now === 'failed') {
         this.system(
@@ -739,9 +745,48 @@ export class SimulationsService implements OnModuleInit {
     }
   }
 
+  /**
+   * Detecta en el código del sandbox qué herramientas de monitoreo tiene el
+   * developer (Sentry, PostHog…). Solo esas se simulan, además de los canales base.
+   */
+  private async scanTools(simId: string) {
+    const s = this.get(simId);
+    let tools: string[] = [];
+    try {
+      const dir = await this.sandboxes.sourceDir(s.sandbox_id);
+      tools = await detectTools(dir);
+    } catch (err) {
+      this.logger.warn(
+        `No se pudieron detectar herramientas en ${s.sandbox_id}: ${(err as Error).message}`,
+      );
+    }
+    this.store.update(simId, { tools_detected: tools });
+    this.system(
+      simId,
+      'agent.note',
+      tools.length
+        ? `Herramientas detectadas en el repo: ${tools.join(', ')}`
+        : 'El repo no tiene herramientas de monitoreo configuradas',
+      `Canales activos: ${this.channels(this.get(simId)).join(', ')}`,
+      { tools_detected: tools },
+    );
+    this.maybeReady(simId);
+  }
+
+  /** El contexto del infra, con las herramientas detectadas por el backend (no las del LLM). */
+  private contextView(s: SimulationRecord) {
+    if (!s.context) return null;
+    return { ...s.context, tools_detected: s.tools_detected ?? [] };
+  }
+
   private maybeReady(id: string) {
     const s = this.get(id);
-    if (s.status === 'starting' && s.deploy_ready_at && s.attack_plan) {
+    if (
+      s.status === 'starting' &&
+      s.deploy_ready_at &&
+      s.tools_detected &&
+      s.attack_plan
+    ) {
       this.setStatus(
         id,
         'ready',
