@@ -92,6 +92,3 @@
 .clicky-root[data-surface="dark"][data-theme="platanus"] .clicky-target { border-color: #ffd23f; }
 
 /* Sin simulación en curso: el avioncito se ve apagado y no se activa. */
-.clicky-dock[data-available="no"] .clicky-dock-plane { cursor: not-allowed; filter: grayscale(1) brightness(0.7); }
-.clicky-dock[data-available="no"] .clicky-dock-plane:hover { transform: none; }
-.clicky-dock[data-available="no"] .clicky-plane-svg { animation: none; }

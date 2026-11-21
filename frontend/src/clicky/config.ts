@@ -2,9 +2,9 @@
 export const CLICKY_CONFIG = {
   enabled: true,
   /**
-   * Rutas donde se muestra el avioncito. null = en todas.
-   * Se activa solo con una simulación en curso (la página de la simulación avisa con
-   * setClickySimulation). Para mostrarlo solo ahí: ["/simulate"].
+   * Rutas donde puede aparecer el avioncito. null = en todas.
+   * Igual solo aparece con una simulación en curso (la página de la simulación avisa con
+   * setClickySimulation); fuera de una, no se muestra.
    */
   routes: null as string[] | null,
   /** Tema del dibujo: "ink" (tinta azul), "platanus" (negro y amarillo) o "sketch" (plumones). */
