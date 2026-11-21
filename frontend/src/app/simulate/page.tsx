@@ -1,7 +1,8 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { AgentChat } from "@/components/agent/AgentChat";
 import { setClickySimulation } from "@/clicky/active-sim";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
 
@@ -46,9 +47,7 @@ function SimulateConsole() {
   const [godMode, setGodMode] = useState(() => searchParams.get("view") === "all");
   const [log, setLog] = useState<{ key: string; list: TimelineEvent[] }>({ key: "", list: [] });
   const [repo, setRepo] = useState("");
-  const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const chatEnd = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -93,12 +92,6 @@ function SimulateConsole() {
   const events = log.key === key ? log.list : [];
   const feed = events.filter((e) => !CHAT_TYPES.has(e.type) && e.type !== "deploy.progress");
   const chat = events.filter((e) => CHAT_TYPES.has(e.type) || e.type === "change.deployed" || e.type === "change.deploy_failed");
-
-  // Con llaves a propósito: scrollIntoView devuelve una Promise en Chrome reciente, y si el efecto
-  // la retorna React la trata como cleanup ("destroy is not a function") y bota la página.
-  useEffect(() => {
-    chatEnd.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat.length]);
 
   const run = async (fn: () => Promise<unknown>) => {
     setError(null);
@@ -174,39 +167,12 @@ function SimulateConsole() {
             ))}
           </section>
 
-          {/* Panel derecho: chat con el agente de código */}
-          <section className="flex min-h-0 flex-col rounded-md border border-line bg-bg-100">
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
-              {chat.map((e) => (
-                <ChatItem key={e.seq} e={e} />
-              ))}
-              <div ref={chatEnd} />
-            </div>
-            <form
-              className="flex gap-2 border-t border-line p-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!text.trim()) return;
-                const msg = text;
-                setText("");
-                run(() => simApi.message(sim.sim_id, msg));
-              }}
-            >
-              <textarea
-                className="h-16 flex-1 resize-none rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-1"
-                placeholder="Pídele algo a tu agente de código…"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    e.currentTarget.form?.requestSubmit();
-                  }
-                }}
-              />
-              <button className="rounded-md bg-defense font-medium text-on-defense hover:bg-defense-strong disabled:opacity-50 px-3">Enviar</button>
-            </form>
-          </section>
+          {/* Panel derecho: chat con el agente */}
+          <AgentChat
+            title={sim.repo_url.replace(/\/$/, "").split("/").pop() || "Respuesta a incidente"}
+            events={chat}
+            onSend={(msg) => run(() => simApi.message(sim.sim_id, msg))}
+          />
         </div>
       )}
     </main>
@@ -294,20 +260,6 @@ function FeedItem({ e }: { e: TimelineEvent }) {
       {e.vuln_id && <span className="font-mono"> [{e.vuln_id}]</span>} — {e.title}
     </div>
   );
-}
-
-function ChatItem({ e }: { e: TimelineEvent }) {
-  if (e.type === "user.message" || e.type === "user.action") {
-    return (
-      <div className="ml-8 self-end rounded-lg bg-bg-300 px-3 py-2 text-ink">
-        {e.type === "user.action" ? <i>⚡ {e.title}</i> : <span className="whitespace-pre-wrap">{e.body || e.title}</span>}
-      </div>
-    );
-  }
-  if (e.type === "coder.reply") {
-    return <div className="mr-8 whitespace-pre-wrap rounded-lg bg-bg-200 px-3 py-2">{e.body || e.title}</div>;
-  }
-  return <div className="text-center text-xs text-ink-muted">{e.title}</div>;
 }
 
 function Debrief({ debrief }: { debrief: Record<string, unknown> }) {
