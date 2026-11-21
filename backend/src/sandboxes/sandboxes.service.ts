@@ -258,6 +258,12 @@ export class SandboxesService implements OnModuleInit {
         url: s.repo_url,
         sha: sourceSha,
       });
+      if (mirror.removedWorkflows) {
+        step(
+          'Workflows de GitHub Actions omitidos',
+          'El mirror no incluye .github/workflows: Render no los usa y no deben correr en la org de sandboxes.',
+        );
+      }
       this.store.update(id, {
         mirror_repo: id,
         deploy_repo_url: mirror.mirrorUrl,
