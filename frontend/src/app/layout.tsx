@@ -13,17 +13,19 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Simulador de hacks",
-  description: "Platanus Hack 26",
+  title: "Simulador de respuesta a incidentes",
+  description:
+    "El simulador de vuelo para responder a un hackeo: entrena a responder un ataque sobre tu propio proyecto.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="es"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      // Tema oscuro por defecto. Quitar "dark" para usar el tema claro.
+      className={`dark ${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">{children}</body>
     </html>
   );
 }

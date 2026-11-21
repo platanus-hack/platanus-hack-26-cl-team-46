@@ -15,7 +15,7 @@ Monorepo con pnpm workspaces:
 | Carpeta | Qué es |
 |---|---|
 | `backend/` | API en NestJS 12 (TypeScript, ESM). Servicio de deploy (`src/sandboxes`, `render`, `git`, `agent`, `conductor`) y simulación multi-agente (`src/simulations`). CLIs para los agentes en `agent-cli/`. |
-| `frontend/` | Next.js 16 (App Router + Tailwind v4). `/simulate` es la consola de la simulación y `/deploy` la del servicio de deploy. |
+| `frontend/` | Next.js 16 (App Router + Tailwind v4 + shadcn/ui). Rutas del flujo del simulador, `/simulate` (consola de la simulación) y `/deploy` (consola del servicio de deploy). Diseño en [`frontend/DESIGN.md`](frontend/DESIGN.md); ver [`frontend/README.md`](frontend/README.md). |
 | `victim-app/` | "Apuntes": app de entrenamiento deliberadamente vulnerable (8 vulns plantadas). Autocontenida; se despliega en Render. |
 | `docs/simulation.md` | Arquitectura de la simulación, API para la UI y contrato para el motor de hacking real. |
 | `docs/victim/` | Guía y solucionario (`ANSWER_KEY.md`) de la app víctima. Va fuera de `victim-app/` para que el analizador no lo vea. |
