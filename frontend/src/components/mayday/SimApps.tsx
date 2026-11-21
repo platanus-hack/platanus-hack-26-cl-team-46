@@ -33,7 +33,8 @@ export function Browser({
   className,
   style,
 }: Positioned & {
-  tabs: { title: string; fav: string; active?: boolean }[];
+  /** fav: una letra (sobre sim-300) o el logo real de la app (un <img>). */
+  tabs: { title: string; fav: ReactNode; active?: boolean }[];
   url: ReactNode;
   compromised?: boolean;
   children: ReactNode;
@@ -44,7 +45,7 @@ export function Browser({
         <TrafficLights />
         {tabs.map((t) => (
           <div key={t.title} className={`md-tab ${t.active ? "is-active" : ""}`}>
-            <span className="md-tab__fav">{t.fav}</span>
+            {typeof t.fav === "string" ? <span className="md-tab__fav">{t.fav}</span> : t.fav}
             <span className="truncate">{t.title}</span>
           </div>
         ))}

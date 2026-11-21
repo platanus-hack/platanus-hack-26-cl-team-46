@@ -73,7 +73,7 @@ Escala: `display-xl` 120 / `display-lg` 72 / `heading-1` 48 / `heading-2` 32 / `
 - Íconos de línea de 1.5px, cuadrados, del set Lucide (ya viene con shadcn), en la capa Mayday.
 - **En la capa simulada, las apps de terceros llevan su logo real**, para que el escritorio se sienta como el de un developer de verdad: Gmail (correo), Slack (chat del equipo), Claude (panel del agente), Zendesk (soporte), teléfono (llamadas), Sentry, Datadog, PostHog, Render y GitHub (integraciones) y Google Calendar (remitente de correo). Los archivos están en `public/sim-icons/` y el mapa en `src/components/workspace/sim-icons.ts`; los avatares de las integraciones se arman en `BotAvatar`. Lo que no es una app real (la app del developer, pestañas sin URL, personas) va con una letra sobre `sim-300`.
 - Los logos se usan tal cual (sin recolorear ni deformar). Si un glifo no se lee sobre gris oscuro, va en blanco sobre el color de su marca, como los avatares de `BotAvatar`.
-- En la capa Mayday, el único logo de terceros es el de GitHub en el botón de login.
+- En la capa Mayday, los logos de terceros son el de GitHub en el botón de login y la fila de apps del simulacro (`AppLogos`, en la landing y en /como-funciona), que muestra por dónde te llega el incidente.
 - Sin fotos, ilustraciones 3D, emojis decorativos ni gradientes de color. La única imagen grande es el fondo de pantalla del avión (Assets › Fondos).
 
 ## Voz y copy

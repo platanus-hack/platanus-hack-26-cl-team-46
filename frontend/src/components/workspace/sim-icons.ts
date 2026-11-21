@@ -16,4 +16,7 @@ export const SIM_ICONS = {
   posthog: "/sim-icons/posthog.png",
   render: "/sim-icons/render.png",
   github: "/sim-icons/github.png",
+  /** Octocat en blanco, para fondos oscuros (favicon de pestaña). */
+  githubWhite: "/sim-icons/github-white.png",
+  google: "/sim-icons/google.svg",
 } as const;

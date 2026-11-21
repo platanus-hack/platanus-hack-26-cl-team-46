@@ -180,7 +180,7 @@ function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabl
       </form>
       <div className="mt-2 flex items-center justify-end gap-4 pr-2 text-[12px] leading-4">
         <span className="text-sim-ink">
-          Agente <span className="text-sim-ink-faint">Medio</span>
+          Claude <span className="text-sim-ink-faint">Medio</span>
         </span>
         <span className="text-sim-ink">Automático</span>
         <span aria-hidden className="size-3 rounded-full border-[1.5px] border-sim-ink-faint" />

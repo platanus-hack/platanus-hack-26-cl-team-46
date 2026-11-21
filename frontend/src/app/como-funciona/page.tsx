@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { ArrowLeft, Copy, EyeOff, KeyRound } from "lucide-react";
 import { HintyHeadset } from "@/clicky/HintyHeadset";
 import { DemoVideo, Logo, StatusChip } from "@/components/mayday";
+import { AppLogos } from "@/components/site/AppLogos";
 import { FinalCta } from "@/components/site/FinalCta";
 import { HowSteps } from "@/components/site/HowSteps";
 import { LearnByDoing } from "@/components/site/LearnByDoing";
@@ -145,6 +146,8 @@ interface ChapterData {
   title: string;
   points: string[];
   icon?: ReactNode;
+  /** Muestra los logos de las apps del simulacro debajo de los puntos. */
+  apps?: boolean;
 }
 
 function Chapter({ chapter, flip }: { chapter: ChapterData; flip: boolean }) {
@@ -185,6 +188,7 @@ function Chapter({ chapter, flip }: { chapter: ChapterData; flip: boolean }) {
             </li>
           ))}
         </ul>
+        {chapter.apps && <AppLogos />}
       </Rise>
     </article>
   );
@@ -216,6 +220,7 @@ const CHAPTERS: ChapterData[] = [
       "Nadie te dice qué hacer.",
       "Tú tomas las decisiones, y cada una cambia la app.",
     ],
+    apps: true,
   },
   {
     id: "hinty",
