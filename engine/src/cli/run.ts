@@ -15,6 +15,7 @@ import { buildDiagnoses, type CodeRef } from '../core/diagnosis.ts';
 import { buildAttackPlan } from '../core/events.ts';
 import { CostLedger } from '../core/ledger.ts';
 import { correlate, discoverRepo } from '../discovery/index.ts';
+import { AnthropicProvider } from '../providers/anthropic.ts';
 import { recon } from '../core/recon.ts';
 import { renderGuide } from '../core/report.ts';
 import { buildScenarioPack } from '../core/scenario.ts';
@@ -43,6 +44,7 @@ Opciones:
   --repo <path>         Ruta al repo del target: discovery estática + correlación archivo/línea
   --commit <sha>        Commit del target, para versionar el escenario y los FileRef
   --no-recon            Saltar la fase de reconocimiento
+  --providers           Correr el provider LLM (requiere ANTHROPIC_API_KEY y --repo); cuesta $
   --out <dir>           Carpeta de salida                        (default: engine/out)
   --help, -h            Mostrar esta ayuda (sin efectos secundarios)
 
@@ -140,13 +142,40 @@ async function main() {
   const diagnoses = buildDiagnoses(diag, plugin, refs);
   const avgConf = diagnoses.filter((d) => d.verdict === 'confirmed').reduce((s, d, _i, arr) => s + d.confidence / arr.length, 0);
 
-  // Cost ledger: por ahora solo cómputo local ($0); los LLM entran con los providers (M6).
+  // Cost ledger: cómputo local ($0) + LLM si --providers.
   const ledger = new CostLedger();
   if (repoModel) ledger.recordLocal('discovery', 'repo-scan', { wallMs: discoveryMs });
   if (reconReport) ledger.recordLocal('recon', 'http+recon', { requests: reconReport.requests, wallMs: reconReport.duration_ms });
   ledger.recordLocal('exploit', 'http-attacks', { requests: diag.summary.requests, wallMs: diag.duration_ms });
+
+  // Provider LLM (C): propone ángulos a partir del RepoModel (metadata, no el código).
+  let llmAngles: unknown;
+  if (flag('providers')) {
+    const key = arg('anthropic-key') ?? process.env.ANTHROPIC_API_KEY;
+    if (!key) {
+      console.log('⚠ --providers pedido pero no hay ANTHROPIC_API_KEY en el entorno: se omite el análisis LLM.');
+    } else if (!repoModel) {
+      console.log('⚠ --providers requiere --repo (el análisis LLM parte del RepoModel).');
+    } else {
+      const provider = new AnthropicProvider({ apiKey: key, onUsage: (m, u) => ledger.recordLlm('analysis', m, u) });
+      const slim = {
+        stack: repoModel.stack,
+        routes: repoModel.routes.map((r) => ({ method: r.method, path: r.path, auth: r.auth, source: r.source })),
+        signals: repoModel.signals.map((s) => ({ kind: s.kind, ref: `${s.ref.file}:${s.ref.line ?? ''}` })),
+      };
+      try {
+        const angles = await provider.analyze({ repo: slim, recon: reconReport?.findings, scopeOrigins: [parsed.origin] });
+        llmAngles = angles;
+        console.log(`▶ providers: ${angles.length} ángulo(s) propuesto(s) por el LLM (costo $${ledger.byPhase().analysis?.toFixed(5) ?? '0'})`);
+      } catch (e) {
+        console.log(`⚠ provider LLM falló: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+  }
+
   const ledgerSnap = ledger.snapshot();
   const overBudget = ledger.overBudget(budgetUsd);
+  if (overBudget) console.log(`⛔ presupuesto $${budgetUsd} excedido ($${ledgerSnap.grandTotalUsd.toFixed(4)}).`);
 
   const ts = diag.started_at.replace(/[:.]/g, '-');
   const outDir = path.join(outRoot, ts);
@@ -159,6 +188,7 @@ async function main() {
   await writeFile(path.join(outDir, 'cost-ledger.json'), JSON.stringify(ledgerSnap, null, 2));
   await writeFile(path.join(outDir, 'diagnoses.json'), JSON.stringify(diagnoses, null, 2));
   if (repoModel) await writeFile(path.join(outDir, 'repo-model.json'), JSON.stringify(repoModel, null, 2));
+  if (llmAngles) await writeFile(path.join(outDir, 'llm-angles.json'), JSON.stringify(llmAngles, null, 2));
   await writeFile(path.join(outDir, 'GUIA-DEL-HACKEO.md'), guide);
   for (const sc of scenarios) {
     await writeFile(path.join(outDir, 'scenarios', `${sc.vuln_id}.json`), JSON.stringify(sc, null, 2));

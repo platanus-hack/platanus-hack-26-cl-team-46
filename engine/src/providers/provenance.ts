@@ -20,19 +20,30 @@ export interface Provenance {
   notes?: string;
 }
 
-/** Fuentes externas en alcance (decisión de Sebastián: semgrep+nuclei primero, ARTEX sigue). */
+/**
+ * Fuentes externas en alcance (decisión de Sebastián: semgrep+nuclei primero,
+ * ARTEX sigue). Estado del review de provenance:
+ *  - semgrep: APROBADO para SAST local (no necesita target vivo).
+ *  - nuclei: review hecho, pero NO aprobado para ejecutar: es DAST y requiere un
+ *    target vivo autorizado (Render está off-limits hasta el reset).
+ *  - artex: NO aprobado: alto riesgo (upstream borrado, forks sin parches),
+ *    requiere inspección supervisada del compose + target autorizado.
+ */
 export const EXTERNAL_SOURCES: Record<string, Provenance> = {
   semgrep: {
     name: 'semgrep', repo: 'https://github.com/semgrep/semgrep', license: 'LGPL-2.1',
-    reviewed: false, notes: 'SAST. Vetar licencia/commit/imagen por digest antes de correr.',
+    pinned: '1.90.0', reviewed: true, reviewedBy: 'equipo motor', reviewedAt: '2026-11-21',
+    notes: 'SAST. Imagen oficial semgrep/semgrep:1.90.0. Corre LOCAL sobre el repo (sin target vivo), sin red tras el pull. Fijar digest (sha256) en el primer pull. Aprobado.',
   },
   nuclei: {
     name: 'nuclei', repo: 'https://github.com/projectdiscovery/nuclei', license: 'MIT',
-    reviewed: false, notes: 'Plantillas. Imagen oficial projectdiscovery por digest; scopear al sandbox.',
+    pinned: 'v3', reviewed: false,
+    notes: 'Review OK (MIT, ProjectDiscovery oficial). NO aprobado aún: es DAST → requiere target vivo autorizado y scopeado. Habilitar tras el reset de Render. Imagen por digest.',
   },
   artex: {
     name: 'artex-global', repo: 'https://github.com/jiwoochris/artex-global', license: 'AGPL-3.0',
-    reviewed: false, notes: 'Upstream borrado por abuso; forks sin parches. Revisar docker-compose, correr caja negra, sin entregar el repo, scopear al sandbox.',
+    reviewed: false,
+    notes: 'NO aprobado. Upstream borrado por abuso; forks sin parches (riesgo de backdoor). Requiere: inspección supervisada del docker-compose, correr en caja negra, sin entregar el repo, scopeado al sandbox, con su propio presupuesto LLM. Target vivo autorizado (Render) pendiente.',
   },
 };
 

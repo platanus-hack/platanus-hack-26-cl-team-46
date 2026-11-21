@@ -46,10 +46,13 @@ test('gate: sin sandbox, NO aprueba ejecución', async () => {
   assert.ok(r.checks.find((c) => c.name === 'sandbox-tests')!.pass === false);
 });
 
-test('provenance: fuentes externas NO aprobadas hasta review', async () => {
-  assert.equal(isApproved('semgrep'), false);
+test('provenance: semgrep aprobado tras review; nuclei/artex NO (gated)', async () => {
+  assert.equal(isApproved('semgrep'), true);
   assert.equal(isApproved('nuclei'), false);
   assert.equal(isApproved('artex'), false);
-  assert.throws(() => requireApproved('semgrep'), /sin review/);
+  assert.doesNotThrow(() => requireApproved('semgrep'));
+  assert.throws(() => requireApproved('artex'), /sin review/);
   await assert.rejects(() => runExternalTool('nuclei'), /sin review/);
+  // semgrep aprobado, pero el runner genérico sigue sin conectar (el real es runSemgrep):
+  await assert.rejects(() => runExternalTool('semgrep'), /runner/);
 });
