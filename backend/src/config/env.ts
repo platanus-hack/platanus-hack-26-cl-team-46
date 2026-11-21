@@ -1,0 +1,91 @@
+import { z } from 'zod';
+
+/**
+ * Variables de entorno del backend. Se validan al arrancar: si falta algo
+ * obligatorio, la app no levanta y dice qué falta.
+ */
+export const envSchema = z.object({
+  PORT: z.coerce.number().default(3001),
+  CORS_ORIGIN: z.string().default('http://localhost:3000'),
+  DATA_DIR: z.string().default('.data'),
+  /** Si está, el estado de los sandboxes se guarda en Postgres (necesario en Render, donde el disco es efímero). */
+  DATABASE_URL: z.string().optional(),
+
+  // Render
+  RENDER_API_KEY: z.string().min(1, 'RENDER_API_KEY es obligatoria'),
+  /** Si no se define, se usa el primer workspace que devuelve GET /v1/owners. */
+  RENDER_OWNER_ID: z.string().optional(),
+  RENDER_REGION: z
+    .enum(['oregon', 'ohio', 'virginia', 'frankfurt', 'singapore'])
+    .default('oregon'),
+  /** Plan de los web services sandbox. `free` hasta que lleguen los créditos; después `starter`. */
+  RENDER_SERVICE_PLAN: z.string().default('free'),
+  /**
+   * `shared`: una sola instancia Postgres y una base de datos por sandbox
+   * (necesario en free tier, que permite una Postgres free por workspace).
+   * `dedicated`: una instancia Postgres por sandbox (requiere plan pagado).
+   */
+  RENDER_POSTGRES_MODE: z.enum(['shared', 'dedicated']).default('shared'),
+  RENDER_POSTGRES_PLAN: z.string().default('free'),
+  RENDER_POSTGRES_VERSION: z.string().default('16'),
+  RENDER_SHARED_POSTGRES_NAME: z.string().default('hack26-shared-pg'),
+
+  // GitHub: mirrors de los repos a desplegar
+  /**
+   * Token con permiso para crear repos y hacer push en GITHUB_ORG.
+   * Sin token se despliega directo desde el repo original (solo repos
+   * públicos y sin soporte para redeploy con parche).
+   */
+  GITHUB_TOKEN: z.string().optional(),
+  /** Alias con el que el token vive en las variables de Conductor. */
+  GITHUB_HACK26_ORG_TOKEN: z.string().optional(),
+  GITHUB_ORG: z.string().default('hack26-sandboxes'),
+
+  // Agente de deploy (fallback cuando el camino determinista no alcanza)
+  /**
+   * Secreto maestro de los endpoints /agent/*. Cada agente recibe un token
+   * derivado (HMAC) que solo sirve para su propio sandbox.
+   */
+  AGENT_API_SECRET: z.string().min(16, 'AGENT_API_SECRET debe tener al menos 16 caracteres').optional(),
+  /** URL pública del backend, a la que llaman los agentes desde sus VMs. */
+  PUBLIC_BACKEND_URL: z.url().optional(),
+  CONDUCTOR_API_KEY: z.string().optional(),
+  CONDUCTOR_API_URL: z.url().default('https://api.conductor.build'),
+  /** Proyecto de Conductor desde el que se crean las VMs de los agentes. */
+  CONDUCTOR_PROJECT_ID: z.string().default('250d6454-3b06-4b69-bc80-f0c6e7307a34'),
+  CONDUCTOR_PROJECT_BRANCH: z.string().optional(),
+  AGENT_MODEL: z.string().default('opus-5-5-1m'),
+  AGENT_EFFORT: z.string().default('medium'),
+  /** Máximo de planes de deploy que puede intentar un agente. */
+  AGENT_MAX_PLANS: z.coerce.number().int().min(1).default(6),
+  /** Archivar la VM del agente cuando termina (se puede revisar antes en Conductor). */
+  AGENT_ARCHIVE_ON_FINISH: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
+});
+
+export type Env = z.infer<typeof envSchema>;
+
+export function validateEnv(raw: Record<string, unknown>): Env {
+  const parsed = envSchema.safeParse(raw);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
+      .join('\n');
+    throw new Error(`Configuración inválida:\n${issues}`);
+  }
+  const env = parsed.data;
+  env.GITHUB_TOKEN ??= env.GITHUB_HACK26_ORG_TOKEN;
+  return env;
+}
+
+/** El fallback agéntico solo se habilita si está todo lo necesario. */
+export function agentConfigProblems(env: Env): string[] {
+  const missing: string[] = [];
+  if (!env.AGENT_API_SECRET) missing.push('AGENT_API_SECRET');
+  if (!env.PUBLIC_BACKEND_URL) missing.push('PUBLIC_BACKEND_URL');
+  if (!env.CONDUCTOR_API_KEY) missing.push('CONDUCTOR_API_KEY');
+  if (!env.GITHUB_TOKEN) missing.push('GITHUB_TOKEN o GITHUB_HACK26_ORG_TOKEN');
+  return missing;
+}
