@@ -217,12 +217,19 @@ function NewTabMenu({ canChat, canMail, onOpen }: { canChat: boolean; canMail: b
     setOpen(false);
     onOpen(k);
   };
+  // Con chat y correo ya abiertos, la única opción es una pestaña web: se abre al tiro, sin menú.
+  const onlyWeb = !canChat && !canMail;
   return (
     <div className="relative self-center">
-      <button type="button" className="md-tab__new" aria-label="Nueva pestaña" onClick={() => setOpen((o) => !o)}>
+      <button
+        type="button"
+        className="md-tab__new"
+        aria-label="Nueva pestaña"
+        onClick={() => (onlyWeb ? pick("web") : setOpen((o) => !o))}
+      >
         +
       </button>
-      {open && (
+      {open && !onlyWeb && (
         <div className="absolute left-0 top-8 z-10 w-44 rounded-md border border-sim-line bg-sim-200 py-1 text-[13px] text-sim-ink shadow-window">
           <MenuItem onClick={() => pick("web")}>Pestaña nueva</MenuItem>
           {canChat && <MenuItem onClick={() => pick("chat")}>Chat del equipo</MenuItem>}
