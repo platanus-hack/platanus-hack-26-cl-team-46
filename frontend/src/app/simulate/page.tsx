@@ -10,7 +10,8 @@ import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
  * Consola de la simulación multi-agente: sirve para jugar un incidente de punta a punta.
  * Izquierda: feed de notificaciones. Derecha: chat con el agente de código, que es la
  * única forma de actuar (como en la vida real: no hay botones que den la respuesta).
- * La "vista interna" muestra lo que el developer no ve: ataque, estado y control de los agentes.
+ * Arriba: estado de la simulación y control del flujo (partir, pausa, siguiente vuln, terminar).
+ * La "vista interna" muestra lo que el developer no ve: ataque, estado del incidente y agentes.
  */
 export default function SimulatePage() {
   return (
@@ -143,10 +144,7 @@ function SimulateConsole() {
           </button>
         </form>
         <div className="ml-auto flex items-center gap-4">
-          {sim?.status === "ready" && <Btn onClick={() => run(() => simApi.start(sim.sim_id))}>Partir</Btn>}
-          {(sim?.status === "running" || sim?.status === "paused") && (
-            <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>
-          )}
+          {sim && <FlowControls sim={sim} run={run} />}
           <label className="flex items-center gap-1">
             <input type="checkbox" checked={godMode} onChange={(e) => setGodMode(e.target.checked)} />
             Vista interna (ataque, estado, control)
@@ -160,7 +158,7 @@ function SimulateConsole() {
         <div className="grid min-h-0 flex-1 grid-cols-[1fr_420px] gap-3">
           {/* Panel izquierdo: el incidente en vivo */}
           <section className="flex min-h-0 flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
-            {godMode && <InternalPanel sim={sim} run={run} />}
+            {godMode && <InternalPanel sim={sim} />}
             {sim.debrief && <Debrief debrief={sim.debrief} />}
             {[...feed].reverse().map((e) => (
               <FeedItem key={e.seq} e={e} />
@@ -179,8 +177,51 @@ function SimulateConsole() {
   );
 }
 
-/** Solo en vista interna: estado del incidente, agentes y control del ritmo. */
-function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<unknown>) => void }) {
+const STATUS_LABEL: Record<string, string> = {
+  starting: "Preparando",
+  ready: "Lista para partir",
+  running: "En curso",
+  paused: "En pausa",
+  finished: "Terminada",
+  failed: "Falló",
+  stopped: "Detenida",
+};
+
+/** Qué le falta a una simulación en `starting` para quedar lista (mismo criterio que el backend). */
+function pendingSteps(sim: Simulation): string[] {
+  return [
+    sim.sandbox.status !== "ready" && "desplegando la app",
+    !sim.tools_detected && "revisando herramientas",
+    !sim.attack_plan && "el atacante analiza el código",
+  ].filter((x): x is string => Boolean(x));
+}
+
+/** Estado de la simulación y control del flujo: partir, pausar, siguiente vuln y terminar. */
+function FlowControls({ sim, run }: { sim: Simulation; run: (fn: () => Promise<unknown>) => void }) {
+  const live = sim.status === "running" || sim.status === "paused";
+  const pending = sim.status === "starting" ? pendingSteps(sim) : [];
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-ink-muted" title={sim.error ?? undefined}>
+        <span className="font-medium text-ink">{STATUS_LABEL[sim.status] ?? sim.status}</span>
+        {pending.length > 0 && <> · {pending.join(" · ")}…</>}
+        {sim.status === "failed" && sim.error && <> · {sim.error.slice(0, 80)}</>}
+      </span>
+      {(sim.status === "starting" || sim.status === "ready") && (
+        <Btn disabled={sim.status !== "ready"} onClick={() => run(() => simApi.start(sim.sim_id))}>
+          Partir
+        </Btn>
+      )}
+      {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
+      {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
+      {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Siguiente vuln</Btn>}
+      {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>}
+    </div>
+  );
+}
+
+/** Solo en vista interna: estado del incidente y de los agentes. */
+function InternalPanel({ sim }: { sim: Simulation }) {
   return (
     <div className="flex flex-col gap-2 rounded-md border border-dashed border-line-strong p-2 text-xs text-ink-muted">
       {sim.state && (
@@ -213,21 +254,19 @@ function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<
             .join(" · ")}
         </span>
         <span>canales: {sim.channels.join(", ")}</span>
-        <div className="ml-auto flex gap-2">
-          {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
-          {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
-          {(sim.status === "running" || sim.status === "paused") && (
-            <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Siguiente vuln</Btn>
-          )}
-        </div>
       </div>
     </div>
   );
 }
 
-function Btn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+function Btn({ onClick, children, disabled }: { onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
   return (
-    <button type="button" className="rounded-md border border-line-strong px-2 py-1 hover:bg-bg-200" onClick={onClick}>
+    <button
+      type="button"
+      className="rounded-md border border-line-strong px-2 py-1 hover:bg-bg-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+      disabled={disabled}
+      onClick={onClick}
+    >
       {children}
     </button>
   );
