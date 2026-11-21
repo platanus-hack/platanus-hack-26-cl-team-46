@@ -20,7 +20,7 @@ import { eventToMail, seedMails } from "@/lib/workspace-mail";
  * Izquierda: feed de notificaciones. Derecha: chat con el agente de código, que es la
  * única forma de actuar (como en la vida real: no hay botones que den la respuesta).
  * Navbar: logo, el sandbox abierto (renombrable) con "Cambiar sandbox" (⌘K) y el control del flujo.
- * Sin sandbox abierto, el selector (SandboxPicker) aparece solo y no se puede cerrar.
+ * Sin sandbox abierto, el selector (SandboxPicker) ocupa el contenido de la página; con uno abierto, se abre encima.
  * `?view=all` (sin UI) muestra lo interno para depurar: ataque, estado del incidente y agentes.
  */
 export default function SimulatePage() {
@@ -176,7 +176,9 @@ function SimulateConsole() {
       setSimId(created.sim_id);
     });
 
-  const showPicker = loaded && (pickerOpen || !entry);
+  // Sin sandbox abierto el selector es el contenido de la página; con uno abierto, se abre encima (⌘K).
+  const pickerInline = loaded && !entry;
+  const pickerOverlay = pickerOpen && Boolean(entry);
 
   // Hinty responde con una simulación en curso o terminada (para repasarla).
   const clickySim = sim && ["starting", "ready", "running", "paused", "finished"].includes(sim.status) ? sim.sim_id : null;
@@ -326,8 +328,9 @@ function SimulateConsole() {
         <p className="m-auto text-[15px] text-ink-muted">Preparando el simulacro de {entry.sandbox.name}…</p>
       )}
 
-      {showPicker && (
+      {(pickerInline || pickerOverlay) && (
         <SandboxPicker
+          inline={pickerInline}
           entries={entries}
           loading={!loaded}
           currentId={entry?.sandbox.sandbox_id ?? null}

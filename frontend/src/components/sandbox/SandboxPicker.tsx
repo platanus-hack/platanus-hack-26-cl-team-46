@@ -17,13 +17,15 @@ export interface SandboxEntry {
 /**
  * Selector de sandbox tipo "nueva pestaña" de Arc: una caja de búsqueda centrada sobre el contenido,
  * con la lista filtrada debajo. Se maneja entero con teclado (↑ ↓ ↵ Esc) y permite renombrar y crear.
- * - Sin sandbox abierto no se puede cerrar (`dismissable=false`): hay que elegir uno o crear otro.
+ * - `inline`: sin sandbox abierto el selector ES el contenido de la página (en su lugar, no encima).
+ * - Si no, se abre como overlay sobre el sandbox abierto y se cierra con Esc o clic afuera.
  */
 export function SandboxPicker({
   entries,
   loading,
   currentId,
   dismissable,
+  inline = false,
   onClose,
   onSelect,
   onCreate,
@@ -33,6 +35,7 @@ export function SandboxPicker({
   loading: boolean;
   currentId: string | null;
   dismissable: boolean;
+  inline?: boolean;
   onClose: () => void;
   onSelect: (entry: SandboxEntry) => void;
   onCreate: () => void;
@@ -94,16 +97,22 @@ export function SandboxPicker({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-bg-000/70 px-4 pt-[14vh] backdrop-blur-[2px]"
+      className={
+        inline
+          ? "flex min-h-0 flex-1 items-start justify-center px-4 pt-[8vh] pb-6"
+          : "fixed inset-0 z-50 flex items-start justify-center bg-bg-000/70 px-4 pt-[14vh] backdrop-blur-[2px]"
+      }
       onMouseDown={(e) => {
-        if (dismissable && e.target === e.currentTarget) onClose();
+        if (!inline && dismissable && e.target === e.currentTarget) onClose();
       }}
     >
       <div
-        role="dialog"
-        aria-modal="true"
+        role={inline ? "region" : "dialog"}
+        aria-modal={inline ? undefined : true}
         aria-label="Elige un sandbox"
-        className="flex max-h-[70vh] w-full max-w-[640px] flex-col overflow-hidden rounded-lg border border-line bg-bg-100 shadow-window"
+        className={`flex w-full max-w-[640px] flex-col overflow-hidden rounded-lg border border-line bg-bg-100 ${
+          inline ? "max-h-full" : "max-h-[70vh] shadow-window"
+        }`}
         onKeyDown={onKeyDown}
       >
         <label className="flex items-center gap-3 border-b border-line px-4">
