@@ -11,6 +11,7 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { diagnose } from '../core/diagnose.ts';
+import { buildDiagnoses, type CodeRef } from '../core/diagnosis.ts';
 import { buildAttackPlan } from '../core/events.ts';
 import { CostLedger } from '../core/ledger.ts';
 import { correlate, discoverRepo } from '../discovery/index.ts';
@@ -119,16 +120,25 @@ async function main() {
 
   // Correlación repo ↔ hallazgo (A/I): archivo/línea derivado del código real.
   let correlated = 0;
+  const refs: Record<string, CodeRef | undefined> = {};
   if (repoModel) {
+    for (const r of diag.results) {
+      const ref = correlate(r.vuln_id, repoModel);
+      if (ref) refs[r.vuln_id] = ref;
+    }
     const findings = (plan.raw as any).findings as Array<Record<string, unknown>>;
     for (const f of findings) {
-      const ref = correlate(String(f.vuln_id), repoModel);
+      const ref = refs[String(f.vuln_id)];
       if (ref) {
         f.repo_ref = ref;
         if (f.confirmed) correlated++;
       }
     }
   }
+
+  // Diagnóstico estructurado (I): veredicto/confianza/causa raíz/remediación/re-verify.
+  const diagnoses = buildDiagnoses(diag, plugin, refs);
+  const avgConf = diagnoses.filter((d) => d.verdict === 'confirmed').reduce((s, d, _i, arr) => s + d.confidence / arr.length, 0);
 
   // Cost ledger: por ahora solo cómputo local ($0); los LLM entran con los providers (M6).
   const ledger = new CostLedger();
@@ -147,6 +157,7 @@ async function main() {
   if (reconReport) await writeFile(path.join(outDir, 'recon.json'), JSON.stringify(reconReport, null, 2));
   await writeFile(path.join(outDir, 'attack-plan.json'), JSON.stringify(plan, null, 2));
   await writeFile(path.join(outDir, 'cost-ledger.json'), JSON.stringify(ledgerSnap, null, 2));
+  await writeFile(path.join(outDir, 'diagnoses.json'), JSON.stringify(diagnoses, null, 2));
   if (repoModel) await writeFile(path.join(outDir, 'repo-model.json'), JSON.stringify(repoModel, null, 2));
   await writeFile(path.join(outDir, 'GUIA-DEL-HACKEO.md'), guide);
   for (const sc of scenarios) {
@@ -157,6 +168,7 @@ async function main() {
   await mkdir(path.join(latest, 'scenarios'), { recursive: true });
   await writeFile(path.join(latest, 'GUIA-DEL-HACKEO.md'), guide);
   await writeFile(path.join(latest, 'attack-plan.json'), JSON.stringify(plan, null, 2));
+  await writeFile(path.join(latest, 'diagnoses.json'), JSON.stringify(diagnoses, null, 2));
   if (reconReport) await writeFile(path.join(latest, 'recon.json'), JSON.stringify(reconReport, null, 2));
   for (const sc of scenarios) {
     await writeFile(path.join(latest, 'scenarios', `${sc.vuln_id}.json`), JSON.stringify(sc, null, 2));
@@ -169,6 +181,7 @@ async function main() {
   if (diag.residue.length) console.log(`   ⚠ residuo sin limpiar (${diag.residue.length}): ${diag.residue.join('; ')}`);
   console.log(`   escenarios generados: ${scenarios.length}`);
   if (repoModel) console.log(`   correlación repo: ${correlated}/${diag.summary.confirmed} hallazgos confirmados con archivo/línea`);
+  console.log(`   diagnósticos: ${diagnoses.length} (confianza promedio confirmadas: ${(avgConf || 0).toFixed(2)})`);
   console.log(`   costo: $${ledgerSnap.grandTotalUsd.toFixed(4)} (LLM $0 — sin providers aún) · presupuesto $${budgetUsd}${overBudget ? ' ⚠ EXCEDIDO' : ''}`);
   console.log(`\n📁 ${outDir}\n`);
 }

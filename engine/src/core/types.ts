@@ -70,6 +70,11 @@ export interface AttackResult {
   summary: string;
   /** Si el módulo falló por un error de ejecución (no por una defensa). */
   error?: string;
+  /** Variante usada (si el módulo tiene varias estrategias, requisito F). */
+  variant_used?: string;
+  variants_tried?: Array<{ id: string; confirmed: boolean; confidence: number }>;
+  /** Confianza 0..1 de la variante que confirmó. */
+  confidence?: number;
 }
 
 /** Conocimiento estático por vulnerabilidad: lo que alimenta la enseñanza. */
