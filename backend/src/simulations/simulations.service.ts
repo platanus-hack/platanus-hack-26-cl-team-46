@@ -16,6 +16,7 @@ import { ConductorClient } from '../conductor/conductor.client.js';
 import { DatabaseProvisioner } from '../sandboxes/database.provisioner.js';
 import { SandboxEventsService } from '../sandboxes/sandbox-events.service.js';
 import { SandboxesService } from '../sandboxes/sandboxes.service.js';
+import { sandboxDisplayName } from '../sandboxes/sandbox.types.js';
 import { nextBlockedReason } from './brain/facts.js';
 import { buildSimPrompt } from './sim-prompts.js';
 import { signSimToken } from './sim-token.js';
@@ -125,6 +126,7 @@ export class SimulationsService implements OnModuleInit {
       sandbox: sbx
         ? {
             sandbox_id: sbx.sandbox_id,
+            name: sandboxDisplayName(sbx),
             status: sbx.status,
             deployed_url: sbx.render?.url ?? null,
             /** La misma app servida por el proxy de preview (embebible con cookies). */
@@ -137,6 +139,7 @@ export class SimulationsService implements OnModuleInit {
           }
         : {
             sandbox_id: s.sandbox_id,
+            name: sandboxDisplayName({ repo_url: s.repo_url }),
             status: 'unknown',
             deployed_url: null,
             preview_url: null,

@@ -31,11 +31,12 @@ import {
 } from './manifest.js';
 import { SandboxEventsService } from './sandbox-events.service.js';
 import { SandboxStore } from './sandbox.store.js';
-import type {
-  SandboxContract,
-  SandboxDeployInfo,
-  SandboxMode,
-  SandboxRecord,
+import {
+  sandboxDisplayName,
+  type SandboxContract,
+  type SandboxDeployInfo,
+  type SandboxMode,
+  type SandboxRecord,
 } from './sandbox.types.js';
 
 const DEPLOY_POLL_MS = 5_000;
@@ -44,6 +45,7 @@ const HEALTH_TIMEOUT_MS = 4 * 60_000;
 
 export interface CreateSandboxInput {
   repo_url: string;
+  name?: string;
   ref?: string;
   env?: Record<string, string>;
   mode?: SandboxMode;
@@ -158,6 +160,7 @@ export class SandboxesService implements OnModuleInit {
       : null;
     return {
       sandbox_id: s.sandbox_id,
+      name: sandboxDisplayName(s),
       repo_url: s.repo_url,
       commit_sha: s.commit_sha ?? null,
       deployed_url: s.render?.url ?? null,
@@ -183,6 +186,15 @@ export class SandboxesService implements OnModuleInit {
     };
   }
 
+  /** Cambia el nombre para mostrar. Vacío = vuelve a `owner/repo`. */
+  rename(id: string, name: string): SandboxRecord {
+    this.get(id);
+    return this.store.update(id, (s) => {
+      if (name.trim()) s.name = name.trim();
+      else delete s.name;
+    });
+  }
+
   // -------------------------------------------------------------- crear
 
   create(input: CreateSandboxInput): SandboxRecord {
@@ -203,6 +215,7 @@ export class SandboxesService implements OnModuleInit {
     const now = new Date().toISOString();
     const record = this.store.insert({
       sandbox_id: id,
+      ...(input.name?.trim() ? { name: input.name.trim() } : {}),
       repo_url: input.repo_url,
       ref: input.ref,
       mode,

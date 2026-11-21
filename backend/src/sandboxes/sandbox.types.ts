@@ -53,6 +53,8 @@ export interface InputRequest {
 /** Lo que guardamos internamente de cada sandbox. */
 export interface SandboxRecord {
   sandbox_id: string;
+  /** Nombre que le puso el usuario. Si no hay, se muestra `owner/repo` (sandboxDisplayName). */
+  name?: string;
   repo_url: string;
   ref?: string;
   mode: SandboxMode;
@@ -103,6 +105,8 @@ export interface SandboxEvent {
 /** Contrato Deploy → Motor (sección 6.2 del resumen). */
 export interface SandboxContract {
   sandbox_id: string;
+  /** Nombre para mostrar: el que eligió el usuario o `owner/repo`. */
+  name: string;
   repo_url: string;
   commit_sha: string | null;
   deployed_url: string | null;
@@ -127,4 +131,23 @@ export interface SandboxContract {
   pending_inputs: InputRequest[];
   created_at: string;
   updated_at: string;
+}
+
+/** `https://github.com/owner/repo` → `owner/repo` (o el último par de segmentos si no es GitHub). */
+export function repoShortName(repoUrl: string): string {
+  try {
+    const parts = new URL(repoUrl).pathname
+      .replace(/\.git$/, '')
+      .split('/')
+      .filter(Boolean);
+    return parts.slice(-2).join('/') || repoUrl;
+  } catch {
+    return repoUrl;
+  }
+}
+
+export function sandboxDisplayName(
+  s: Pick<SandboxRecord, 'name' | 'repo_url'>,
+): string {
+  return s.name?.trim() || repoShortName(s.repo_url);
 }

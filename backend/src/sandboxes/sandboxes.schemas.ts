@@ -17,7 +17,15 @@ export const createSandboxSchema = z.object({
    * auto: determinista y, si falla, IA (legado).
    */
   mode: z.enum(['agent', 'manifest', 'auto']).default('agent'),
+  /** Nombre para mostrar. Si no viene, se usa `owner/repo`. */
+  name: z.string().trim().max(80).optional(),
 });
+
+/** Renombrar un sandbox. Vacío = volver al nombre por defecto (`owner/repo`). */
+export const updateSandboxSchema = z.object({
+  name: z.string().trim().max(80),
+});
+export type UpdateSandboxBody = z.infer<typeof updateSandboxSchema>;
 
 /** Valores que el agente le pidió al usuario (API keys, etc.). */
 export const provideInputsSchema = z.object({
