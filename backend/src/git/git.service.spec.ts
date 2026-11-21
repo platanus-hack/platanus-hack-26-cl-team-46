@@ -2,7 +2,11 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { classifySourceRepo, stripWorkflows } from './git.service.js';
+import {
+  classifySourceRepo,
+  isRepoAlreadyExists,
+  stripWorkflows,
+} from './git.service.js';
 
 describe('stripWorkflows', () => {
   let dir: string;
@@ -62,5 +66,27 @@ describe('classifySourceRepo', () => {
       classifySourceRepo(`https://gitlab.com/${org}/sbx-1a2b3c4d`, org),
     ).toBe('external');
     expect(classifySourceRepo('no es una url', org)).toBe('external');
+  });
+});
+
+describe('isRepoAlreadyExists', () => {
+  it('reconoce el 422 de repo repetido', () => {
+    const err = new Error(
+      'GitHub POST /orgs/x/repos → 422: {"message":"Repository creation failed.","errors":[{"message":"name already exists on this account"}]}',
+    );
+    expect(isRepoAlreadyExists(err)).toBe(true);
+  });
+
+  it('no confunde otros errores', () => {
+    expect(
+      isRepoAlreadyExists(
+        new Error('GitHub POST /orgs/x/repos → 403: forbidden'),
+      ),
+    ).toBe(false);
+    expect(
+      isRepoAlreadyExists(
+        new Error('GitHub POST /orgs/x/repos → 422: invalid name'),
+      ),
+    ).toBe(false);
   });
 });

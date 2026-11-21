@@ -1,7 +1,7 @@
 import {
   Injectable,
   Logger,
-  OnModuleDestroy,
+  OnApplicationShutdown,
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -18,13 +18,16 @@ import type { SandboxRecord } from './sandbox.types.js';
  * Las escrituras se serializan para no pisarse.
  */
 @Injectable()
-export class SandboxStore implements OnModuleInit, OnModuleDestroy {
+export class SandboxStore implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(SandboxStore.name);
   private readonly file: string;
   private readonly databaseUrl?: string;
   private pool?: pg.Pool;
   private readonly items = new Map<string, SandboxRecord>();
   private writing: Promise<void> = Promise.resolve();
+  /** Escrituras pendientes por sandbox: no se refresca desde la base algo que todavía no se guardó. */
+  private readonly pendingWrites = new Map<string, number>();
+  private lastRefresh = new Date(0);
 
   constructor(config: ConfigService<Env, true>) {
     this.file = path.resolve(
@@ -73,9 +76,39 @@ export class SandboxStore implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async onModuleDestroy() {
+  /**
+   * Se cierra al final del apagado (no en onModuleDestroy): durante el drenaje
+   * (beforeApplicationShutdown) las operaciones en curso siguen guardando progreso.
+   */
+  async onApplicationShutdown() {
     await this.writing;
     await this.pool?.end();
+  }
+
+  get persistsToDatabase(): boolean {
+    return Boolean(this.pool);
+  }
+
+  /**
+   * Trae de Postgres los sandboxes que cambiaron desde el último refresco:
+   * otra instancia del backend (la vieja, durante un deploy) puede haberlos
+   * avanzado. No toca los que `skip` reserva (operaciones locales en curso)
+   * ni los que tienen escrituras locales pendientes.
+   */
+  async refreshFromDatabase(skip: (id: string) => boolean): Promise<void> {
+    if (!this.pool) return;
+    const since = new Date(this.lastRefresh.getTime() - 5_000);
+    const startedAt = new Date();
+    const { rows } = await this.pool.query<{ data: SandboxRecord }>(
+      'SELECT data FROM sandboxes WHERE updated_at > $1',
+      [since],
+    );
+    for (const { data } of rows) {
+      const id = data.sandbox_id;
+      if (skip(id) || this.pendingWrites.has(id)) continue;
+      this.items.set(id, normalize(data));
+    }
+    this.lastRefresh = startedAt;
   }
 
   get(id: string): SandboxRecord | undefined {
@@ -111,20 +144,27 @@ export class SandboxStore implements OnModuleInit, OnModuleDestroy {
   private persist(record: SandboxRecord) {
     if (this.pool) {
       const pool = this.pool;
+      const id = record.sandbox_id;
       const json = JSON.stringify(record);
+      this.pendingWrites.set(id, (this.pendingWrites.get(id) ?? 0) + 1);
       this.writing = this.writing
         .then(async () => {
           await pool.query(
             `INSERT INTO sandboxes (id, data, updated_at) VALUES ($1, $2, now())
              ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = now()`,
-            [record.sandbox_id, json],
+            [id, json],
           );
         })
         .catch((err) =>
           this.logger.error(
-            `No se pudo persistir ${record.sandbox_id}: ${(err as Error).message}`,
+            `No se pudo persistir ${id}: ${(err as Error).message}`,
           ),
-        );
+        )
+        .finally(() => {
+          const n = (this.pendingWrites.get(id) ?? 1) - 1;
+          if (n <= 0) this.pendingWrites.delete(id);
+          else this.pendingWrites.set(id, n);
+        });
       return;
     }
     const snapshot = JSON.stringify(this.list(), null, 2);
