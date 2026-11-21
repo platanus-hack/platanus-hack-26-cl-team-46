@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { setClickySimulation } from "@/clicky/active-sim";
@@ -153,6 +154,14 @@ function SimulateConsole() {
           {sim?.status === "ready" && <Btn onClick={() => run(() => simApi.start(sim.sim_id))}>Partir</Btn>}
           {(sim?.status === "running" || sim?.status === "paused") && (
             <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>
+          )}
+          {sim?.status === "finished" && (
+            <Link
+              href={`/result?sim=${sim.sim_id}`}
+              className="rounded-md bg-defense px-3 py-1 font-medium text-on-defense hover:bg-defense-strong"
+            >
+              Ver resultado
+            </Link>
           )}
           <label className="flex items-center gap-1">
             <input type="checkbox" checked={godMode} onChange={(e) => setGodMode(e.target.checked)} />
