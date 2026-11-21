@@ -236,7 +236,16 @@ function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<
             workspace en Conductor
           </a>
         )}
-        <span>threads: {sim.threads.map((t) => `${t.role}(${t.wakes})`).join(" · ")}</span>
+        <span>
+          threads:{" "}
+          {sim.threads
+            .map((t) =>
+              t.mode === "api"
+                ? `${t.role}(api${t.model ? ` ${t.model.replace(/^claude-/, "")}` : ""}${t.last_ms ? ` ${(t.last_ms / 1000).toFixed(1)}s` : ""}${t.last_error ? " ⚠" : ""})`
+                : `${t.role}(${t.wakes})`,
+            )
+            .join(" · ")}
+        </span>
         <span>canales: {sim.channels.join(", ")}</span>
         <div className="ml-auto flex gap-2">
           {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
