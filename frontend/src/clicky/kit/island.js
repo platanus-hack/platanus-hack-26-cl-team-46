@@ -1,46 +1,76 @@
-import { htmlEl } from './geometry.js';
+import { htmlEl, reducedMotion } from './geometry.js';
+import { headsetSvg } from './icons.js';
 
-// The black pill at the top of the screen, like HeyClicky's notch panel.
-// States: idle, listening (live waveform), thinking (dots), speaking (caption follows the voice).
-export function createIsland(parent, { hint = 'mantén espacio', onType } = {}) {
+// La isla de Hinty (DESIGN.md › Hinty › 3): un rectángulo arriba al centro de la columna principal.
+// Estados: idle, listening (barras en ink según el micrófono), thinking (3 pixeles en secuencia)
+// y speaking (barras cian a ~8 fps y la punta del micrófono encendida; el subtítulo sigue a la voz).
+const BAR_SHAPE = [0.6, 0.9, 1, 0.85, 0.65];
+const step4 = v => Math.max(4, Math.min(20, Math.round(v / 4) * 4)); // alturas en pasos de 4 px
+
+export function createIsland(parent, { hint = 'ESPACIO · Mantén apretado para hablar', onType } = {}) {
+  const [key, label] = String(hint).split(' · ');
   const el = htmlEl('div', 'clicky-island', parent, `
-    <div class="av"><svg width="12" height="12" viewBox="-10 -10 20 20"><polygon points="0,-8 7,6 -7,6" fill="#fff"/></svg></div>
-    <div class="wave">${'<i></i>'.repeat(14)}</div>
+    <div class="av">${headsetSvg(16, { mic: true })}</div>
+    <div class="wave">${'<i></i>'.repeat(5)}</div>
     <div class="dots"><i></i><i></i><i></i></div>
+    <span class="err"></span>
     <div class="cap"></div>
-    <span class="hint">${hint}</span>`);
+    <span class="hint"><kbd>${esc(key)}</kbd>${label ? `<span>${esc(label)}</span>` : ''}</span>`);
   const cap = el.querySelector('.cap'), bars = [...el.querySelectorAll('.wave i')];
-  let words = [], idleTimer, speakAnim;
+  let words = [], speakTimer = 0;
 
   function state(s) {
     el.dataset.state = s;
-    cancelAnimationFrame(speakAnim);
+    clearInterval(speakTimer);
     if (s === 'speaking') {
-      const tick = now => { bars.forEach((b, i) => b.style.height = 5 + Math.abs(Math.sin(now / 140 + i * 0.7)) * 14 * (0.5 + 0.5 * Math.sin(now / 400 + i)) + 'px'); speakAnim = requestAnimationFrame(tick); };
-      speakAnim = requestAnimationFrame(tick);
+      if (reducedMotion()) bars.forEach(b => (b.style.height = '12px'));
+      else {
+        const tick = () => bars.forEach((b, i) => (b.style.height = step4(4 + Math.random() * 18 * BAR_SHAPE[i]) + 'px'));
+        tick();
+        speakTimer = setInterval(tick, 125);
+      }
     }
-    if (s === 'idle') bars.forEach(b => b.style.height = '4px');
+    if (s === 'idle') bars.forEach(b => (b.style.height = '4px'));
   }
-  function level(v) { bars.forEach((b, i) => b.style.height = 4 + v * (8 + 12 * Math.abs(Math.sin(i * 1.7 + performance.now() / 90))) + 'px'); }
-  function caption(text, { dim = false } = {}) {
-    clearTimeout(idleTimer);
+  function level(v) {
+    if (reducedMotion()) return bars.forEach(b => (b.style.height = '12px'));
+    bars.forEach((b, i) => (b.style.height = step4(4 + v * 18 * BAR_SHAPE[i]) + 'px'));
+  }
+  // dim: el subtítulo de una frase que se va a decir; sus palabras aparecen con la voz.
+  function caption(text, { dim = false, error = false, muted = false } = {}) {
+    el.toggleAttribute('data-error', error);
+    cap.classList.toggle('muted', muted);
     cap.innerHTML = '';
-    words = text.split(/\s+/).map(w => { const s = htmlEl('span', dim ? '' : 'on', cap); s.textContent = w + ' '; return s; });
+    const whole = !dim || reducedMotion();
+    words = String(text).split(/\s+/).filter(Boolean).map(w => {
+      const s = htmlEl('span', whole ? 'on' : '', cap);
+      s.textContent = w + ' ';
+      return s;
+    });
   }
+  // La palabra que se acaba de decir va en cian; las anteriores en ink; las que faltan no se muestran.
   function word(i) {
-    words.forEach((w, k) => w.classList.toggle('on', k <= i));
-    words[i]?.scrollIntoView?.({ block: 'nearest', inline: 'end' });
+    if (reducedMotion()) return;
+    words.forEach((w, k) => {
+      w.classList.toggle('on', k <= i);
+      w.classList.toggle('now', k === i);
+    });
   }
-  function idle(text = 'Pregúntame lo que quieras de tu pantalla') { state('idle'); caption(text); cap.style.opacity = .6; }
+  function idle(text = 'Pregúntame por lo que ves en pantalla') {
+    state('idle');
+    caption(text, { muted: true });
+  }
 
   function openInput() {
     if (el.querySelector('input')) return el.querySelector('input').focus();
     cap.style.display = 'none';
     const input = htmlEl('input', '', el);
-    input.placeholder = 'Escribe tu pregunta y presiona Enter';
+    input.placeholder = 'Escribe tu pregunta y aprieta Enter';
+    input.setAttribute('aria-label', 'Pregúntale a Hinty');
     el.insertBefore(input, el.querySelector('.hint'));
+    el.dataset.input = '';
     input.focus();
-    const close = () => { input.remove(); cap.style.display = ''; };
+    const close = () => { input.remove(); cap.style.display = ''; delete el.dataset.input; };
     input.addEventListener('keydown', e => {
       e.stopPropagation();
       if (e.key === 'Enter' && input.value.trim()) { const q = input.value.trim(); close(); onType?.(q); }
@@ -53,6 +83,8 @@ export function createIsland(parent, { hint = 'mantén espacio', onType } = {}) 
 
   return {
     el, state, level, word, idle, openInput,
-    caption(text, opts) { cap.style.opacity = 1; caption(text, opts); },
+    caption(text, opts) { caption(text, opts); },
   };
 }
+
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
