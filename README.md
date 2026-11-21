@@ -75,7 +75,7 @@ pnpm dev                                  # backend :3001 + frontend :3000
 - El backend guarda el estado en la base `hack26_backend` de la instancia compartida `hack26-shared-pg` (`DATABASE_URL`), porque el disco de Render es efímero.
 - Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, a la que llaman los agentes. Conductor crea las VMs de los agentes desde `main` (se puede cambiar con `CONDUCTOR_PROJECT_BRANCH`).
 - El frontend recibe `NEXT_PUBLIC_API_URL` al buildear. Si cambia, hay que redesplegarlo.
-- **Clicky** (copiloto en pantalla, `backend/src/clicky`): `OPENAI_API_KEY` y `ELEVENLABS_API_KEY` van en `hack26-backend`, nunca en el frontend. Solo responde con una simulación en curso y tiene topes por IP y por simulación (ver `backend/.env.example`). Pon además un tope de gasto en los paneles de OpenAI y ElevenLabs.
+- **Clicky** (copiloto en pantalla, `backend/src/clicky`): `OPENAI_API_KEY` y `ELEVENLABS_API_KEY` van en `hack26-backend`, nunca en el frontend. Solo responde con una simulación en curso o terminada y tiene topes por IP y por simulación (ver `backend/.env.example`). Pon además un tope de gasto en los paneles de OpenAI y ElevenLabs.
 - **Plan free:** los servicios se duermen tras 15 minutos sin tráfico y tardan ~1 minuto en despertar. Antes del demo, ábrelos (frontend, backend y el sandbox), o pasa a `starter` cuando lleguen los créditos.
 
 ## API

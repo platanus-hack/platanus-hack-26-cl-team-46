@@ -31,8 +31,13 @@ describe('ClickyAccessGuard', () => {
     expect(() => guard('running').canActivate(ctx({ 'x-sim-id': '../etc' }))).toThrow(HttpException);
   });
 
-  it('rechaza una simulación terminada', () => {
-    expect(() => guard('finished').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toThrow(ConflictException);
+  it('deja pasar una simulación terminada, para repasarla', () => {
+    expect(guard('finished').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toBe(true);
+  });
+
+  it('rechaza una simulación fallida o detenida', () => {
+    expect(() => guard('failed').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toThrow(ConflictException);
+    expect(() => guard('stopped').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toThrow(ConflictException);
   });
 
   it('limita las preguntas por minuto por IP', () => {

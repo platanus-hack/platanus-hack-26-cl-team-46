@@ -11,15 +11,18 @@ import type { Request } from 'express';
 import type { Env } from '../config/env.js';
 import { SimulationsService } from '../simulations/simulations.service.js';
 
-/** Estados en que una simulación está "en curso" y Clicky responde. */
-export const CLICKY_ACTIVE = ['starting', 'ready', 'running', 'paused'];
+/**
+ * Estados en que Clicky responde: en curso y también terminada (para repasar qué pasó).
+ * Con una simulación fallida o detenida no hay nada que mirar.
+ */
+export const CLICKY_ACTIVE = ['starting', 'ready', 'running', 'paused', 'finished'];
 
 export interface ClickyRequest extends Request {
   clickySimId: string;
 }
 
 /**
- * Acceso a Clicky: solo con una simulación en curso (`x-sim-id`) y con un límite
+ * Acceso a Clicky: solo con una simulación en curso o terminada (`x-sim-id`) y con un límite
  * de preguntas por minuto por IP. No es autenticación de usuario (la app no tiene
  * login); acota quién puede gastar las keys y cuánto. El tope por simulación vive
  * en ClickyService.
@@ -45,7 +48,7 @@ export class ClickyAccessGuard implements CanActivate {
     const sim = this.sims.get(simId); // 404 si no existe
     if (!CLICKY_ACTIVE.includes(sim.status))
       throw new ConflictException(
-        `La simulación está ${sim.status}: Clicky solo responde con una simulación en curso`,
+        `La simulación está ${sim.status}: Clicky solo responde con una simulación en curso o terminada`,
       );
     req.clickySimId = simId;
     return true;
