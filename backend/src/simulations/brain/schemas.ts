@@ -44,8 +44,12 @@ export function generatorSchema(channels: NotifyChannel[]) {
             .string()
             .nullable()
             .describe(
-              '"Nombre <email>" en email/support/phone; null en el resto',
+              '"Nombre <email>" en email/support/phone; el nombre del compañero en slack; null en el resto',
             ),
+          room: z
+            .enum(['#general', '#soporte', '#deploys'])
+            .nullable()
+            .describe('Sala del chat del equipo en slack; null en el resto'),
           severity: severitySchema,
           vuln_id: z.string().nullable(),
         }),

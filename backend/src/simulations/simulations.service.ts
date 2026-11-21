@@ -8,6 +8,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { previewUrl } from '../preview/preview-proxy.js';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { agentConfigProblems, type Env } from '../config/env.js';
@@ -112,6 +113,9 @@ export class SimulationsService implements OnModuleInit {
     const sbx = this.sandboxes
       .list()
       .find((x) => x.sandbox_id === s.sandbox_id);
+    const previewTemplate = this.config.get('PREVIEW_URL_TEMPLATE', {
+      infer: true,
+    });
     return {
       sim_id: s.sim_id,
       status: s.status,
@@ -122,6 +126,11 @@ export class SimulationsService implements OnModuleInit {
             sandbox_id: sbx.sandbox_id,
             status: sbx.status,
             deployed_url: sbx.render?.url ?? null,
+            /** La misma app servida por el proxy de preview (embebible con cookies). */
+            preview_url:
+              previewTemplate && sbx.render?.url
+                ? previewUrl(previewTemplate, sbx.sandbox_id)
+                : null,
             commit_sha: sbx.commit_sha ?? null,
             seed_users: sbx.manifest?.seed_users ?? [],
           }
@@ -129,6 +138,7 @@ export class SimulationsService implements OnModuleInit {
             sandbox_id: s.sandbox_id,
             status: 'unknown',
             deployed_url: null,
+            preview_url: null,
             commit_sha: null,
             seed_users: [],
           },

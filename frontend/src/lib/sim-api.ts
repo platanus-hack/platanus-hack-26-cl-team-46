@@ -24,7 +24,14 @@ export interface Simulation {
   status: SimStatus;
   error: string | null;
   repo_url: string;
-  sandbox: { sandbox_id: string; status: string; deployed_url: string | null; seed_users: unknown[] };
+  sandbox: {
+    sandbox_id: string;
+    status: string;
+    deployed_url: string | null;
+    /** La app servida por el proxy de preview (mismo site que mayday.rip: las cookies funcionan en el iframe). */
+    preview_url?: string | null;
+    seed_users: unknown[];
+  };
   workspace_link: string | null;
   threads: {
     role: SimRole;

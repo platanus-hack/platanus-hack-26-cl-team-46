@@ -335,7 +335,11 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
         body: n.body,
         severity: n.severity,
         vuln_id: n.vuln_id,
-        raw: { channel: n.channel, ...(n.from ? { from: n.from } : {}) },
+        raw: {
+          channel: n.channel,
+          ...(n.from ? { from: n.from } : {}),
+          ...(n.channel === 'slack' && n.room ? { room: n.room } : {}),
+        },
       });
     }
   }

@@ -4,7 +4,10 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { AgentChat } from "@/components/agent/AgentChat";
 import { setClickySimulation } from "@/clicky/active-sim";
+import { BrowserWindow } from "@/components/workspace/BrowserWindow";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
+import { eventToMessage, seedMessages } from "@/lib/workspace-chat";
+import { eventToMail, seedMails } from "@/lib/workspace-mail";
 
 /**
  * Consola de la simulación multi-agente: sirve para jugar un incidente de punta a punta.
@@ -105,6 +108,22 @@ function SimulateConsole() {
   };
 
   const sim = sims.find((s) => s.sim_id === selected);
+  const project = sim ? sim.repo_url.replace(/\/$/, "").split("/").pop() || "proyecto" : "proyecto";
+  const simStart = sim?.created_at;
+  const mails = [
+    ...seedMails(project, simStart ? new Date(simStart) : new Date()),
+    ...events.flatMap((e) => {
+      const m = eventToMail(e);
+      return m ? [m] : [];
+    }),
+  ];
+  const chatMessages = [
+    ...seedMessages(project, simStart ? new Date(simStart) : new Date()),
+    ...events.flatMap((e) => {
+      const m = eventToMessage(e);
+      return m ? [m] : [];
+    }),
+  ];
 
   return (
     <main className="flex h-screen flex-col gap-3 p-4 font-sans text-sm">
@@ -155,15 +174,28 @@ function SimulateConsole() {
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
 
       {sim && (
-        <div className="grid min-h-0 flex-1 grid-cols-[1fr_420px] gap-3">
-          {/* Panel izquierdo: el incidente en vivo */}
-          <section className="flex min-h-0 flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
-            {godMode && <InternalPanel sim={sim} />}
-            {sim.debrief && <Debrief debrief={sim.debrief} />}
-            {[...feed].reverse().map((e) => (
-              <FeedItem key={e.seq} e={e} />
-            ))}
-          </section>
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] gap-3">
+          {/* Izquierda: el espacio de trabajo simulado (arriba) y el historial de sucesos (abajo) */}
+          <div className="flex min-h-0 min-w-0 flex-col gap-3">
+            <div className="min-h-0 flex-[3]">
+              <BrowserWindow
+                key={sim.sim_id}
+                project={project}
+                appUrl={sim.sandbox.deployed_url}
+                previewUrl={sim.sandbox.preview_url ?? null}
+                chatMessages={chatMessages}
+                mails={mails}
+              />
+            </div>
+            <section className="flex min-h-0 flex-[2] flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
+              <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Historial de sucesos</h2>
+              {godMode && <InternalPanel sim={sim} />}
+              {sim.debrief && <Debrief debrief={sim.debrief} />}
+              {[...feed].reverse().map((e) => (
+                <FeedItem key={e.seq} e={e} />
+              ))}
+            </section>
+          </div>
 
           {/* Panel derecho: chat con el agente */}
           <AgentChat

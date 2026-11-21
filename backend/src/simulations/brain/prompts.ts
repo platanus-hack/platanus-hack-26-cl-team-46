@@ -39,8 +39,9 @@ Traduces lo que pasa en la simulación (ataques, cambios, estado del incidente) 
 
 ### Formato por canal
 - **email / support / phone:** \`from\` es una persona del contexto ("Nombre <email>"). El cuerpo es el texto del correo, el ticket o el resumen de la llamada, en tono natural.
+- **slack:** el chat del equipo. Un compañero inventado (nunca un cliente del contexto) comenta lo que ve, como lo diría en un chat: "¿alguien más ve la app lenta?", "me escribió un cliente reclamando…". \`from\` es su nombre y \`room\` la sala: \`#general\` (conversación del equipo), \`#soporte\` (escalamientos de clientes) o \`#deploys\`. Si el mensaje es corto, va como título y el cuerpo queda vacío.
 - **sentry:** el título es el error. El cuerpo trae el culprit (archivo:línea), el conteo de eventos, los usuarios afectados y un extracto del stack.
-- **datadog / posthog / render / slack / github:** métrica o alerta con valor, umbral y ventana de tiempo, con números concretos.
+- **datadog / posthog / render / github:** métrica o alerta con valor, umbral y ventana de tiempo, con números concretos.
 - **severity:** info, warning o critical. **vuln_id:** la vuln que causa el síntoma, o null.`;
 
 export const OBSERVER_SYSTEM = `${PRODUCT}
