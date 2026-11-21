@@ -27,7 +27,20 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-hud__value { font: 500 40px/40px var(--font-mono, var(--font-geist-mono)); letter-spacing: -.02em; font-variant-numeric: tabular-nums; color: var(--ink); }
 .md-hud__value--attack { color: var(--attack); }
 .md-hud__value--defense { color: var(--defense); }
+/* HUD fluido: en pantallas chicas los valores bajan a 28px y se ocultan los items opcionales. */
+@media (max-width: 767px) {
+  .md-hud--fluid { gap: var(--space-6); }
+  .md-hud--fluid .md-hud__value { font-size: 28px; line-height: 28px; }
+  .md-hud--fluid .md-hud__item.is-optional { display: none; }
+}
 .md-index { font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; color: var(--ink-faint); }
+
+/* ---------- Volver (sutil): label mono, sin borde ni relleno ---------- */
+.md-back { display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; background: none; border: 0; cursor: pointer; font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); transition: color .15s; }
+.md-back:hover { color: var(--ink); }
+.md-back:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 4px; border-radius: var(--radius-sm); }
+.md-back svg { width: 14px; height: 14px; flex: none; transition: transform .15s; }
+.md-back:hover svg { transform: translateX(-2px); }
 
 /* ---------- Alerta MAYDAY ---------- */
 .md-alert { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--attack-deep); border-top: 1px solid var(--attack); border-bottom: 1px solid var(--attack); color: var(--attack-strong); font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; text-transform: uppercase; }
@@ -36,7 +49,7 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-alert--solid { background: var(--attack); color: var(--on-attack); border-color: var(--attack); }
 .md-alert--solid .md-alert__call::before { background: var(--on-attack); }
 .md-marquee { overflow: hidden; white-space: nowrap; }
-.md-marquee > span { display: inline-block; padding-left: 100%; animation: md-marquee 14s linear infinite; }
+.md-marquee > span { display: inline-block; padding-left: 100%; animation: md-marquee 26s linear infinite; }
 
 /* ---------- Terminal de ataque (fondo de la landing) ---------- */
 .md-attack-term { position: relative; overflow: hidden; background: var(--bg-000); font: 400 16px/24px var(--font-mono, var(--font-geist-mono)); color: var(--ink-faint); }
@@ -44,6 +57,19 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-attack-term .t-hit { color: var(--attack); }
 .md-attack-term .t-ok { color: var(--ink-muted); }
 .md-attack-term::after { content: ""; position: absolute; inset: 0; background: linear-gradient(var(--bg-000), #050A0D00 20%, #050A0D00 70%, var(--bg-000)); pointer-events: none; }
+
+/* Modo run: un hackeo ejecutándose. Las líneas se apilan desde abajo y suben de a una, como una terminal real. */
+.md-attack-term__run { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; padding: var(--space-4) var(--space-6) var(--space-12); white-space: pre; overflow: hidden; }
+.md-attack-term__prompt { color: var(--ink); }
+.md-attack-term--run::after { background: linear-gradient(var(--bg-000), transparent 40%); }
+.md-attack-term__cursor { color: var(--attack); animation: md-blink 1s steps(1) infinite; }
+@media (max-width: 767px) { .md-attack-term { font-size: 13px; line-height: 20px; } .md-attack-term__feed, .md-attack-term__run { padding-left: var(--space-4); padding-right: var(--space-4); } }
+
+/* Variante simulada: la terminal como app del escritorio (grises sim-*). */
+.md-attack-term--sim { background: var(--sim-000); color: var(--sim-ink-muted); font-size: 12px; line-height: 18px; height: 100%; }
+.md-attack-term--sim .t-ok { color: var(--sim-ink); }
+.md-attack-term--sim::after { display: none; }
+.md-attack-term--sim .md-attack-term__feed { padding: var(--space-3) var(--space-4); }
 
 /* ---------- Pregunta y respuestas ---------- */
 .md-question { background: #0A1217E6; border: 1px solid var(--line); border-radius: var(--radius-md); padding: var(--space-8); display: flex; flex-direction: column; gap: var(--space-6); backdrop-filter: blur(6px); }
@@ -65,6 +91,14 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-option.is-wrong .md-option__verdict { color: var(--attack-strong); }
 .md-option.is-dim { opacity: .45; }
 
+.md-question__code > div { white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 767px) {
+  .md-question { padding: var(--space-6) var(--space-4); gap: var(--space-4); }
+  .md-question__title { font-size: 32px; line-height: 36px; }
+  .md-option { padding: var(--space-3); gap: var(--space-3); flex-wrap: wrap; }
+  .md-option__verdict { margin-left: 40px; flex-basis: 100%; }
+}
+
 /* ---------- Resultado (split) ---------- */
 .md-result { display: grid; grid-template-columns: 1fr 1fr; min-height: 360px; border-top: 1px solid var(--line); }
 .md-result__side { padding: var(--space-12); display: flex; flex-direction: column; gap: var(--space-4); justify-content: center; }
@@ -74,6 +108,14 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-result__verdict--fail { color: var(--attack); }
 .md-result__text { margin: 0; font: 400 18px/28px var(--font-sans, var(--font-geist-sans)); color: var(--ink-muted); max-width: 44ch; }
 .md-result__text strong { color: var(--ink); font-weight: 500; }
+
+@media (max-width: 767px) {
+  .md-result { grid-template-columns: 1fr; }
+  .md-result__side { padding: var(--space-12) var(--space-4); }
+  .md-result__side + .md-result__side { border-left: 0; border-top: 1px solid var(--line); }
+  .md-result__verdict { font-size: 48px; }
+  .md-result__text { font-size: 15px; line-height: 22px; }
+}
 
 /* ---------- Transición de pixeles ---------- */
 .md-pixels { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(var(--cols, 24), 1fr); pointer-events: none; }
@@ -133,7 +175,13 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-code__ln.is-hit > b { color: var(--attack); box-shadow: inset 3px 0 0 var(--attack); }
 .md-code .k { color: #C792EA; } .md-code .s { color: #C3E88D; } .md-code .c { color: var(--sim-ink-faint); }
 
-/* ---------- Capa simulada: panel del agente (Claude del usuario) ---------- */
+/* ---------- Capa simulada: ventana genérica (terminal, editor) ---------- */
+.md-window__bar { height: 32px; display: flex; align-items: center; gap: var(--space-3); padding: 0 var(--space-3); background: var(--sim-000); border-bottom: 1px solid var(--sim-line); }
+.md-window__bar .md-traffic { margin-right: 0; }
+.md-window__title { flex: 1; margin-right: 52px; text-align: center; font: 400 12px/16px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.md-log.is-entering { animation: md-rise .2s cubic-bezier(.2,.8,.2,1) both; }
+
+/* ---------- Capa simulada: panel del agente (integrado en Mayday) ---------- */
 .md-agent { background: var(--sim-100); border-radius: var(--radius-lg); box-shadow: var(--shadow-window); display: flex; flex-direction: column; overflow: hidden; min-width: 0; font-family: var(--font-sans, var(--font-geist-sans)); }
 .md-agent__head { height: 52px; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); border-bottom: 1px solid var(--sim-line); }
 .md-agent__name { font: 600 15px/20px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink); }
@@ -200,6 +248,33 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-meter__bars i.on { background: var(--ink-muted); }
 .md-meter__bars i.hot { background: var(--attack); animation: md-flicker 1.2s steps(1) infinite; }
 
+/* ---------- Intro "te están hackeando" (landing) ----------
+   Seguridad fotosensible: nada parpadea más de 3 veces por segundo y no hay destellos de pantalla
+   completa. El "temblor" es movimiento (transform), no luz. */
+.md-intro-pop { animation: md-intro-pop .18s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes md-intro-pop { from { opacity: 0; transform: translateY(10px) scale(.97); } to { opacity: 1; transform: none; } }
+@keyframes md-intro-shake { 0%, 100% { transform: none; } 20% { transform: translate(-3px, 1px); } 40% { transform: translate(2px, -2px); } 60% { transform: translate(-2px, 2px); } 80% { transform: translate(3px, -1px); } }
+@keyframes md-intro-dim { 50% { opacity: .82; } }
+@keyframes md-intro-hide { to { opacity: 0; visibility: hidden; } }
+@keyframes md-intro-progress { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@keyframes md-intro-ghost {
+  0% { transform: translate(18vw, 24vh); }
+  18% { transform: translate(46vw, 30vh); }
+  36% { transform: translate(74vw, 20vh); }
+  54% { transform: translate(26vw, 64vh); }
+  72% { transform: translate(66vw, 52vh); }
+  88% { transform: translate(44vw, 70vh); }
+  100% { transform: translate(84vw, 12vh); }
+}
+/* Intro teléfono: alertas del sistema que se aprietan solas. Una alerta dura 340 ms y todo va en esa escala. */
+@keyframes md-ios-alert { 0% { opacity: 0; transform: scale(1.12); } 14% { opacity: 1; transform: none; } 86% { opacity: 1; transform: none; } 100% { opacity: 0; transform: scale(.96); } }
+@keyframes md-ios-press { 0%, 58% { background: var(--sim-300); } 64%, 100% { background: var(--sim-ink-faint); } }
+@keyframes md-ios-finger { 0%, 30% { opacity: 0; transform: translate(18px, 22px); } 50% { opacity: 1; transform: none; } 62% { opacity: 1; transform: scale(.85); } 80% { opacity: 1; transform: none; } 100% { opacity: 0; transform: none; } }
+@keyframes md-ios-on { to { background: var(--attack); } }
+@keyframes md-ios-knob { to { transform: translateX(20px); } }
+@keyframes md-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes md-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
 /* ---------- Animaciones ---------- */
 @keyframes md-blink { 50% { opacity: 0; } }
 @keyframes md-flicker { 0%, 100% { opacity: 1; } 47% { opacity: 1; } 48% { opacity: .35; } 50% { opacity: 1; } 52% { opacity: .5; } 53% { opacity: 1; } }
@@ -208,3 +283,5 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 @keyframes md-drop { from { transform: translateY(-16px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes md-type { from { clip-path: inset(0 100% 0 0); } 70%, to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+/* Sin animación, la marquesina queda quieta con el texto a la vista (si no, el padding la deja fuera). */
+@media (prefers-reduced-motion: reduce) { .md-marquee > span { padding-left: 0; } }
