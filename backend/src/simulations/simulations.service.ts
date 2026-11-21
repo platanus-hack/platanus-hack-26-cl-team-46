@@ -492,7 +492,16 @@ export class SimulationsService implements OnModuleInit {
       sim_id: s.sim_id,
       status: s.status,
       repo_url: s.repo_url,
-      app: view.sandbox,
+      // El coder no ve las contraseñas de los usuarios: las citaba y adelantaba la vuln de clave débil.
+      app:
+        role === 'coder'
+          ? {
+              ...view.sandbox,
+              seed_users: view.sandbox.seed_users.map(
+                ({ password: _omit, ...u }) => u,
+              ),
+            }
+          : view.sandbox,
       channels: view.channels,
       context: view.context,
       // El agente de código solo sabe lo que sabe el developer.

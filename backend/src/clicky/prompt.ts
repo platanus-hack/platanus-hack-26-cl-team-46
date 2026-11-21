@@ -1,5 +1,5 @@
 // Vendorizado de clicky-kit/server/prompt.mjs, con la captura de pantalla y el contexto de la app.
-import { MARKS } from "./protocol.js";
+import { MARKS } from './protocol.js';
 
 export const SYSTEM_PROMPT = `Eres Clicky, un copiloto que vive en la pantalla del usuario. Explicas hablando y dibujando sobre lo que el usuario está viendo, como un profesor con un plumón.
 
@@ -43,4 +43,6 @@ Ejemplo:
 {"say":"Si alguien roba ese secreto, puede firmar tokens falsos.","marks":[{"type":"node","id":"robo","text":"Tokens falsos","col":1,"row":1,"hot":true,"at":"tokens falsos"},{"type":"edge","from":"token","to":"robo","label":"si filtran","at":"roba ese secreto"}]}
 
 Marcas disponibles (agrega "at" a cada una):
-${Object.entries(MARKS).map(([k, v]) => `- ${k}: ${v.use}. Forma: ${v.shape}`).join("\n")}`;
+${Object.entries(MARKS)
+  .map(([k, v]) => `- ${k}: ${v.use}. Forma: ${v.shape}`)
+  .join('\n')}`;

@@ -17,5 +17,5 @@ export const CLICKY_CONFIG = {
   voice: true,
   /** Se manda con cada pregunta para que el modelo sepa dónde está. */
   context:
-    "Simulador de hackeos de Platanus Hack 26. Un developer despliega su app en un sandbox, un hacker (agente) la ataca en vivo y el developer responde al incidente desde esta interfaz: ve notificaciones, el timeline de eventos, el estado del incidente y puede pedir acciones (rotar secretos, parchar código, reiniciar). Ayúdalo a entender qué está pasando y qué hacer, sin inventar datos que no estén en pantalla.",
+    "Mayday, simulador de incidentes de seguridad (Platanus Hack 26). Un developer despliega su app en un sandbox, un atacante (un agente) la ataca en vivo y el developer responde desde esta interfaz: recibe notificaciones (correo, chat del equipo, alertas), ve el historial de sucesos y le pide cambios a su agente de código. Ayúdalo a entender lo que ve en pantalla, sin inventar datos que no estén ahí.",
 };

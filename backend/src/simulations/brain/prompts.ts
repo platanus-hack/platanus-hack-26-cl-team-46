@@ -19,7 +19,9 @@ Lees archivos del repo ya desplegado y describes la app para los demás agentes 
 - **personas:** los usuarios seed que te damos y, si el repo los tiene, datos ficticios de clientes. Agrega una nota corta y verosímil sobre cada uno (a qué se dedica, cómo usa la app).
 - **notes:** lo que otro agente debería saber para operar la app (logs, variables, cómo se inicializa).
 
-**No hagas análisis de seguridad.** No menciones vulnerabilidades, debilidades, malas prácticas ni cómo contener un ataque (por ejemplo, "cambiar la contraseña no invalida los tokens"). Este contexto también lo ve el agente de código del developer y descubrir esos problemas es justamente el ejercicio. Describe cómo funciona la app, no cómo se rompe. Tampoco detalles qué rutas exigen o no autenticación o un rol, ni excepciones a los permisos: basta con decir dónde están las rutas y cómo se autentica la app.`;
+**No hagas análisis de seguridad.** No menciones vulnerabilidades, debilidades, malas prácticas ni cómo contener un ataque (por ejemplo, "cambiar la contraseña no invalida los tokens"). Este contexto también lo ve el agente de código del developer y descubrir esos problemas es justamente el ejercicio. Describe cómo funciona la app, no cómo se rompe. Tampoco detalles qué rutas exigen o no autenticación o un rol, ni excepciones a los permisos, ni cómo la app trata lo que escribe el usuario (si acepta HTML, cómo arma las consultas, cómo sube archivos): basta con decir dónde están las rutas y cómo se autentica la app.
+
+No digas si las herramientas de monitoreo (Sentry, PostHog, Datadog…) están configuradas o activas en el despliegue: eso lo decide el backend y la simulación las trata como activas.`;
 
 export const GENERATOR_SYSTEM = `${PRODUCT}
 
@@ -30,7 +32,10 @@ Traduces lo que pasa en la simulación (ataques, cambios, estado del incidente) 
 ### Qué escribir
 - Solo **síntomas observables**: un error de Sentry con su stack trace, un correo de un cliente que no puede entrar, un pico de logins fallidos en Datadog, una alerta de CPU de Render, un cliente que llama porque vio algo raro en su cuenta.
 - **Nunca expliques la causa ni el arreglo.** Ninguna herramienta ni cliente diría "un atacante explotó una SQL injection" o "el rate limit no invalida un token ya emitido". Si el developer cambia algo, describe lo que se observa después (los errores bajaron, siguen llegando requests con la sesión de Martín), no si su acción fue correcta. Sacar conclusiones es trabajo del developer y es lo que se evalúa.
-- Usa **solo los canales permitidos**. Si la app no tiene herramientas de monitoreo, el developer se entera por sus clientes: eso también es parte de la lección.
+- Usa **solo los canales permitidos**, y trátalos como activos aunque el contexto diga otra cosa. Si la app no tiene herramientas de monitoreo, el developer se entera por sus clientes: eso también es parte de la lección.
+- **Cada herramienta muestra solo lo que sabe.** Render y Datadog muestran métricas y líneas de log; Sentry, errores. No correlacionan eventos ni interpretan: el título describe la métrica o el error, no una conclusión (no "actividad en /api/admin tras el cambio de contraseña", sí "GET /api/admin/users: 14 requests en 5 min desde 45.137.21.90").
+- **Una alerta solo existe si se cruza el umbral.** Si el valor está bajo el umbral, no hay alerta: usa otro canal o no mandes nada.
+- **El primer síntoma de cada ataque tiene que notarse** (warning o critical, por un canal que el developer mira). Si ninguna herramienta lo detectaría, que lo note una persona: un cliente que ve algo raro en su cuenta o un compañero en el chat.
 - **Coherencia con lo que ya mandaste:** misma IP y user-agent del atacante, contadores que suben con lógica, mismos nombres de servicio, commits y usuarios. Revisa tus notificaciones anteriores antes de escribir y no repitas una que ya mandaste.
 - Un síntoma aparece **después** del evento que lo causa. No adelantes cosas que todavía no pasaron.
 - Cuando algo se arregla y se nota, también puede llegar una buena noticia ("Martín confirma que ya puede entrar").
