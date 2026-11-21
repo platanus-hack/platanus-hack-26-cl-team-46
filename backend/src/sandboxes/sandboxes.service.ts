@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   Logger,
@@ -10,7 +11,11 @@ import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { AgentOrchestrator } from '../agent/agent.orchestrator.js';
 import type { Env } from '../config/env.js';
-import { GitService, type FileChange } from '../git/git.service.js';
+import {
+  classifySourceRepo,
+  GitService,
+  type FileChange,
+} from '../git/git.service.js';
 import { RenderApiError, RenderClient } from '../render/render.client.js';
 import {
   DEPLOY_FAILED_STATUSES,
@@ -183,6 +188,11 @@ export class SandboxesService implements OnModuleInit {
 
   create(input: CreateSandboxInput): SandboxRecord {
     const mode = input.mode ?? 'agent';
+    if (classifySourceRepo(input.repo_url, this.git.org) === 'mirror') {
+      throw new BadRequestException(
+        'Ese repo es el mirror de otro sandbox: entrega el repo original',
+      );
+    }
     if (!this.git.mirrorsEnabled && mode !== 'manifest') {
       throw new ConflictException(
         'Los modos auto y agent necesitan GITHUB_TOKEN (mirrors) configurado',

@@ -18,10 +18,26 @@ export const agentPlanSchema = z.object({
   note: z.string().max(500).optional(),
 });
 
-export const agentNoteSchema = z.object({
-  title: z.string().min(1).max(120),
-  body: z.string().max(4000).default(''),
-});
+export const NOTE_TITLE_MAX = 120;
+
+/**
+ * Nota del agente para el timeline. Un título largo no se rechaza (los
+ * agentes tienden a escribir párrafos): se acorta y el texto completo pasa
+ * al detalle.
+ */
+export const agentNoteSchema = z
+  .object({
+    title: z.string().trim().min(1).max(2000),
+    body: z.string().max(4000).default(''),
+  })
+  .transform(({ title, body }) =>
+    title.length <= NOTE_TITLE_MAX
+      ? { title, body }
+      : {
+          title: `${title.slice(0, NOTE_TITLE_MAX - 1).trimEnd()}…`,
+          body: body ? `${title}\n\n${body}` : title,
+        },
+  );
 
 export const agentInputRequestSchema = z.object({
   variables: z

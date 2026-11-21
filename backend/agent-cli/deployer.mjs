@@ -14,6 +14,12 @@ if (!DEPLOYER_URL || !DEPLOYER_TOKEN || !SANDBOX_ID) {
 // Las herramientas del agente cortan comandos largos (~10 min): cada llamada espera como máximo esto.
 const MAX_CALL_MS = 9 * 60_000;
 const base = `${DEPLOYER_URL.replace(/\/+$/, '')}/agent/sandboxes/${SANDBOX_ID}`;
+// Render free devuelve 502/503/504 mientras el backend despierta o se redespliega.
+const TRANSIENT = new Set([502, 503, 504]);
+const RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 20_000];
+// Reintentar es seguro en lecturas y en escrituras idempotentes. /changes, /plan y /report no se
+// reintentan solos: si el backend alcanzó a aplicarlos, repetirlos duplicaría el parche o gastaría un plan.
+const SAFE_POSTS = new Set(['/notes', '/users', '/input-request']);
 
 const HELP = `
 deployer <comando>
@@ -81,8 +87,7 @@ try {
 
 async function source(dir) {
   mkdirSync(dir, { recursive: true });
-  const res = await fetch(`${base}/source.tar.gz`, { headers: auth() });
-  if (!res.ok) throw new Error(`source → ${res.status}: ${await res.text()}`);
+  const res = await api('GET', '/source.tar.gz', undefined, 'raw');
   const tgz = path.join(tmpdir(), `${SANDBOX_ID}.tgz`);
   writeFileSync(tgz, Buffer.from(await res.arrayBuffer()));
   execFileSync('tar', ['xzf', tgz, '-C', dir]);
@@ -158,14 +163,43 @@ async function ask(pairs) {
 }
 
 async function api(method, p, body, as = 'json') {
-  const res = await fetch(`${base}${p}`, {
-    method,
-    headers: { ...auth(), ...(body ? { 'content-type': 'application/json' } : {}) },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(`${method} ${p || '/'} → ${res.status}: ${text}`);
-  return as === 'text' ? text : text ? JSON.parse(text) : {};
+  const retryable = method === 'GET' || SAFE_POSTS.has(p);
+  for (let attempt = 0; ; attempt++) {
+    let res;
+    try {
+      res = await fetch(`${base}${p}`, {
+        method,
+        headers: { ...auth(), ...(body ? { 'content-type': 'application/json' } : {}) },
+        body: body ? JSON.stringify(body) : undefined,
+        // Sin límite, un fetch colgado deja al agente esperando hasta que su herramienta lo mata.
+        signal: AbortSignal.timeout(p.endsWith('.tar.gz') ? 5 * 60_000 : 2 * 60_000),
+      });
+    } catch (err) {
+      if (retryable && attempt < RETRY_DELAYS_MS.length) {
+        await retryAfter(attempt, `${method} ${p || '/'}: ${err.message}`);
+        continue;
+      }
+      throw new Error(`${method} ${p || '/'} → sin respuesta del backend (${err.message}).${retryable ? '' : ' Puede que se haya aplicado igual: revisa "deployer context" antes de repetirlo.'}`);
+    }
+    if (TRANSIENT.has(res.status) && retryable && attempt < RETRY_DELAYS_MS.length) {
+      await retryAfter(attempt, `${method} ${p || '/'} → ${res.status}`);
+      continue;
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      const hint = TRANSIENT.has(res.status) && !retryable ? ' (error transitorio del backend: revisa "deployer context" antes de repetirlo)' : '';
+      throw new Error(`${method} ${p || '/'} → ${res.status}: ${text}${hint}`);
+    }
+    if (as === 'raw') return res;
+    const text = await res.text();
+    return as === 'text' ? text : text ? JSON.parse(text) : {};
+  }
+}
+
+async function retryAfter(attempt, why) {
+  const ms = RETRY_DELAYS_MS[attempt];
+  process.stderr.write(`${why}; reintentando en ${ms / 1000} s…\n`);
+  await new Promise((r) => setTimeout(r, ms));
 }
 
 function auth() {

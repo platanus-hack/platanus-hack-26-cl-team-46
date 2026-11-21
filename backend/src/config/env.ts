@@ -59,6 +59,23 @@ export const envSchema = z.object({
     .string()
     .default('250d6454-3b06-4b69-bc80-f0c6e7307a34'),
   CONDUCTOR_PROJECT_BRANCH: z.string().optional(),
+  /**
+   * Variables globales de Conductor que se tapan (con valor vacío) en las VMs
+   * de los agentes. Conductor inyecta sus variables globales en todos los
+   * workspaces, y los agentes leen código ajeno: no deben tener credenciales.
+   * CONDUCTOR_API_KEY no se puede tapar (Conductor la fija en cada VM).
+   */
+  CONDUCTOR_AGENT_BLANK_ENV: z
+    .string()
+    .default(
+      'RENDER_API_KEY,GITHUB_TOKEN,GITHUB_HACK26_ORG_TOKEN,AGENT_API_SECRET,OPENAI_API_KEY,ELEVENLABS_API_KEY,CLOUDFLARE_API_TOKEN,DATABASE_URL',
+    )
+    .transform((v) =>
+      v
+        .split(',')
+        .map((k) => k.trim())
+        .filter((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k)),
+    ),
   AGENT_MODEL: z.string().default('opus-5-5-1m'),
   AGENT_EFFORT: z.string().default('medium'),
   /** Máximo de planes de deploy que puede intentar un agente. */

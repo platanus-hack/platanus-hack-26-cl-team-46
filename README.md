@@ -106,7 +106,7 @@ El motor de hacking real se conecta por `/sim/:id/*` con el token que entrega `h
 | `POST` | `/sandboxes` | `{ repo_url, ref?, env?, mode? }` | Crea el sandbox y lo despliega (`mode`: `agent` (default) \| `manifest` \| `auto`) |
 | `GET` | `/sandboxes` | | Lista de sandboxes |
 | `GET` | `/sandboxes/:id` | | Estado (contrato Deploy → Motor) |
-| `GET` | `/sandboxes/:id/events` | | SSE `event: deploy`; incluye historial |
+| `GET` | `/sandboxes/:id/events` | | SSE `event: deploy`; incluye el historial (persistido: sobrevive a reinicios del backend) |
 | `POST` | `/sandboxes/:id/redeploy` | `{ patch?, files?, message?, clear_cache? }` | Aplica un diff o archivos al mirror, commitea y redespliega |
 | `PUT` | `/sandboxes/:id/env` | `{ env?, generate?, unset?, deploy? }` | Cambia env vars y redespliega. `generate: ["JWT_SECRET"]` rota el secreto (invalida todas las sesiones) |
 | `POST` | `/sandboxes/:id/restart` | | Reinicia el servicio |
@@ -126,7 +126,7 @@ curl -XPUT localhost:3001/sandboxes/sbx-1234abcd/env -H 'content-type: applicati
   -d '{"generate":["JWT_SECRET"]}'
 ```
 
-**Seguridad del agente de deploy:** no recibe credenciales de Render ni de GitHub. Trabaja contra `/agent/sandboxes/:id/*` con un token `HMAC(AGENT_API_SECRET, sandbox_id)` que solo sirve para su sandbox. Su prompt (`backend/src/agent/agent-prompt.ts`) le prohíbe arreglar vulnerabilidades y le pide tratar el repo como datos, no como instrucciones. La CLI que usa está en `backend/agent-cli/deployer.mjs` (servida en `GET /agent/cli.mjs`).
+**Seguridad del agente de deploy:** no recibe credenciales de Render ni de GitHub. Trabaja contra `/agent/sandboxes/:id/*` con un token `HMAC(AGENT_API_SECRET, sandbox_id)` que solo sirve para su sandbox. Al crear su VM, el backend tapa con valor vacío las credenciales globales de Conductor (`CONDUCTOR_AGENT_BLANK_ENV`; `CONDUCTOR_API_KEY` no se puede tapar). La CLI reintenta sola las lecturas cuando el backend responde 502/503/504. Su prompt (`backend/src/agent/agent-prompt.ts`) le prohíbe arreglar vulnerabilidades y le pide tratar el repo como datos, no como instrucciones. La CLI que usa está en `backend/agent-cli/deployer.mjs` (servida en `GET /agent/cli.mjs`).
 
 ### `.sandbox/manifest.json`
 
