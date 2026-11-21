@@ -1,22 +1,36 @@
 /**
- * Cliente HTTP que graba cada request/response. La telemetría ES el producto:
- * si no capturamos el intercambio, no hay diagnóstico ni lección.
+ * Cliente HTTP que graba cada request/response. La telemetría ES el producto.
  *
+ * Garantías de seguridad:
+ *  - Scope guard: cada request y cada redirect se validan contra el origen
+ *    autorizado (protocolo + host + puerto). Un redirect fuera de scope se
+ *    aborta y NO se sigue.
+ *  - Saneamiento de evidencia: tokens JWT, hashes bcrypt, emails y teléfonos se
+ *    enmascaran en lo que se persiste, para no dejar datos reales en artefactos.
+ *
+ * Aleatoriedad (identidad por request, jitter) vía RNG seeded (rng.ts).
  * Usa fetch nativo (Node >= 18). Cero dependencias externas.
  */
-import { jitter, randomIdentity, type EvasionProfile, type Identity } from './evasion.ts';
+import { randomIdentity, type EvasionProfile, type Identity } from './evasion.ts';
+import { realClock, type Clock, type RNG } from './rng.ts';
 import type { HttpExchange } from './types.ts';
 
 const BODY_LIMIT = 4000; // caracteres de evidencia por respuesta
+const MAX_REDIRECTS = 5;
+
+export class ScopeError extends Error {
+  constructor(url: string, scope: string) {
+    super(`fuera de scope: ${url} no pertenece a ${scope}`);
+    this.name = 'ScopeError';
+  }
+}
 
 export interface RequestOptions {
   method?: string;
   path: string; // relativo a baseUrl, p. ej. "/api/notes?q=..."
   headers?: Record<string, string>;
   body?: unknown;
-  /** Token Bearer, si aplica. */
   token?: string;
-  /** Cookie cruda, si aplica. */
   cookie?: string;
   /** No seguir redirects (para capturar el 302). */
   noRedirect?: boolean;
@@ -28,30 +42,60 @@ export interface RecordedResponse {
   text: string;
   json: unknown;
   exchange: HttpExchange;
+  /** URL final tras seguir redirects en scope. */
+  finalUrl: string;
+}
+
+export interface ClientOpts {
+  profile?: EvasionProfile;
+  rng?: RNG;
+  clock?: Clock;
 }
 
 export class RecordingClient {
   readonly exchanges: HttpExchange[] = [];
   private readonly baseUrl: string;
+  /** Origen autorizado: `${protocol}//${host}` (incluye puerto). */
+  readonly scope: string;
   private readonly identity: Identity;
   private readonly profile?: EvasionProfile;
+  private readonly rng?: RNG;
+  private readonly clock: Clock;
 
-  constructor(baseUrl: string, identity: Identity, profile?: EvasionProfile) {
+  constructor(baseUrl: string, identity: Identity, opts: ClientOpts = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
+    this.scope = new URL(this.baseUrl).origin;
     this.identity = identity;
-    this.profile = profile;
+    this.profile = opts.profile;
+    this.rng = opts.rng;
+    this.clock = opts.clock ?? realClock;
   }
 
-  /** Identidad de este request: rota por request en modo stealth. */
+  private inScope(url: string): boolean {
+    try {
+      return new URL(url).origin === this.scope;
+    } catch {
+      return false;
+    }
+  }
+
   private pickIdentity(): Identity {
-    if (this.profile?.rotateIdentity === 'per-request') return randomIdentity();
+    if (this.profile?.rotateIdentity === 'per-request' && this.rng) return randomIdentity(this.rng);
     return this.identity;
   }
 
+  private async delay() {
+    if (!this.profile || this.profile.maxDelayMs <= 0 || !this.rng) return;
+    const d = Math.floor(this.profile.minDelayMs + this.rng() * (this.profile.maxDelayMs - this.profile.minDelayMs));
+    if (d > 0) await new Promise((r) => setTimeout(r, d));
+  }
+
   async request(opts: RequestOptions): Promise<RecordedResponse> {
-    if (this.profile) await jitter(this.profile);
+    await this.delay();
     const method = opts.method ?? 'GET';
-    const url = this.baseUrl + opts.path;
+    let url = this.baseUrl + opts.path;
+    if (!this.inScope(url)) throw new ScopeError(url, this.scope);
+
     const id = this.pickIdentity();
     const headers: Record<string, string> = {
       'user-agent': id.userAgent,
@@ -65,23 +109,33 @@ export class RecordingClient {
     let bodyInit: string | undefined;
     if (opts.body !== undefined) {
       headers['content-type'] = headers['content-type'] ?? 'application/json';
-      bodyInit = headers['content-type'].includes('json')
-        ? JSON.stringify(opts.body)
-        : String(opts.body);
+      bodyInit = headers['content-type'].includes('json') ? JSON.stringify(opts.body) : String(opts.body);
     }
 
-    const t0 = Date.now();
-    const res = await fetch(url, {
-      method,
-      headers,
-      body: bodyInit,
-      redirect: opts.noRedirect ? 'manual' : 'follow',
-    });
-    const durationMs = Date.now() - t0;
+    const t0 = this.clock.now();
+    let res = await fetch(url, { method, headers, body: bodyInit, redirect: 'manual' });
+    let curMethod = method;
+
+    // Seguimiento de redirects con scope guard (salvo noRedirect).
+    let hops = 0;
+    while (!opts.noRedirect && res.status >= 300 && res.status < 400 && res.headers.get('location') && hops < MAX_REDIRECTS) {
+      const next = new URL(res.headers.get('location')!, url).toString();
+      if (!this.inScope(next)) {
+        // Redirect fuera de scope: se aborta, no se sigue. Se registra el 3xx.
+        break;
+      }
+      url = next;
+      // 301/302/303 → GET; 307/308 conservan método.
+      if (res.status === 301 || res.status === 302 || res.status === 303) curMethod = 'GET';
+      res = await fetch(url, { method: curMethod, headers, redirect: 'manual' });
+      hops++;
+    }
+
+    const durationMs = this.clock.now() - t0;
     const text = await res.text();
+    const ct = res.headers.get('content-type') ?? '';
 
     let json: unknown = undefined;
-    const ct = res.headers.get('content-type') ?? '';
     if (ct.includes('application/json')) {
       try {
         json = JSON.parse(text);
@@ -94,20 +148,20 @@ export class RecordingClient {
     res.headers.forEach((v, k) => (resHeaders[k] = v));
 
     const exchange: HttpExchange = {
-      at: new Date().toISOString(),
+      at: this.clock.iso(),
       method,
       path: opts.path,
       url,
-      reqHeaders: redact(headers),
-      reqBody: redactBody(opts.body),
+      reqHeaders: redactHeaders(headers),
+      reqBody: redactBody(opts.body, headers['content-type']),
       status: res.status,
-      resHeaders: { 'content-type': ct, ...pickHeaders(resHeaders) },
-      resBodyExcerpt: text.slice(0, BODY_LIMIT),
+      resHeaders: sanitizeHeaders({ 'content-type': ct, ...pickHeaders(resHeaders) }),
+      resBodyExcerpt: sanitizeText(text.slice(0, BODY_LIMIT)),
       durationMs,
     };
     this.exchanges.push(exchange);
 
-    return { status: res.status, headers: resHeaders, text, json, exchange };
+    return { status: res.status, headers: resHeaders, text, json, exchange, finalUrl: url };
   }
 
   get(path: string, opts: Partial<RequestOptions> = {}) {
@@ -124,9 +178,36 @@ export class RecordingClient {
   }
 }
 
-/** Resume un request para los pasos del ataque: "GET /api/notes/3". */
 export function reqLine(method: string, path: string): string {
   return `${method} ${path}`;
+}
+
+// ───────────────────────── saneamiento de evidencia ─────────────────────────
+
+const JWT_RE = /eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
+const BCRYPT_RE = /\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}/g;
+const EMAIL_RE = /([A-Za-z0-9._%+-])[A-Za-z0-9._%+-]*@([A-Za-z0-9.-]+\.[A-Za-z]{2,})/g;
+const PHONE_RE = /\+?\d[\d ()\-]{8,}\d/g;
+
+/** Enmascara secretos y PII en texto que se va a persistir como evidencia. */
+export function sanitizeText(text: string): string {
+  return text
+    .replace(JWT_RE, '<jwt>')
+    .replace(BCRYPT_RE, '<bcrypt>')
+    .replace(EMAIL_RE, (_m, a, dom) => `${a}***@${dom}`)
+    .replace(PHONE_RE, '<phone>');
+}
+
+function sanitizeHeaders(h: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(h)) {
+    if (k.toLowerCase() === 'set-cookie') {
+      out[k] = v.replace(/((?:token|session|sid)=)[^;]+/gi, '$1<redacted>');
+    } else {
+      out[k] = sanitizeText(v);
+    }
+  }
+  return out;
 }
 
 function pickHeaders(h: Record<string, string>): Record<string, string> {
@@ -136,29 +217,48 @@ function pickHeaders(h: Record<string, string>): Record<string, string> {
   return out;
 }
 
-/** No guardamos el valor completo de tokens/cookies en la evidencia. */
-function redact(h: Record<string, string>): Record<string, string> {
+function redactHeaders(h: Record<string, string>): Record<string, string> {
   const out = { ...h };
   if (out['authorization']) out['authorization'] = 'Bearer <token>';
   if (out['cookie']) out['cookie'] = '<cookie>';
   return out;
 }
 
-function redactBody(body: unknown): unknown {
-  if (!body || typeof body !== 'object') return body;
-  const clone: Record<string, unknown> = { ...(body as Record<string, unknown>) };
-  for (const k of Object.keys(clone)) {
-    if (/password|secret|token/i.test(k)) clone[k] = '<redacted>';
+const SENSITIVE_KEY = /password|secret|token|authorization|cookie/i;
+
+/** Redacta campos sensibles en bodies JSON y form-urlencoded (string). */
+export function redactBody(body: unknown, contentType?: string): unknown {
+  if (body == null) return body;
+  if (typeof body === 'string') {
+    // form-urlencoded: k=v&k=v
+    if ((contentType ?? '').includes('urlencoded') || /^[^=&\s]+=[^&]*(&[^=&\s]+=[^&]*)*$/.test(body)) {
+      return body
+        .split('&')
+        .map((pair) => {
+          const eq = pair.indexOf('=');
+          const k = eq >= 0 ? pair.slice(0, eq) : pair;
+          return SENSITIVE_KEY.test(decodeURIComponent(k)) ? `${k}=<redacted>` : pair;
+        })
+        .join('&');
+    }
+    return sanitizeText(body);
   }
-  return clone;
+  if (typeof body === 'object') {
+    const clone: Record<string, unknown> = { ...(body as Record<string, unknown>) };
+    for (const k of Object.keys(clone)) {
+      if (SENSITIVE_KEY.test(k)) clone[k] = '<redacted>';
+      else if (typeof clone[k] === 'string') clone[k] = sanitizeText(clone[k] as string);
+    }
+    return clone;
+  }
+  return body;
 }
 
 /** Decodifica el payload de un JWT sin verificar firma (solo para diagnóstico). */
 export function decodeJwt(token: string): Record<string, unknown> | null {
   try {
     const part = token.split('.')[1];
-    const json = Buffer.from(part, 'base64url').toString('utf8');
-    return JSON.parse(json);
+    return JSON.parse(Buffer.from(part, 'base64url').toString('utf8'));
   } catch {
     return null;
   }

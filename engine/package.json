@@ -9,6 +9,7 @@
   },
   "scripts": {
     "diagnose": "node src/run.ts",
-    "help": "node src/run.ts --help"
+    "help": "node src/run.ts --help",
+    "test": "node --test test/*.test.ts"
   }
 }

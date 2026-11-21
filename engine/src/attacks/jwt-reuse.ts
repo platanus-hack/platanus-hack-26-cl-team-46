@@ -8,11 +8,13 @@
  */
 import { CATALOG } from '../catalog.ts';
 import { decodeJwt, reqLine } from '../http.ts';
+import { hex } from '../rng.ts';
 import { registerThrowaway } from './session.ts';
 import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
 
 export const jwtReuse: Attack = {
   meta: CATALOG['jwt-not-invalidated-on-password-change'],
+  mutating: true, // crea una cuenta víctima y le cambia la contraseña
   async run(ctx: AttackContext): Promise<AttackResult> {
     const steps: AttackStep[] = [];
 
@@ -42,7 +44,7 @@ export const jwtReuse: Attack = {
     await new Promise((r) => setTimeout(r, 1100)); // separa el iat del password_changed
     const change = await ctx.http.post(
       '/api/users/me/password',
-      { current_password: victim.password, new_password: `Nuevo-${Date.now()}!` },
+      { current_password: victim.password, new_password: `Nuevo-${hex(ctx.rng, 8)}!` },
       { token: stolenToken },
     );
     steps.push({

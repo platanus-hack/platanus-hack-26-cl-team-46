@@ -10,6 +10,7 @@ import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.t
 
 export const massAssignment: Attack = {
   meta: CATALOG['mass-assignment'],
+  mutating: true, // crea una cuenta y le escala el rol (revierte al final)
   async run(ctx: AttackContext): Promise<AttackResult> {
     const steps: AttackStep[] = [];
 
@@ -34,6 +35,13 @@ export const massAssignment: Attack = {
       note: escalated ? 'El body {role:"admin"} se aplicó al modelo: escalada de privilegios.' : undefined,
     });
 
+    // Registra la reversión del rol en el teardown (robusto aunque falle lo que sigue).
+    if (escalated) {
+      ctx.tracker.add(`rol escalado de ${attacker.email} → revertir a user`, async () => {
+        await ctx.http.patch('/api/users/me', { role: 'user' }, { token: attacker.token });
+      });
+    }
+
     // Prueba de impacto: ahora el endpoint solo-admin responde.
     let adminReachable = false;
     if (escalated) {
@@ -46,8 +54,6 @@ export const massAssignment: Attack = {
         response_summary: `HTTP ${stats.status} — ${adminReachable ? 'acceso de admin concedido' : 'sin acceso'}`,
         exchange: stats.exchange,
       });
-      // Limpieza: volver a rol user.
-      await ctx.http.patch('/api/users/me', { role: 'user' }, { token: attacker.token });
     }
 
     return {

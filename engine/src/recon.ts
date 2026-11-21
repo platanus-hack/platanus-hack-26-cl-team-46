@@ -11,6 +11,7 @@
  */
 import { decodeJwt, RecordingClient } from './http.ts';
 import { randomIdentity } from './evasion.ts';
+import { makeRng, realClock } from './rng.ts';
 import type { TargetConfig } from './types.ts';
 
 export type ReconSeverity = 'info' | 'low' | 'medium' | 'high';
@@ -73,10 +74,11 @@ const CANDIDATES: Array<{ path: string; sensitive?: boolean; adminOnly?: boolean
 
 export async function recon(
   target: TargetConfig,
-  opts: { log?: (m: string) => void } = {},
+  opts: { log?: (m: string) => void; seed?: string } = {},
 ): Promise<ReconReport> {
   const log = opts.log ?? (() => {});
-  const http = new RecordingClient(target.url, randomIdentity());
+  const rng = makeRng(`${opts.seed ?? 'recon'}:recon`);
+  const http = new RecordingClient(target.url, randomIdentity(rng), { rng, clock: realClock });
   const started_at = new Date().toISOString();
   const findings: ReconFinding[] = [];
   const endpoints: EndpointProbe[] = [];

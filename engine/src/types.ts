@@ -152,15 +152,23 @@ export interface TargetConfig {
 /** Contexto que recibe cada módulo de ataque. */
 export interface AttackContext {
   target: TargetConfig;
-  /** Cliente HTTP que graba cada intercambio. */
+  /** Cliente HTTP que graba cada intercambio (con scope guard y saneamiento). */
   http: import('./http.ts').RecordingClient;
   /** IP/UA simulados del atacante, para la narrativa y los logs. */
   attacker: { ip: string; userAgent: string };
+  /** PRNG seeded: toda la aleatoriedad controlable pasa por aquí. */
+  rng: import('./rng.ts').RNG;
+  /** Reloj inyectable. */
+  clock: import('./rng.ts').Clock;
+  /** Registro de recursos creados, para el teardown. */
+  tracker: import('./tracker.ts').ResourceTracker;
   log: (msg: string) => void;
 }
 
 export interface Attack {
   meta: VulnMeta;
+  /** true si crea/modifica estado en el target (cuentas, notas, roles). */
+  mutating: boolean;
   /** Ejecuta el ataque real y devuelve el resultado con evidencia. */
   run(ctx: AttackContext): Promise<AttackResult>;
 }

@@ -5,7 +5,7 @@
  */
 import { CATALOG } from '../catalog.ts';
 import { reqLine } from '../http.ts';
-import { loginApi, registerThrowaway } from './session.ts';
+import { lowPrivSession } from './session.ts';
 import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
 
 // La query real: SELECT id,user_id,title,body,created_at,updated_at FROM notes
@@ -20,16 +20,10 @@ const BCRYPT = /^\$2[aby]\$/;
 
 export const sqlInjection: Attack = {
   meta: CATALOG['sql-injection'],
+  mutating: false, // GET como usuario de baja privilegia (read-only)
   async run(ctx: AttackContext): Promise<AttackResult> {
     const steps: AttackStep[] = [];
-
-    let token: string;
-    if (ctx.target.weak_login) {
-      const s = await loginApi(ctx, ctx.target.weak_login.email, ctx.target.weak_login.password);
-      token = s ? s.token : (await registerThrowaway(ctx)).token;
-    } else {
-      token = (await registerThrowaway(ctx)).token;
-    }
+    const token = (await lowPrivSession(ctx)).token;
 
     // 1. Sonda error-based: una comilla rompe la query (encadena con verbose-errors).
     const probe = await ctx.http.get(`/api/notes?q=${encodeURIComponent("'")}`, { token });

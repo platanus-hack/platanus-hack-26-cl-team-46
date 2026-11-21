@@ -5,29 +5,21 @@
  */
 import { CATALOG } from '../catalog.ts';
 import { reqLine } from '../http.ts';
-import { loginApi, registerThrowaway } from './session.ts';
+import { lowPrivSession } from './session.ts';
 import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
 
 const MAX_ID = 15;
 
 export const idor: Attack = {
   meta: CATALOG['idor'],
+  mutating: false, // solo lectura (enumeración)
   async run(ctx: AttackContext): Promise<AttackResult> {
     const steps: AttackStep[] = [];
 
-    // Atacamos como un usuario normal (débil si existe, si no uno desechable).
-    let token: string;
-    let myId: number;
-    if (ctx.target.weak_login) {
-      const s = await loginApi(ctx, ctx.target.weak_login.email, ctx.target.weak_login.password);
-      if (!s) throw new Error('no se pudo loguear con weak_login para IDOR');
-      token = s.token;
-      myId = s.id;
-    } else {
-      const a = await registerThrowaway(ctx);
-      token = a.token;
-      myId = a.id;
-    }
+    // Atacamos como un usuario de baja privilegia (credencial conocida).
+    const s = await lowPrivSession(ctx);
+    const token = s.token;
+    const myId = s.id;
 
     const foreign: Array<{ id: number; user_id: number; title: string }> = [];
     for (let id = 1; id <= MAX_ID; id++) {

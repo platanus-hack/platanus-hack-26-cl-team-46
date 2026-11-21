@@ -5,23 +5,17 @@
  */
 import { CATALOG } from '../catalog.ts';
 import { reqLine } from '../http.ts';
-import { loginApi, registerThrowaway } from './session.ts';
+import { lowPrivSession } from './session.ts';
 import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
 
 const LEAK_FIELDS = ['code', 'detail', 'hint', 'position', 'where', 'stack'];
 
 export const verboseErrors: Attack = {
   meta: CATALOG['verbose-errors'],
+  mutating: false, // GET como usuario de baja privilegia (read-only)
   async run(ctx: AttackContext): Promise<AttackResult> {
     const steps: AttackStep[] = [];
-
-    let token: string;
-    if (ctx.target.weak_login) {
-      const s = await loginApi(ctx, ctx.target.weak_login.email, ctx.target.weak_login.password);
-      token = s ? s.token : (await registerThrowaway(ctx)).token;
-    } else {
-      token = (await registerThrowaway(ctx)).token;
-    }
+    const token = (await lowPrivSession(ctx)).token;
 
     // Una comilla sin cerrar rompe la query de búsqueda.
     const res = await ctx.http.get(`/api/notes?q=${encodeURIComponent("'")}`, { token });

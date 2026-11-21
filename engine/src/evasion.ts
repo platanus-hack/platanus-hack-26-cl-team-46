@@ -1,40 +1,31 @@
 /**
  * Perfiles de agresividad / evasión (emulación de adversario).
  *
- * El objetivo es que el motor sea rápido, variable y que su tráfico se parezca
- * al de un atacante real: identidades que rotan, jitter temporal y concurrencia.
- * Esto da escenarios de DIFICULTAD VARIABLE para el simulador: "noisy" deja
- * rastros obvios (fácil de detectar) y "stealth" se mezcla con el tráfico normal
- * (difícil de detectar), que es justo lo que enseña a los defensores.
+ * El tráfico se parece al de un atacante real: identidades que rotan, jitter
+ * temporal y concurrencia. Da escenarios de DIFICULTAD VARIABLE: "noisy" deja
+ * rastros obvios (fácil de detectar) y "stealth" se mezcla (difícil). La
+ * aleatoriedad usa el RNG seeded (rng.ts) para que sea reproducible con --seed.
  *
- * Límite ético/de producto: esto es emulación de adversario (timing, identidades,
- * ritmo). NO hace anti-forense ni manipula/borra logs del target: eso sería
- * malicioso y además destruiría la telemetría que ES el producto.
+ * Límite ético/de producto: es emulación de adversario (timing, identidades,
+ * ritmo). NO hace anti-forense ni manipula/borra logs del target.
  */
+import { pick, randInt, type RNG } from './rng.ts';
 
 export type ProfileName = 'noisy' | 'normal' | 'fast' | 'stealth';
 
 export interface EvasionProfile {
   name: ProfileName;
-  /** Ataques en paralelo. */
   concurrency: number;
-  /** Jitter entre requests (ms). */
   minDelayMs: number;
   maxDelayMs: number;
-  /** Rotar IP/User-Agent: nunca, por ataque, o por request. */
   rotateIdentity: 'never' | 'per-attack' | 'per-request';
-  /** Barajar el orden de ejecución para variar la huella. */
   shuffle: boolean;
 }
 
 export const PROFILES: Record<ProfileName, EvasionProfile> = {
-  // Ruidoso: ráfagas desde una sola identidad, sin pausa. Fácil de detectar.
   noisy: { name: 'noisy', concurrency: 1, minDelayMs: 0, maxDelayMs: 0, rotateIdentity: 'never', shuffle: false },
-  // Normal: una identidad, algo de concurrencia y jitter leve.
   normal: { name: 'normal', concurrency: 2, minDelayMs: 40, maxDelayMs: 180, rotateIdentity: 'per-attack', shuffle: true },
-  // Rápido: máxima concurrencia, sin pausas. Agresivo.
   fast: { name: 'fast', concurrency: 6, minDelayMs: 0, maxDelayMs: 0, rotateIdentity: 'per-attack', shuffle: true },
-  // Sigiloso: identidad por request, jitter alto, poca concurrencia. Se mezcla.
   stealth: { name: 'stealth', concurrency: 2, minDelayMs: 250, maxDelayMs: 1200, rotateIdentity: 'per-request', shuffle: true },
 };
 
@@ -52,30 +43,17 @@ const UA_POOL = [
   'Mozilla/5.0 (Linux; Android 15) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0 Mobile Safari/537.36',
 ];
 
-function randIp(): string {
-  // Rangos de documentación (RFC 5737): no direccionan a nadie real.
-  const blocks = ['203.0.113', '198.51.100', '192.0.2'];
-  const b = blocks[Math.floor(Math.random() * blocks.length)];
-  return `${b}.${1 + Math.floor(Math.random() * 253)}`;
+// Rangos de documentación (RFC 5737): no direccionan a nadie real.
+const IP_BLOCKS = ['203.0.113', '198.51.100', '192.0.2'];
+
+export function randomIdentity(rng: RNG): Identity {
+  const b = pick(rng, IP_BLOCKS);
+  return { ip: `${b}.${1 + randInt(rng, 253)}`, userAgent: pick(rng, UA_POOL) };
 }
 
-export function randomIdentity(): Identity {
-  return { ip: randIp(), userAgent: UA_POOL[Math.floor(Math.random() * UA_POOL.length)] };
-}
-
-export function jitter(profile: EvasionProfile): Promise<void> {
-  if (profile.maxDelayMs <= 0) return Promise.resolve();
-  const d = profile.minDelayMs + Math.random() * (profile.maxDelayMs - profile.minDelayMs);
-  return new Promise((r) => setTimeout(r, d));
-}
-
-export function shuffle<T>(arr: T[]): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
+export function jitterMs(profile: EvasionProfile, rng: RNG): number {
+  if (profile.maxDelayMs <= 0) return 0;
+  return Math.floor(profile.minDelayMs + rng() * (profile.maxDelayMs - profile.minDelayMs));
 }
 
 /** Ejecuta tareas con un límite de concurrencia. */

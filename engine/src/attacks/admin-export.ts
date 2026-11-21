@@ -6,20 +6,21 @@
  */
 import { CATALOG } from '../catalog.ts';
 import { reqLine } from '../http.ts';
-import { me, registerThrowaway } from './session.ts';
+import { lowPrivSession, me } from './session.ts';
 import type { Attack, AttackContext, AttackResult, AttackStep } from '../types.ts';
 
 export const adminExport: Attack = {
   meta: CATALOG['admin-endpoint-no-authz'],
+  mutating: false, // GET como usuario de baja privilegia (read-only)
   async run(ctx: AttackContext): Promise<AttackResult> {
     const steps: AttackStep[] = [];
 
-    const attacker = await registerThrowaway(ctx);
+    const attacker = await lowPrivSession(ctx);
     const profile = await me(ctx, attacker.token);
     steps.push({
-      technique: 'Registro de cuenta sin privilegios',
+      technique: 'Sesión de usuario sin privilegios',
       request: reqLine('GET', '/api/users/me'),
-      response_summary: `cuenta recién creada, role="${profile?.role}" (NO admin)`,
+      response_summary: `usuario de baja privilegia, role="${profile?.role}" (NO admin)`,
     });
 
     const res = await ctx.http.get('/api/admin/users/export', { token: attacker.token });

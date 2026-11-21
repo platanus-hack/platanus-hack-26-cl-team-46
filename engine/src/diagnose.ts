@@ -1,23 +1,30 @@
 /**
  * Orquesta la pasada de diagnóstico: corre cada ataque real contra el target,
- * captura el paso a paso y arma el resultado completo. Soporta perfiles de
- * agresividad/evasión (concurrencia, jitter, rotación de identidad). No ataca
- * nada fuera del target autorizado.
+ * captura el paso a paso y arma el resultado. Soporta perfiles de evasión,
+ * determinismo por --seed (RNG por-ataque derivado de seed+vuln_id, estable aun
+ * con concurrencia), modo read-only y teardown robusto con reporte de residuo.
+ * No ataca nada fuera del target autorizado (scope guard en el cliente HTTP).
  */
 import { ATTACKS } from './attacks/index.ts';
-import { PROFILES, pool, randomIdentity, shuffle, type ProfileName } from './evasion.ts';
+import { PROFILES, randomIdentity, type ProfileName } from './evasion.ts';
+import { pool } from './evasion.ts';
 import { RecordingClient } from './http.ts';
+import { makeRng, realClock, shuffle, type Clock } from './rng.ts';
+import { ResourceTracker } from './tracker.ts';
 import type { Attack, AttackContext, AttackResult, HttpExchange, TargetConfig } from './types.ts';
 
 export interface DiagnosisResult {
   target: TargetConfig;
   profile: string;
+  seed: string;
+  read_only: boolean;
   started_at: string;
   finished_at: string;
   duration_ms: number;
   results: AttackResult[];
-  /** Toda la telemetría capturada, en orden temporal. */
   telemetry: HttpExchange[];
+  /** Recursos que no se pudieron limpiar (para decidir el reset). */
+  residue: string[];
   summary: {
     total: number;
     confirmed: number;
@@ -28,65 +35,85 @@ export interface DiagnosisResult {
   };
 }
 
-export async function diagnose(
-  target: TargetConfig,
-  opts: { log?: (m: string) => void; only?: string[]; profile?: ProfileName } = {},
-): Promise<DiagnosisResult> {
+export interface DiagnoseOpts {
+  log?: (m: string) => void;
+  only?: string[];
+  profile?: ProfileName;
+  seed?: string;
+  readOnly?: boolean;
+  clock?: Clock;
+}
+
+export async function diagnose(target: TargetConfig, opts: DiagnoseOpts = {}): Promise<DiagnosisResult> {
   const log = opts.log ?? (() => {});
   const profile = PROFILES[opts.profile ?? 'fast'];
+  const seed = opts.seed ?? 'default';
+  const clock = opts.clock ?? realClock;
+  const tracker = new ResourceTracker();
 
-  const started = Date.now();
-  const started_at = new Date().toISOString();
+  const started = clock.now();
+  const started_at = clock.iso();
 
   let toRun: Attack[] = opts.only ? ATTACKS.filter((a) => opts.only!.includes(a.meta.id)) : ATTACKS;
-  if (profile.shuffle) toRun = shuffle(toRun);
+  if (opts.readOnly) toRun = toRun.filter((a) => !a.mutating);
+  if (profile.shuffle) toRun = shuffle(makeRng(`${seed}:order`), toRun);
 
-  log(`perfil: ${profile.name} (concurrencia ${profile.concurrency}, jitter ${profile.minDelayMs}-${profile.maxDelayMs}ms, identidad ${profile.rotateIdentity})`);
+  log(`perfil: ${profile.name} · seed: ${seed}${opts.readOnly ? ' · read-only' : ''} (concurrencia ${profile.concurrency}, jitter ${profile.minDelayMs}-${profile.maxDelayMs}ms, identidad ${profile.rotateIdentity})`);
 
   const clients: RecordingClient[] = [];
+  let results: AttackResult[] = [];
 
-  const results = await pool(toRun, profile.concurrency, async (attack) => {
-    // Cada ataque usa su propia identidad base (rota por request si es stealth).
-    const identity = randomIdentity();
-    const http = new RecordingClient(target.url, identity, profile);
-    clients.push(http);
-    const ctx: AttackContext = { target, http, attacker: identity, log };
+  try {
+    results = await pool(toRun, profile.concurrency, async (attack) => {
+      // RNG por-ataque: determinista e independiente del orden/concurrencia.
+      const rng = makeRng(`${seed}:${attack.meta.id}`);
+      const identity = randomIdentity(rng);
+      const http = new RecordingClient(target.url, identity, { profile, rng, clock });
+      clients.push(http);
+      const ctx: AttackContext = { target, http, attacker: identity, rng, clock, tracker, log };
 
-    log(`▶ ${attack.meta.id} — ${attack.meta.title}`);
-    try {
-      const r = await attack.run(ctx);
-      const tag = r.confirmed ? 'CONFIRMADO' : r.blocked ? 'bloqueado' : r.error ? 'ERROR' : 'no confirmado';
-      log(`  → [${attack.meta.id}] ${tag}: ${r.summary}`);
-      return r;
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      log(`  → [${attack.meta.id}] ERROR de ejecución: ${msg}`);
-      return {
-        vuln_id: attack.meta.id,
-        confirmed: false,
-        blocked: false,
-        steps: [],
-        gained: [],
-        attacker_active: false,
-        summary: `No se pudo ejecutar el ataque: ${msg}`,
-        error: msg,
-      } satisfies AttackResult;
-    }
-  });
+      log(`▶ ${attack.meta.id}${attack.mutating ? ' (mutante)' : ' (read-only)'} — ${attack.meta.title}`);
+      try {
+        const r = await attack.run(ctx);
+        const tag = r.confirmed ? 'CONFIRMADO' : r.blocked ? 'bloqueado' : r.error ? 'ERROR' : 'no confirmado';
+        log(`  → [${attack.meta.id}] ${tag}: ${r.summary}`);
+        return r;
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log(`  → [${attack.meta.id}] ERROR de ejecución: ${msg}`);
+        return {
+          vuln_id: attack.meta.id,
+          confirmed: false,
+          blocked: false,
+          steps: [],
+          gained: [],
+          attacker_active: false,
+          summary: `No se pudo ejecutar el ataque: ${msg}`,
+          error: msg,
+        } satisfies AttackResult;
+      }
+    });
+  } finally {
+    // Teardown robusto: corre aunque algún ataque haya lanzado.
+    if (tracker.items.length) log(`▶ teardown: ${tracker.items.length} recurso(s)`);
+  }
 
-  const finished_at = new Date().toISOString();
-  const telemetry = clients
-    .flatMap((c) => c.exchanges)
-    .sort((a, b) => a.at.localeCompare(b.at));
+  const residue = await tracker.teardown(log);
+
+  const finished_at = clock.iso();
+  const telemetry = clients.flatMap((c) => c.exchanges).sort((a, b) => a.at.localeCompare(b.at));
 
   return {
     target,
     profile: profile.name,
+    seed,
+    read_only: !!opts.readOnly,
     started_at,
     finished_at,
-    duration_ms: Date.now() - started,
+    duration_ms: clock.now() - started,
     results,
     telemetry,
+    residue,
     summary: {
       total: results.length,
       confirmed: results.filter((r) => r.confirmed).length,

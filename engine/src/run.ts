@@ -1,17 +1,12 @@
 /**
  * CLI del motor de hacking.
  *
- * Uso:
- *   node engine/src/run.ts --url https://sbx-xxxx.onrender.com \
- *        [--weak-email a@b.com --weak-pass pass] [--only idor,sql-injection] \
- *        [--out engine/out]
+ * SEGURIDAD: no hay target ni credenciales por defecto. `--url` es obligatorio y
+ * `--help` no tiene efectos secundarios (no dispara ningún request). El cliente
+ * HTTP aplica scope guard: solo se ataca el host de `--url`.
  *
- * Solo ataca el --url indicado (target autorizado). Escribe:
- *   out/<ts>/diagnosis.json      diagnóstico completo con evidencia
- *   out/<ts>/attack-plan.json    plan en el contrato del backend
- *   out/<ts>/telemetry.json      toda la telemetría HTTP capturada
- *   out/<ts>/scenarios/*.json    escenarios preconfigurados (uno por vuln)
- *   out/<ts>/GUIA-DEL-HACKEO.md  guía enseñable paso a paso
+ * Uso:
+ *   node engine/src/run.ts --url https://sbx-xxxx.onrender.com [opciones]
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -22,45 +17,88 @@ import { renderGuide } from './report.ts';
 import { buildScenarioPack } from './scenario.ts';
 import type { TargetConfig } from './types.ts';
 
+const HELP = `Motor de hacking — diagnóstico real contra una app controlada y autorizada.
+
+Uso:
+  node src/run.ts --url <https://host> [opciones]
+
+Obligatorio:
+  --url <url>            Target autorizado. SOLO se ataca este host (scope guard).
+
+Opciones:
+  --profile <p>         noisy | normal | fast | stealth        (default: fast)
+  --seed <s>            Semilla para reproducibilidad            (default: "default")
+  --read-only           Correr solo módulos no mutantes (no crea/modifica estado)
+  --only <ids>          CSV de vuln_id a correr (p. ej. idor,sql-injection)
+  --weak-email <email>  Credencial conocida para fuerza bruta / sesión de baja privilegia
+  --weak-pass <pass>    (ambos juntos; sin default, específico de la app)
+  --commit <sha>        Commit del target, para versionar el escenario
+  --no-recon            Saltar la fase de reconocimiento
+  --out <dir>           Carpeta de salida                        (default: engine/out)
+  --help, -h            Mostrar esta ayuda (sin efectos secundarios)
+
+Ejemplo (app víctima Apuntes):
+  node src/run.ts --url https://sbx-xxxx.onrender.com \\
+    --weak-email martin.soto@example.com --weak-pass qwerty123 --seed demo-1
+`;
+
 function arg(name: string, def?: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : def;
+  return i >= 0 && process.argv[i + 1] && !process.argv[i + 1].startsWith('--') ? process.argv[i + 1] : def;
+}
+function flag(name: string): boolean {
+  return process.argv.includes(`--${name}`);
 }
 
 async function main() {
-  const url = arg('url', process.env.TARGET_URL ?? 'https://sbx-8e92f100.onrender.com');
-  if (!url) throw new Error('falta --url o TARGET_URL');
+  // --help NO dispara nada.
+  if (flag('help') || process.argv.includes('-h')) {
+    console.log(HELP);
+    return;
+  }
 
-  // Credencial débil conocida para la demo de fuerza bruta (de docs/victim/ANSWER_KEY.md).
-  const weakEmail = arg('weak-email', 'martin.soto@example.com');
-  const weakPass = arg('weak-pass', 'qwerty123');
+  const url = arg('url');
+  if (!url) {
+    console.error('❌ Falta --url (obligatorio). No hay target por defecto.\n');
+    console.error(HELP);
+    process.exit(2);
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+    if (!/^https?:$/.test(parsed.protocol)) throw new Error('protocolo');
+  } catch {
+    console.error(`❌ --url inválida: ${url}`);
+    process.exit(2);
+  }
 
+  const weakEmail = arg('weak-email');
+  const weakPass = arg('weak-pass');
   const only = arg('only')?.split(',').map((s) => s.trim());
-  const profile = arg('profile', 'fast') as 'noisy' | 'normal' | 'fast' | 'stealth';
-  const outRoot = arg('out', path.resolve(import.meta.dirname, '../out'));
+  const profile = (arg('profile', 'fast') ?? 'fast') as 'noisy' | 'normal' | 'fast' | 'stealth';
+  const seed = arg('seed', 'default')!;
+  const readOnly = flag('read-only');
+  const outRoot = arg('out', path.resolve(import.meta.dirname, '../out'))!;
 
   const target: TargetConfig = {
     url: url.replace(/\/$/, ''),
     commit: arg('commit'),
-    seed_users: [{ email: weakEmail!, password: weakPass!, role: 'user' }],
+    seed_users: weakEmail && weakPass ? [{ email: weakEmail, password: weakPass, role: 'user' }] : [],
     weak_login: weakEmail && weakPass ? { email: weakEmail, password: weakPass } : undefined,
   };
 
-  console.log(`\n🎯 Motor de hacking → ${target.url}`);
-  console.log(`   (solo se ataca este target autorizado)\n`);
+  console.log(`\n🎯 Motor de hacking → ${target.url}  (scope: ${parsed.origin})`);
+  console.log(`   solo se ataca este host autorizado · perfil ${profile} · seed ${seed}${readOnly ? ' · read-only' : ''}\n`);
 
-  // Fase 1: recon (superficie de ataque). Se puede saltar con --no-recon.
-  const reconReport = process.argv.includes('--no-recon') ? undefined : await recon(target, { log: (m) => console.log(m) });
-
-  // Fase 2: explotación real.
-  const diag = await diagnose(target, { only, profile, log: (m) => console.log(m) });
+  const reconReport = flag('no-recon') ? undefined : await recon(target, { seed, log: (m) => console.log(m) });
+  const diag = await diagnose(target, { only, profile, seed, readOnly, log: (m) => console.log(m) });
 
   const scenarios = buildScenarioPack(diag);
   const plan = buildAttackPlan(diag, reconReport);
   const guide = renderGuide(diag, scenarios, reconReport);
 
-  const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const outDir = path.join(outRoot!, ts);
+  const ts = diag.started_at.replace(/[:.]/g, '-');
+  const outDir = path.join(outRoot, ts);
   await mkdir(path.join(outDir, 'scenarios'), { recursive: true });
 
   await writeFile(path.join(outDir, 'diagnosis.json'), JSON.stringify({ ...diag, telemetry: undefined }, null, 2));
@@ -72,23 +110,22 @@ async function main() {
     await writeFile(path.join(outDir, 'scenarios', `${sc.vuln_id}.json`), JSON.stringify(sc, null, 2));
   }
 
-  // Copia "latest" para el consumo del simulador.
-  const latest = path.join(outRoot!, 'latest');
+  const latest = path.join(outRoot, 'latest');
   await mkdir(path.join(latest, 'scenarios'), { recursive: true });
   await writeFile(path.join(latest, 'GUIA-DEL-HACKEO.md'), guide);
   await writeFile(path.join(latest, 'attack-plan.json'), JSON.stringify(plan, null, 2));
+  if (reconReport) await writeFile(path.join(latest, 'recon.json'), JSON.stringify(reconReport, null, 2));
   for (const sc of scenarios) {
     await writeFile(path.join(latest, 'scenarios', `${sc.vuln_id}.json`), JSON.stringify(sc, null, 2));
   }
 
   console.log('\n────────────────────────────────────────');
-  console.log(`✅ ${diag.summary.confirmed}/${diag.summary.total} vulnerabilidades confirmadas  (perfil: ${diag.profile}, ${(diag.duration_ms / 1000).toFixed(1)}s)`);
-  console.log(`   bloqueadas: ${diag.summary.blocked} · errores: ${diag.summary.errored}`);
+  console.log(`✅ ${diag.summary.confirmed}/${diag.summary.total} vulnerabilidades confirmadas  (perfil: ${diag.profile}, seed: ${diag.seed}, ${(diag.duration_ms / 1000).toFixed(1)}s)`);
+  console.log(`   bloqueadas: ${diag.summary.blocked} · errores: ${diag.summary.errored} · requests: ${diag.summary.requests}`);
   console.log(`   atacante activo al cierre: ${diag.summary.attacker_active ? 'sí' : 'no'}`);
-  console.log(`   requests capturados: ${diag.summary.requests}`);
+  if (diag.residue.length) console.log(`   ⚠ residuo sin limpiar (${diag.residue.length}): ${diag.residue.join('; ')}`);
   console.log(`   escenarios generados: ${scenarios.length}`);
-  console.log(`\n📁 ${outDir}`);
-  console.log(`📄 ${path.join(outDir, 'GUIA-DEL-HACKEO.md')}\n`);
+  console.log(`\n📁 ${outDir}\n`);
 }
 
 main().catch((e) => {

@@ -4,7 +4,6 @@
  * reproduce: trae el ataque real grabado, los beats de storytelling y los
  * criterios de evaluación. El usuario del simulador elige cuál seguir.
  */
-import { createHash } from 'node:crypto';
 import { CATALOG } from './catalog.ts';
 import type { DiagnosisResult } from './diagnose.ts';
 import type { AttackResult, Scenario, StorylineBeat } from './types.ts';
@@ -57,13 +56,11 @@ function successCriteria(vulnId: string) {
 
 export function buildScenario(attack: AttackResult, diag: DiagnosisResult): Scenario {
   const meta = CATALOG[attack.vuln_id];
-  // Seed determinista: deriva del vuln + commit del target, para reproducibilidad.
-  const seed = createHash('sha256')
-    .update(`${attack.vuln_id}:${diag.target.commit ?? diag.target.url}`)
-    .digest('hex')
-    .slice(0, 12);
+  // El seed de la corrida (--seed) gobierna la reproducibilidad del escenario.
+  const seed = diag.seed;
 
   return {
+    // NOTA: prefijo "apuntes." específico del plugin de la app víctima Apuntes.
     scenario_id: `apuntes.${attack.vuln_id}`,
     version: `${SCHEMA_VERSION}.${meta.order}+${seed}`,
     seed,
