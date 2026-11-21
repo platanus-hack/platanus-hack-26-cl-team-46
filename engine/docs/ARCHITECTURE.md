@@ -30,16 +30,18 @@ Reglas: APIs tipadas, **schemas versionados** (`schemaVersion`), tests unit+inte
 ```ts
 interface EngagementSpec {
   schemaVersion: '1';
-  repo: { path?: string; url?: string; commit: string; subdir?: string }; // acceso real al código
+  repo: { path?: string; url?: string; commit: string; subdir?: string }; // OBLIGATORIO
   target: { url: string };            // app desplegada en contenedor controlado
   credentials?: Array<{ role: string; email?: string; secret?: string; note?: string }>; // opcional
   scope: { origins: string[] };       // hosts autorizados (scope guard)
-  budget?: { maxUsd?: number; maxRequests?: number }; // tope de la corrida (D)
+  budget?: { maxUsd?: number; maxRequests?: number; onExceed?: 'abort'|'ask' }; // tope (D)
   authorization: { by: string; at: string };          // quién autoriza
 }
 ```
 
-El repo **participa siempre**: si falta `repo`, la corrida es modo "black-box degradado" y se marca como tal (menor confianza, sin correlación archivo/línea).
+El repo **es obligatorio**: sin `repo` la corrida **no procede** (decisión de Sebastián:
+no hay modo black-box degradado). El discovery estático del repo es precondición
+de la correlación hallazgo↔archivo/línea y de la activación de módulos.
 
 ## 3. Discovery adapters (A) — el repo se usa de verdad
 
@@ -111,7 +113,7 @@ interface AnalysisProvider {
 interface GeneratedArtifact { kind: 'attack-module'|'plan'; code?: string; spec: object; provenance: Provenance }
 ```
 
-**Gate de ejecución para TODO artefacto generado** (sin excepción): (1) valida contra schema; (2) pasa por scope guard estático (no URLs fuera de scope, no I/O arbitrario); (3) corre en **sandbox contra un fixture/dummy**, con sus tests; (4) **revisión** (humana o gate automatizado configurable) antes de tocar el target. **Prohibida la ejecución libre no delimitada.** Todo uso de provider se registra en el ledger (D) y la provenance (G).
+**Gate de ejecución para TODO artefacto generado** (sin excepción, decisión de Sebastián): (1) valida contra schema; (2) scope guard estático (no URLs fuera de scope, no I/O arbitrario, allowlist de imports); (3) corre en **sandbox contra un fixture/dummy**, con sus tests. **Este gate automatizado basta para ejecutar en local y en Render.** (4) **Checkpoint de supervisión**: cada vez que se corren pruebas o se modifican módulos, se **reporta a Sebastián** (vía Claude) antes de avanzar — supervisión humana continua, no bloqueo por artefacto. **Prohibida la ejecución libre no delimitada.** Todo uso de provider se registra en el ledger (D) y la provenance (G).
 
 ## 7. Cost ledger (D)
 
@@ -126,7 +128,18 @@ interface CostEntry {
 interface CostLedger { entries: CostEntry[]; byPhase: Record<string, number>; grandTotalUsd: number }
 ```
 
-Se instrumenta por corrida. **Herramientas gratuitas/locales también figuran** con `unitPrice: 0` y su consumo (requests/compute/tiempo). Se emite **estimado antes** y **real después**, total por fase y total general. Un `budget.maxUsd` excedido aborta o pide confirmación (decisión §11).
+Se instrumenta por corrida. **Herramientas gratuitas/locales también figuran** con `unitPrice: 0` y su consumo (requests/compute/tiempo). Se emite **estimado antes** y **real después**, total por fase y total general. `budget.maxUsd` excedido → **abortar** por defecto (`onExceed: 'abort'`), o `'ask'`.
+
+**Qué cuesta realmente** (lo demás es $0 metered): solo las **llamadas LLM** de los providers (C) y, más adelante, el **hosting de dummies en Render** (E). Los ataques propios y los scanners locales (semgrep/nuclei/ffuf en Docker) son $0 (cómputo local), registrados con su consumo.
+
+**Modelos y presupuesto (decisión de Sebastián)** — pricing por 1M tokens, cache read entre paréntesis:
+| Rol | Modelo | $ in / out | Uso |
+|---|---|---|---|
+| Triage/clasificación (volumen) | `claude-haiku-5-5` | 0.10 / 0.50 | filtrar endpoints, etiquetar respuestas |
+| Análisis + diagnóstico (workhorse) | `claude-sonnet-5-5` | 2 / 10 (0.10) | discovery analysis, síntesis de diagnóstico |
+| Generación/adaptación de módulos + causa raíz difícil | `claude-opus-5-5` | 4 / 20 (0.20) | código generado (pasa por el gate) |
+
+Estimado por corrida (≈200k in / 55k out, con prompt caching del RepoModel): **~$1–2/corrida** con tiering (Sonnet de base + Opus puntual + Haiku triage). **Default `budget.maxUsd = 3`**; tope global sugerido para el hackathon **$30–50**. El provider interface permite fijar modelo por fase.
 
 ## 8. Diagnóstico (I) — capacidad principal
 
@@ -158,15 +171,19 @@ Correlaciona **repo + runtime + tráfico + telemetría**. Cada hallazgo trae ver
 
 Solo repos/fuentes **verificadas**: proyectos oficiales; revisar licencia, actividad, **release/commit fijado**, dependencias, **imágenes por digest**, firmas/checksums cuando existan; **sin montar secretos ni el repo completo** si no hace falta. Registrar **provenance** + costo (D). **No descargar/ejecutar ARTEX ni scanners** (nuclei/ffuf/semgrep) hasta completar esta revisión y aprobarla. Candidatos a vetar primero: `semgrep` (SAST, discovery), `nuclei` (plantillas), `ffuf` (content discovery), ARTEX (autónomo).
 
-## 11. Decisiones que requieren a Sebastián
+## 11. Decisiones
 
-1. **Presupuesto por corrida**: `budget.maxUsd` default y comportamiento al excederlo (abortar vs pedir confirmación). Modelo LLM a usar (p.ej. `claude-opus-4-8`) y tope de tokens.
-2. **Autonomía de módulos generados (C)**: ¿gate con revisión humana obligatoria, o gate automatizado (schema+scope+tests en sandbox) suficiente para ejecutar contra dummies locales? ¿Y contra Render?
-3. **Dummy stacks (E)**: confirmar los 2 (sugeridos: Express+SQLite y Flask+SQLite) y el set de vulns solapadas/no solapadas.
-4. **Fuentes externas a vetar primero (G)**: ¿`semgrep` + `nuclei` como primeros? ARTEX ¿se mantiene en el alcance o se pospone?
-5. **Lenguajes de discovery/SAST prioritarios** (sugerido: JS/TS y Python primero).
-6. **Render/créditos (E)**: confirmar cuándo hay créditos y quién despliega los dummies (servicio de Rai).
-7. **Rate budget / alarm footprint**: definir defaults de `maxRps` y qué cuenta como "alarma" para la lógica de secuenciación.
+**Resueltas (Sebastián):**
+1. Repo **obligatorio**, sin modo black-box degradado (§2).
+2. **Presupuesto**: default `maxUsd = 3`/corrida, `onExceed: abort`; tope hackathon $30–50. **Modelos por rol**: Haiku 5.5 (triage) / Sonnet 5.5 (análisis+diagnóstico) / Opus 5.5 (generación+causa raíz) (§7).
+3. **Gate (C)**: automatizado (schema+scope+tests-en-sandbox) **basta para local y Render**; además **checkpoint de supervisión con Sebastián** en cada prueba/modificación (§6).
+4. **Dummies (E)**: Express+SQLite y Flask+SQLite, con vulns solapadas y no solapadas.
+5. **Fuentes (G)**: primero `semgrep` (SAST) + `nuclei`; **ARTEX sigue en alcance**.
+6. **Lenguajes discovery/SAST**: JS/TS y Python primero.
+
+**Pendientes:**
+7. **Render/créditos**: en camino; **se dejan pendientes** en la arquitectura (nada se crea/despliega en Render hasta confirmación). Quién despliega los dummies (servicio de Rai) a definir.
+8. **Defaults de `rateBudget`/alarm footprint** (propuesta inicial, ajustable): `maxRps` global 5, por lane 2; "alarm" = ráfaga de 4xx/5xx > N en ventana corta, o endpoints de admin/export. Confirmar con Sebastián al implementar el scheduler.
 
 ## 12. Criterios de aceptación (por requisito)
 
@@ -180,12 +197,18 @@ Solo repos/fuentes **verificadas**: proyectos oficiales; revisar licencia, activ
 - **H**: capas separadas con APIs tipadas y schemas versionados; suites unit+integración+e2e; doc de extensión; cero defaults peligrosos.
 - **I**: cada hallazgo trae veredicto+confianza+falsos positivos+causa raíz(FileRef)+cadena+impacto+evidencia sanitizada+remediación+re-verify.
 
-## 13. Secuencia de implementación propuesta (sin tocar Render)
+## 13. Plan de desarrollo (hitos) — todo local hasta que haya créditos Render
 
-1. Re-encajar lo existente en las capas §1 (mover Apuntes a `plugins/apuntes`, extraer `core/`), con schemas versionados. (independiente)
-2. `ledger/` (D) — transversal, self-contained. (independiente)
-3. `scheduler/` (B) con `SchedulingMeta` y DAG; migrar el `pool` actual a lanes. (independiente)
-4. `discovery/` (A): adapter `manifests` + `express-routes` + `generic-grep-signals`; correlación FileRef. (usa victim-app/ como primer repo real, local)
-5. 2º dummy local (E) + variantes (F) + diagnosis (I) ampliado.
-6. Providers (C) con gate, y recién después fuentes externas (G): semgrep/nuclei/ARTEX tras review.
+Cada hito termina con **tests verdes** + **checkpoint de supervisión** reportado a Sebastián.
+
+- **M0 — Reestructura a capas (H).** Mover Apuntes a `plugins/apuntes/`, extraer `core/`, schemas versionados. Sin cambios de comportamiento; la suite de tests actual debe seguir verde. *Independiente, local.* ← arranco por acá.
+- **M1 — Cost ledger (D).** `ledger/` transversal; se instrumenta en todas las fases (al inicio solo HTTP/compute a $0). *Independiente, local.*
+- **M2 — Discovery (A) sobre el repo.** `discovery/`: adapters `manifests`, `express-routes`, `flask-routes`, `openapi`, `generic-grep-signals` (JS/TS + Python). Salida `RepoModel`; correlación `FileRef` de ≥1 hallazgo dinámico. Primer repo real = `victim-app/` (local). *Independiente, local.*
+- **M3 — Scheduler (B).** `scheduler/` con `SchedulingMeta`, DAG→lanes, rate budget; el reporte explica paralelo vs secuencial. Migra el `pool` actual. *Independiente, local.*
+- **M4 — Variantes (F) + diagnosis (I).** ≥2 variantes por objetivo (p.ej. SQLi error-based/UNION); `Diagnosis` con veredicto+confianza+falsos positivos+causa raíz(FileRef)+re-verify. *Local.*
+- **M5 — 2º dummy stack (E).** Flask+SQLite en contenedor local, vulns solapadas/no solapadas; el motor confirma sin tocar el core → prueba de generalización. *Local.*
+- **M6 — Providers (C) con gate + fuentes externas (G).** Provider tiered (Haiku/Sonnet/Opus); gate de artefactos generados. Luego vetar e integrar `semgrep` → `nuclei` → ARTEX (cada uno tras review de provenance). *Local; ARTEX en Docker caja negra.*
+- **M7 — Render (pendiente créditos).** Desplegar dummies en Render con presupuesto por adelantado. **No se inicia hasta confirmación de Sebastián.**
+
+El plugin Apuntes + el fixture local siguen siendo la red de seguridad de regresión en cada hito.
 ```
