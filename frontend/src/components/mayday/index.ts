@@ -7,3 +7,4 @@ export { Stopwatch, formatElapsed } from "./Stopwatch";
 export { Logo } from "./Logo";
 export { PixelTransition } from "./PixelTransition";
 export { readToken, readPx } from "./tokens";
+export { AttackTerminal, type TerminalLine } from "./AttackTerminal";

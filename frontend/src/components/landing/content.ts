@@ -49,7 +49,7 @@ export const UNDER_ATTACK = {
   caption: "La misma app, vista desde afuera.",
   loginAttemptsStart: 1204,
   hud: [
-    { label: "Intentos de login", tone: "attack" as const },
+    { label: "Intentos de login", value: "1.204", tone: "attack" as const },
     { label: "Alertas", value: "37", tone: "attack" as const },
     { label: "p95", value: "1,8 s", optional: true },
   ],
