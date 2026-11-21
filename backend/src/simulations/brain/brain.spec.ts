@@ -478,3 +478,65 @@ describe('SimulationBrain', () => {
     h.brain.onModuleDestroy();
   });
 });
+
+describe('ataques bloqueados', () => {
+  it('un ataque que termina sin attack.success queda contenido y no frena al director', () => {
+    const blocked = [
+      ev(1, 'hacker', 'attack.plan', { raw: PLAN }),
+      ev(2, 'user', 'control.start'),
+      ev(3, 'hacker', 'attack.blocked', { vuln_id: W }),
+      ev(4, 'hacker', 'attack.done', {
+        vuln_id: W,
+        min: 1,
+        raw: { attacker_active: false },
+      }),
+    ];
+    const f = computeFacts(blocked, PLAN);
+    expect(f.vulns[W].status).toBe('contained');
+    expect(f.attacker_active).toBe(false);
+    // Sin verificaciones de por medio, escala después del tiempo de espera.
+    expect(direct(sim(blocked), T0 + 10 * 60_000).map((a) => a.type)).toEqual([
+      'next',
+    ]);
+  });
+
+  it('un attack.success que llega después del done (fuera de orden) sigue contando', () => {
+    const outOfOrder = [
+      ev(1, 'hacker', 'attack.plan', { raw: PLAN }),
+      ev(2, 'user', 'control.start'),
+      ev(3, 'hacker', 'attack.done', {
+        vuln_id: W,
+        raw: { attacker_active: false },
+      }),
+      ev(4, 'hacker', 'attack.success', { vuln_id: W }),
+    ];
+    expect(computeFacts(outOfOrder, PLAN).vulns[W].status).toBe('exploited');
+  });
+});
+
+describe('prompts de Conductor: reglas pedagógicas', () => {
+  const p = (role: 'hacker' | 'coder' | 'infra' | 'generator') =>
+    buildSimPrompt({ simId: 'sim-1', repoUrl: 'https://github.com/x/y', role });
+
+  it('el hacker conoce las severidades válidas y no usa credenciales ajenas', () => {
+    expect(p('hacker')).toContain(
+      'acepta **solo** `info`, `warning` o `critical`',
+    );
+    expect(p('hacker')).toContain('No uses credenciales que no ganaste');
+    expect(p('hacker')).toContain('`attacker_active` es **por vuln**');
+  });
+
+  it('el coder no nombra problemas que el developer no vio y responde corto', () => {
+    expect(p('coder')).not.toContain('menciónalo y ofrece arreglarlo');
+    expect(p('coder')).toContain(
+      'No nombres problemas que el developer no ha visto',
+    );
+    expect(p('coder')).toContain('Máximo unas 120 palabras');
+    expect(p('coder')).not.toContain('rotar `JWT_SECRET`');
+  });
+
+  it('los roles de respaldo no filtran la lección', () => {
+    expect(p('infra')).toContain('No hagas análisis de seguridad');
+    expect(p('generator')).toContain('Nunca expliques la causa ni el arreglo');
+  });
+});

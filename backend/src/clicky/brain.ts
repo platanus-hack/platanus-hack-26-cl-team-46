@@ -64,7 +64,9 @@ export class BeatScanner {
 }
 
 /** Cada trozo de texto del stream SSE de chat/completions. */
-async function* deltas(body: ReadableStream<Uint8Array>): AsyncGenerator<string> {
+async function* deltas(
+  body: ReadableStream<Uint8Array>,
+): AsyncGenerator<string> {
   const decoder = new TextDecoder();
   let pending = '';
   for await (const bytes of body as unknown as AsyncIterable<Uint8Array>) {

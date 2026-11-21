@@ -15,10 +15,18 @@ import { SimulationsService } from '../simulations/simulations.service.js';
  * Estados en que Clicky responde: en curso y también terminada (para repasar qué pasó).
  * Con una simulación fallida o detenida no hay nada que mirar.
  */
-export const CLICKY_ACTIVE = ['starting', 'ready', 'running', 'paused', 'finished'];
+export const CLICKY_ACTIVE = [
+  'starting',
+  'ready',
+  'running',
+  'paused',
+  'finished',
+];
 
 export interface ClickyRequest extends Request {
   clickySimId: string;
+  /** Estado de la simulación: en curso, Clicky guía sin dar la solución; terminada, explica todo. */
+  clickySimStatus: string;
 }
 
 /**
@@ -51,6 +59,7 @@ export class ClickyAccessGuard implements CanActivate {
         `La simulación está ${sim.status}: Clicky solo responde con una simulación en curso o terminada`,
       );
     req.clickySimId = simId;
+    req.clickySimStatus = sim.status;
     return true;
   }
 

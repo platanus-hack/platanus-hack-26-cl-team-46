@@ -143,14 +143,13 @@ export class SandboxesService implements OnModuleInit {
     return Boolean(s.agent && !s.agent.finished_at);
   }
 
+  /**
+   * Respuesta pública de GET /sandboxes(/:id), que no tiene autenticación.
+   * Nunca incluye secretos: la URL de la base (con contraseña, en una instancia
+   * compartida) va en null y de las variables solo se muestran los nombres.
+   * Los agentes acceden a la base y al entorno por sus rutas con token.
+   */
   async toContract(s: SandboxRecord): Promise<SandboxContract> {
-    let dbUrl: string | null = null;
-    if (s.database && s.status !== 'deleted') {
-      dbUrl = await this.databases
-        .urlsFor(s.database)
-        .then((u) => u.external_url)
-        .catch(() => null);
-    }
     const agent = s.agent
       ? (({ idle_since: _i, nudged: _n, ...rest }) => ({
           ...rest,
@@ -164,8 +163,8 @@ export class SandboxesService implements OnModuleInit {
       deployed_url: s.render?.url ?? null,
       credentials: {
         seed_users: s.manifest?.seed_users ?? [],
-        db_url: dbUrl,
-        env: s.env,
+        db_url: null,
+        env: Object.fromEntries(Object.keys(s.env).map((k) => [k, '••••'])),
       },
       status: s.status,
       mode: s.mode,
