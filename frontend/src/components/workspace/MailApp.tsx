@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import type { Mail } from "@/lib/workspace-mail";
+import { BotAvatar } from "./BotAvatar";
+import { SIM_ICONS } from "./sim-icons";
 
 /**
- * Correo web simulado (capa simulada: grises sim-*, sin marca). Bandeja con
+ * Gmail simulado (capa simulada: grises sim-* y el logo real de la app). Bandeja con
  * carpetas a la izquierda, lista de correos y vista de lectura al hacer click.
  */
 const FOLDERS = ["Recibidos", "Destacados", "Enviados", "Borradores"] as const;
@@ -43,7 +45,11 @@ export function MailApp({ mails, onUnreadChange }: { mails: Mail[]; onUnreadChan
   return (
     <div className="grid h-full min-h-0 grid-cols-[180px_minmax(0,1fr)] bg-sim-100 font-sans text-[13px] text-sim-ink">
       <aside className="flex min-h-0 flex-col gap-1 overflow-y-auto bg-sim-000 p-2">
-        <div className="mb-2 px-2 pt-1 text-base font-semibold">Correo</div>
+        <div className="mb-2 flex items-center gap-2 px-2 pt-1 text-base font-semibold">
+          {/* eslint-disable-next-line @next/next/no-img-element -- logo de 20px desde public/ */}
+          <img src={SIM_ICONS.gmail} alt="" className="size-5 object-contain" />
+          Gmail
+        </div>
         <button
           type="button"
           className="mb-2 h-10 rounded-lg bg-sim-300 px-4 text-left font-semibold text-sim-ink hover:bg-sim-300/80"
@@ -101,7 +107,10 @@ export function MailApp({ mails, onUnreadChange }: { mails: Mail[]; onUnreadChan
                   } ${m.live ? "animate-[md-drop_.35s_cubic-bezier(.2,.8,.2,1)_both] motion-reduce:animate-none" : ""}`}
                 >
                   <Star on={starred.has(m.id)} onClick={() => toggleStar(m.id)} />
-                  <span className={`w-40 shrink-0 truncate ${read ? "" : "font-semibold"}`}>{m.fromName}</span>
+                  <span className={`flex w-40 shrink-0 items-center gap-2 ${read ? "" : "font-semibold"}`}>
+                    {m.app && <AppIcon app={m.app} size={16} />}
+                    <span className="truncate">{m.fromName}</span>
+                  </span>
                   <span className="min-w-0 flex-1 truncate">
                     {m.label && (
                       <span className="mr-2 rounded-sm bg-sim-300 px-1.5 py-0.5 text-[11px] text-sim-ink-muted">{m.label}</span>
@@ -128,9 +137,13 @@ function Reader({ mail, starred, onStar, onBack }: { mail: Mail; starred: boolea
       </button>
       <h2 className="mb-4 text-lg font-semibold">{mail.subject}</h2>
       <div className="mb-4 flex items-start gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-sim-300 font-semibold">
-          {mail.fromName.slice(0, 1).toUpperCase()}
-        </span>
+        {mail.app ? (
+          <AppIcon app={mail.app} size={36} />
+        ) : (
+          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-sim-300 font-semibold">
+            {mail.fromName.slice(0, 1).toUpperCase()}
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <div>
             <span className="font-semibold">{mail.fromName}</span>
@@ -144,6 +157,15 @@ function Reader({ mail, starred, onStar, onBack }: { mail: Mail; starred: boolea
       <p className="whitespace-pre-wrap break-words leading-6">{mail.body}</p>
     </div>
   );
+}
+
+/** Logo del remitente cuando es una app real (Google Calendar, GitHub, Render). */
+function AppIcon({ app, size }: { app: NonNullable<Mail["app"]>; size: number }) {
+  if (app === "calendar") {
+    // eslint-disable-next-line @next/next/no-img-element -- logo de 16–36px desde public/
+    return <img src={SIM_ICONS.calendar} alt="" width={size} height={size} className="shrink-0 object-contain" />;
+  }
+  return <BotAvatar kind={app} size={size} />;
 }
 
 function Star({ on, onClick }: { on: boolean; onClick: () => void }) {

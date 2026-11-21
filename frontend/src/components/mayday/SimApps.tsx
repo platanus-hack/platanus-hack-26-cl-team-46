@@ -2,7 +2,8 @@ import type { CSSProperties, ReactNode } from "react";
 
 /**
  * Capa simulada del escritorio (DESIGN.md › Browser, DeployLogs, SystemToast).
- * Grises neutros sim-*: tienen que verse como apps reales, no como Mayday. La marca solo aparece
+ * Grises neutros sim-*: tienen que verse como apps reales, no como Mayday (las apps de terceros llevan
+ * su logo real, ver components/workspace/sim-icons). La marca Mayday solo aparece
  * para marcar el ataque (ámbar) o una acción tuya que funcionó (cian), y de forma mínima.
  * Son React sobre las clases md-* de mayday-components.css; las usan la intro de la landing y el MVP.
  */
@@ -148,8 +149,8 @@ export function SystemToast({
   time: string;
   title: string;
   text: string;
-  /** Una letra sobre sim-300 (sin logos reales). */
-  icon: string;
+  /** Una letra sobre sim-300 o el logo real de la app (p. ej. un <img> de public/sim-icons). */
+  icon: ReactNode;
   attack?: boolean;
 }) {
   return (

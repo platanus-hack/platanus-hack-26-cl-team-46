@@ -7,6 +7,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { AgentChat } from "@/components/agent/AgentChat";
 import { setClickySimulation } from "@/clicky/active-sim";
 import { BrowserWindow } from "@/components/workspace/BrowserWindow";
+import { ChannelIcon } from "@/components/workspace/ChannelIcon";
 import { Logo } from "@/components/mayday";
 import { CmdK, RenameInput, repoShortName, SandboxPicker, type SandboxEntry } from "@/components/sandbox/SandboxPicker";
 import { api, type Sandbox } from "@/lib/api";
@@ -466,7 +467,10 @@ function FeedItem({ e }: { e: TimelineEvent }) {
     return (
       <article className={`rounded-sm border-l-4 bg-bg-200 p-2 ${SEVERITY_BORDER[e.severity]}`}>
         <div className="mb-1 flex items-center gap-2 text-xs">
-          <span className={`rounded px-1.5 py-0.5 font-medium ${CHANNEL_STYLE[e.source] ?? "bg-bg-300 text-ink-muted"}`}>{e.source}</span>
+          <span className={`flex items-center gap-1.5 rounded px-1.5 py-0.5 font-medium ${CHANNEL_STYLE[e.source] ?? "bg-bg-300 text-ink-muted"}`}>
+            <ChannelIcon channel={e.source} size={14} />
+            {e.source}
+          </span>
           {from && <span className="text-ink-muted">{from}</span>}
           <span className="ml-auto text-ink-faint">{time}</span>
         </div>

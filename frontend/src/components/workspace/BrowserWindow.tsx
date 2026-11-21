@@ -3,14 +3,15 @@
 import { useCallback, useRef, useState } from "react";
 import { ChatApp } from "./ChatApp";
 import { MailApp } from "./MailApp";
+import { SIM_ICONS } from "./sim-icons";
 import { WebNav, WebView, hostOf, type LiveNav } from "./WebView";
 import type { ChatMessage } from "@/lib/workspace-chat";
 import type { Mail } from "@/lib/workspace-mail";
 
 /**
  * Navegador simulado del espacio de trabajo del developer (componentes web, no
- * una ventana real). Tres tipos de pestaña: chat del equipo y correo (una de
- * cada una) y navegador (todas las que quiera).
+ * una ventana real). Tres tipos de pestaña: Slack (chat del equipo) y Gmail
+ * (correo), una de cada una, y navegador (todas las que quiera).
  */
 type TabKind = "chat" | "mail" | "web";
 interface Tab {
@@ -97,14 +98,21 @@ export function BrowserWindow({
   };
 
   const label = (t: Tab) => {
-    if (t.kind === "chat") return `${chatUnread ? `(${chatUnread}) ` : ""}${project} · Chat`;
-    if (t.kind === "mail") return `Recibidos${mailUnread ? ` (${mailUnread})` : ""} · Correo`;
+    if (t.kind === "chat") return `${chatUnread ? `(${chatUnread}) ` : ""}${project} · Slack`;
+    if (t.kind === "mail") return `Recibidos${mailUnread ? ` (${mailUnread})` : ""} · Gmail`;
     if (t.live?.title) return t.live.title;
     const url = shownUrl(t);
     return url ? hostOf(url) : "Nueva pestaña";
   };
-  const fav = (t: Tab) => (t.kind === "chat" ? "C" : t.kind === "mail" ? "M" : urlOf(t) ? project[0] : "·");
-  const address = (t: Tab) => (t.kind === "chat" ? `chat.equipo.app/${project}` : "correo.app/inbox");
+  /** Chat y correo llevan el logo real de su app; las pestañas web, una letra. */
+  const fav = (t: Tab) =>
+    t.kind === "chat" || t.kind === "mail" ? (
+      // eslint-disable-next-line @next/next/no-img-element -- favicon de 14px desde public/
+      <img src={t.kind === "chat" ? SIM_ICONS.slack : SIM_ICONS.gmail} alt="" className="size-3.5 shrink-0 object-contain" />
+    ) : (
+      <span className="md-tab__fav">{(urlOf(t) ? project[0] : "·").toUpperCase()}</span>
+    );
+  const address = (t: Tab) => (t.kind === "chat" ? `app.slack.com/client/${project}` : "mail.google.com/mail/u/0/#inbox");
 
   const hasChat = tabs.some((t) => t.kind === "chat");
   const hasMail = tabs.some((t) => t.kind === "mail");
@@ -127,7 +135,7 @@ export function BrowserWindow({
             onKeyDown={(e) => e.key === "Enter" && setActive(t.id)}
             className={`md-tab group cursor-default !w-52 ${t.id === current?.id ? "is-active" : "hover:bg-sim-100/50"}`}
           >
-            <span className="md-tab__fav">{fav(t).toUpperCase()}</span>
+            {fav(t)}
             <span className={`min-w-0 flex-1 truncate ${(t.kind === "chat" && chatUnread) || (t.kind === "mail" && mailUnread) ? "font-semibold text-sim-ink" : ""}`}>
               {label(t)}
             </span>
@@ -232,8 +240,8 @@ function NewTabMenu({ canChat, canMail, onOpen }: { canChat: boolean; canMail: b
       {open && !onlyWeb && (
         <div className="absolute left-0 top-8 z-10 w-44 rounded-md border border-sim-line bg-sim-200 py-1 text-[13px] text-sim-ink shadow-window">
           <MenuItem onClick={() => pick("web")}>Pestaña nueva</MenuItem>
-          {canChat && <MenuItem onClick={() => pick("chat")}>Chat del equipo</MenuItem>}
-          {canMail && <MenuItem onClick={() => pick("mail")}>Correo</MenuItem>}
+          {canChat && <MenuItem onClick={() => pick("chat")}>Slack</MenuItem>}
+          {canMail && <MenuItem onClick={() => pick("mail")}>Gmail</MenuItem>}
         </div>
       )}
     </div>
