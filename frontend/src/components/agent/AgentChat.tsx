@@ -1,0 +1,166 @@
+"use client";
+
+import { ArrowUp, Mic, Plus, Sparkle } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import type { TimelineEvent } from "@/lib/sim-api";
+import { Markdown } from "./Markdown";
+
+/**
+ * Panel del agente (DESIGN.md › AgentPanel): chat con el agente de respuesta a incidentes.
+ * Capa simulada: grises sim-*, sin colores de marca ni logos de proveedores de IA.
+ * La forma sigue a una app de chat con agente de código: header con el título de la
+ * conversación, respuestas en markdown sin burbuja y un composer redondeado con "+",
+ * micrófono y una línea de modo debajo.
+ */
+export function AgentChat({
+  title,
+  events,
+  onSend,
+  disabled,
+}: {
+  /** Título de la conversación (p. ej. el nombre del proyecto). */
+  title: string;
+  events: TimelineEvent[];
+  onSend: (text: string) => void;
+  disabled?: boolean;
+}) {
+  const end = useRef<HTMLDivElement>(null);
+
+  // Con llaves a propósito: scrollIntoView devuelve una Promise en Chrome reciente, y si el efecto
+  // la retorna React la trata como cleanup ("destroy is not a function") y bota la página.
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: "smooth" });
+  }, [events.length]);
+
+  return (
+    <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg bg-sim-100 font-sans text-sim-ink shadow-[var(--shadow-window)]">
+      <AgentHeader title={title} />
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-5 text-[14px] leading-[22px]">
+        {events.length === 0 && <EmptyState />}
+        {events.map((e) => (
+          <ChatItem key={e.seq} e={e} />
+        ))}
+        <div ref={end} />
+      </div>
+      <Composer onSend={onSend} disabled={disabled} />
+    </section>
+  );
+}
+
+function AgentHeader({ title }: { title: string }) {
+  return (
+    <header className="flex h-12 flex-none items-center border-b border-sim-line px-4">
+      <h2 className="truncate text-[14px] font-medium text-sim-ink" title={title}>
+        {title}
+      </h2>
+    </header>
+  );
+}
+
+function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabled?: boolean }) {
+  const [text, setText] = useState("");
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const canSend = !disabled && text.trim().length > 0;
+
+  // El textarea crece con el contenido hasta ~8 líneas.
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${Math.min(el.scrollHeight, 192)}px`;
+  }, [text]);
+
+  const submit = () => {
+    if (!canSend) return;
+    onSend(text);
+    setText("");
+  };
+
+  return (
+    <div className="flex-none px-3 pb-2.5">
+      <form
+        className="flex items-end gap-1 rounded-2xl border border-sim-line bg-sim-000/40 px-2 py-2 transition-colors focus-within:border-sim-ink-faint"
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <button
+          type="button"
+          aria-label="Adjuntar"
+          className="grid size-8 flex-none place-items-center rounded-full text-sim-ink-muted hover:bg-sim-200 hover:text-sim-ink"
+        >
+          <Plus className="size-5" strokeWidth={1.6} />
+        </button>
+        <textarea
+          ref={ref}
+          rows={1}
+          className="max-h-48 min-h-8 flex-1 resize-none bg-transparent px-1 py-[5px] text-[14px] leading-[22px] text-sim-ink placeholder:text-sim-ink-faint"
+          // El :focus-visible global (sin capa) le gana a las utilidades de Tailwind; el foco ya lo marca el borde del composer.
+          style={{ outline: "none" }}
+          placeholder="Escríbele al agente…"
+          value={text}
+          disabled={disabled}
+          onChange={(e) => setText(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
+              e.preventDefault();
+              submit();
+            }
+          }}
+        />
+        {canSend ? (
+          <button
+            type="submit"
+            aria-label="Enviar"
+            className="grid size-8 flex-none place-items-center rounded-full bg-sim-ink text-sim-000 hover:bg-white"
+          >
+            <ArrowUp className="size-[18px]" strokeWidth={2.25} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label="Dictar"
+            className="grid size-8 flex-none place-items-center rounded-full text-sim-ink-muted hover:bg-sim-200 hover:text-sim-ink"
+          >
+            <Mic className="size-[18px]" strokeWidth={1.6} />
+          </button>
+        )}
+      </form>
+      <div className="mt-2 flex items-center justify-end gap-4 pr-2 text-[12px] leading-4">
+        <span className="text-sim-ink">
+          Agente <span className="text-sim-ink-faint">Medio</span>
+        </span>
+        <span className="text-sim-ink">Automático</span>
+        <span aria-hidden className="size-3 rounded-full border-[1.5px] border-sim-ink-faint" />
+      </div>
+    </div>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="m-auto flex max-w-[260px] flex-col items-center gap-2 text-center text-sim-ink-muted">
+      <Sparkle className="size-5 text-sim-ink-faint" strokeWidth={1.6} />
+      <p className="text-[13px] leading-5">Pídele al agente que revise logs, cambie configuración o despliegue un fix.</p>
+    </div>
+  );
+}
+
+function ChatItem({ e }: { e: TimelineEvent }) {
+  if (e.type === "user.message" || e.type === "user.action") {
+    return (
+      <div className="ml-10 self-end rounded-2xl bg-sim-200 px-3.5 py-2 text-sim-ink">
+        {e.type === "user.action" ? <i>⚡ {e.title}</i> : <span className="whitespace-pre-wrap">{e.body || e.title}</span>}
+      </div>
+    );
+  }
+  if (e.type === "coder.reply") {
+    return (
+      <div className="min-w-0 break-words text-sim-ink">
+        <Markdown text={e.body || e.title} />
+      </div>
+    );
+  }
+  return <div className="text-center text-xs text-sim-ink-muted">{e.title}</div>;
+}
