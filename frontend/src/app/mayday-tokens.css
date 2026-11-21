@@ -37,6 +37,11 @@
   --shadow-toast: 0 12px 32px #00000099, 0 0 0 1px #34363A;
   --glow-defense: 0 0 0 1px #2EE6FF66, 0 0 24px #2EE6FF33;
   --glow-attack: 0 0 0 1px #FF8A0080, 0 0 28px #FF8A0040;
+  /* Hinty (DESIGN.md › Hinty › 12) */
+  --hinty-board: #071116;
+  --hinty-grid: #12222A;
+  --hinty-highlight: #2EE6FF40;
+  --hinty-spotlight: #050A0DB8;
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -89,6 +94,10 @@
   --color-sim-close: var(--sim-close);
   --color-sim-minimize: var(--sim-minimize);
   --color-sim-zoom: var(--sim-zoom);
+  --color-hinty-board: var(--hinty-board);
+  --color-hinty-grid: var(--hinty-grid);
+  --color-hinty-highlight: var(--hinty-highlight);
+  --color-hinty-spotlight: var(--hinty-spotlight);
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
   --radius-0: var(--radius-0);
