@@ -6,7 +6,7 @@
 
 **Ataque vs. defensa.** Todo en Mayday es de uno de los dos lados:
 
-- **Cian (`defense`) = tú.** Tu defensa, tu agente, tus acciones correctas, el CTA, las pistas de Mayday. Si es cian, es tuyo o está a salvo.
+- **Cian (`defense`) = tú.** Tu defensa, el agente que te ayuda, tus acciones correctas, el CTA, las pistas de Mayday. Si es cian, es tuyo o está a salvo.
 - **Ámbar (`attack`) = el atacante.** La alerta MAYDAY, cada evento del ataque, la evidencia que dejó y las respuestas incorrectas. Si es ámbar, algo te está pasando.
 
 El ámbar viene del "master caution" de las cabinas de avión. Cian y ámbar también se distinguen bien con daltonismo, porque difieren en luminosidad y no solo en tono.
@@ -22,7 +22,7 @@ Nunca hay un tercer color de acento. No hay rojo ni verde para error y éxito: e
 | Capa | Qué es | Colores |
 |---|---|---|
 | **Mayday** | Lo nuestro: header del escenario, HUD, pistas, marcas de evidencia, alerta, transiciones | Azul-negros de marca (`bg-*`, `ink*`) + `defense` / `attack` |
-| **Simulada** | Las apps falsas del escritorio: Chrome, el panel de Claude, los logs, las notificaciones del sistema | Grises neutros `sim-*`. Tienen que verse como apps reales |
+| **Simulada** | Las apps falsas del escritorio: Chrome, el panel del agente, los logs, las notificaciones del sistema | Grises neutros `sim-*`. Tienen que verse como apps reales |
 
 La capa simulada no usa colores de marca, salvo para marcar algo del ataque (ámbar) o una acción tuya que funcionó (cian), y siempre de forma mínima: una barra de 3px, un contorno o un fondo al 12%. La única app con contenido real es la pestaña de Chrome con la repo que conectó el usuario.
 
@@ -70,7 +70,7 @@ Escala: `display-xl` 120 / `display-lg` 72 / `heading-1` 48 / `heading-2` 32 / `
 ## Iconografía e imágenes
 
 - Íconos de línea de 1.5px, cuadrados, del set Lucide (ya viene con shadcn). En la capa simulada, favicons genéricos con una letra sobre `sim-300`.
-- Sin logos de terceros reales dentro del escritorio, salvo el de GitHub en el botón de login. El panel del agente dice "Claude" con un ícono genérico.
+- Sin logos de terceros reales dentro del escritorio, salvo el de GitHub en el botón de login. El panel del agente dice "Agente" con un ícono genérico.
 - Sin fotos, ilustraciones 3D, emojis decorativos ni gradientes de color. La única imagen grande es el fondo de pantalla del avión (Assets › Fondos).
 
 ## Voz y copy
@@ -94,7 +94,7 @@ El scroll maneja las escenas (pinned sections con GSAP ScrollTrigger o Framer Mo
 
 ## El escritorio (MVP)
 
-Header del escenario arriba. Debajo, Chrome (Google + la pestaña de tu repo) a la izquierda, los logs tipo panel de deploy debajo de Chrome y el panel de Claude a la derecha, de alto completo. Las notificaciones bajan arriba a la derecha. Las pistas cian y las marcas ámbar flotan encima. Ver Desktop.
+Header del escenario arriba. Debajo, Chrome (Google + la pestaña de tu repo) a la izquierda, los logs tipo panel de deploy debajo de Chrome y el panel del agente a la derecha, de alto completo. Las notificaciones bajan arriba a la derecha. Las pistas cian y las marcas ámbar flotan encima. Ver Desktop.
 
 Los eventos del timeline (contrato 2) se pintan siempre en dos lugares: una fila ATTACK en los logs y su efecto en la app que corresponda, según la familia:
 
@@ -254,13 +254,14 @@ Capa simulada. Un navegador tipo Chrome en modo oscuro: semáforo de macOS, pest
 
 ### AgentPanel
 
-Capa simulada. El chat con el agente del usuario (su Claude), a la derecha del escritorio, de alto completo. El usuario le escribe para que lo ayude o resuelve a mano en el navegador.
+Capa simulada. El chat con el agente de respuesta a incidentes, a la derecha del escritorio, de alto completo. El usuario le escribe para que lo ayude o resuelve a mano en el navegador.
 
-- Grises `sim-*`. Header con ícono genérico, el nombre "Claude" y el contexto ("Respuesta a incidente").
+- **La IA viene integrada en Mayday.** El usuario no conecta su propio Claude ni ninguna cuenta de IA: el agente ya está en el simulacro. No lo digas de otra forma en ningún copy ("conecta tu Claude", "tu agente de código", etc.).
+- Grises `sim-*`. Header con ícono genérico, el nombre "Agente" y el contexto ("Respuesta a incidente").
 - Mensajes del usuario en burbuja `sim-200` a la derecha. Las respuestas del agente van sin burbuja: texto plano con negritas, secciones en mono mayúscula ("AHORA · PRIMEROS 5 MINUTOS") y pasos numerados.
 - No uses colores de marca adentro. Si el agente sugiere algo correcto, se nota en los logs (fila OK), no en el chat.
-- Composer abajo, con placeholder "Responde a Claude…" y botón de enviar.
-- No uses el logo oficial de Anthropic salvo que tengan permiso: va el ícono genérico.
+- Composer abajo, con placeholder "Escríbele al agente…" y botón de enviar.
+- Sin logos de proveedores de IA: va el ícono genérico.
 
 ### DeployLogs
 
@@ -303,7 +304,7 @@ La composición completa del MVP: un escritorio lo más normal posible, con el f
 ```
 ┌──────────────────────────── ScenarioHeader (capa Mayday) ────────────────────────────┐
 ├───────────────────────────────────────────────────────┬──────────────────────────────┤
-│ Browser (Chrome: Google + pestaña de TU repo)         │ AgentPanel (tu Claude)        │
+│ Browser (Chrome: Google + pestaña de TU repo)         │ AgentPanel (agente integrado) │
 │                                                       │                              │
 ├───────────────────────────────────────────────────────┤                              │
 │ DeployLogs (ataque, hints, progreso)                  │                              │

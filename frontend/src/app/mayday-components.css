@@ -133,7 +133,7 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-code__ln.is-hit > b { color: var(--attack); box-shadow: inset 3px 0 0 var(--attack); }
 .md-code .k { color: #C792EA; } .md-code .s { color: #C3E88D; } .md-code .c { color: var(--sim-ink-faint); }
 
-/* ---------- Capa simulada: panel del agente (Claude del usuario) ---------- */
+/* ---------- Capa simulada: panel del agente (integrado en Mayday) ---------- */
 .md-agent { background: var(--sim-100); border-radius: var(--radius-lg); box-shadow: var(--shadow-window); display: flex; flex-direction: column; overflow: hidden; min-width: 0; font-family: var(--font-sans, var(--font-geist-sans)); }
 .md-agent__head { height: 52px; display: flex; align-items: center; gap: var(--space-2); padding: 0 var(--space-4); border-bottom: 1px solid var(--sim-line); }
 .md-agent__name { font: 600 15px/20px var(--font-sans, var(--font-geist-sans)); color: var(--sim-ink); }
