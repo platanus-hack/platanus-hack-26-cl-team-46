@@ -103,3 +103,44 @@ export function animate(seconds, step) {
 
 export const easeInOut = u => (u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2);
 export const easeOut = u => 1 - Math.pow(1 - u, 3);
+
+// --- Trazos rectos de Hinty (wobble 0): rectángulos, codos a 90° y puntas sólidas.
+
+// Rectángulo con esquinas de radio r, empezando arriba a la izquierda y en sentido horario.
+export function rectD({ x, y, w, h }, r = 4) {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  return `M${x + r},${y} H${x + w - r} A${r},${r} 0 0 1 ${x + w},${y + r} V${y + h - r} A${r},${r} 0 0 1 ${x + w - r},${y + h} H${x + r} A${r},${r} 0 0 1 ${x},${y + h - r} V${y + r} A${r},${r} 0 0 1 ${x + r},${y} Z`;
+}
+
+// Une dos rectángulos con una línea de codos a 90°: sale del lado que mira al otro y llega al
+// lado opuesto, con un tramo intermedio a medio camino. Devuelve el path y hacia dónde apunta al final.
+export function elbow(a, b, margin = 6) {
+  const ac = { x: a.x + a.w / 2, y: a.y + a.h / 2 }, bc = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
+  const dx = bc.x - ac.x, dy = bc.y - ac.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    const sx = dx >= 0 ? 1 : -1;
+    const x1 = sx > 0 ? a.x + a.w + margin : a.x - margin, x2 = sx > 0 ? b.x - margin : b.x + b.w + margin;
+    const mx = Math.round((x1 + x2) / 2);
+    const d = Math.abs(dy) < 1 ? `M${x1},${ac.y} H${x2}` : `M${x1},${ac.y} H${mx} V${bc.y} H${x2}`;
+    return { d, end: { x: x2, y: bc.y }, dir: sx > 0 ? 'right' : 'left' };
+  }
+  const sy = dy >= 0 ? 1 : -1;
+  const y1 = sy > 0 ? a.y + a.h + margin : a.y - margin, y2 = sy > 0 ? b.y - margin : b.y + b.h + margin;
+  const my = Math.round((y1 + y2) / 2);
+  const d = Math.abs(dx) < 1 ? `M${ac.x},${y1} V${y2}` : `M${ac.x},${y1} V${my} H${bc.x} V${y2}`;
+  return { d, end: { x: bc.x, y: y2 }, dir: sy > 0 ? 'down' : 'up' };
+}
+
+// Punta triangular sólida con el vértice en (x, y), apuntando hacia `dir`.
+export function tipD({ x, y }, dir, size = 10) {
+  const h = size, s = size * 0.6;
+  const pts = {
+    right: [[x, y], [x - h, y - s], [x - h, y + s]],
+    left: [[x, y], [x + h, y - s], [x + h, y + s]],
+    down: [[x, y], [x - s, y - h], [x + s, y - h]],
+    up: [[x, y], [x - s, y + h], [x + s, y + h]],
+  }[dir];
+  return 'M' + pts.map(p => p.map(v => v.toFixed(1)).join(',')).join(' L') + ' Z';
+}
+
+export const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;

@@ -1,9 +1,10 @@
-/* Avioncito pixel de Clicky, abajo a la derecha. */
+/* El tile de Hinty (DESIGN.md › Hinty › 2): abajo a la derecha de la columna principal.
+   ClickyDock pone --hinty-dock-* según la columna; sin ella, en la esquina de la pantalla. */
 .clicky-dock {
   position: fixed;
-  right: 24px;
-  bottom: 24px;
-  z-index: 2147483001; /* sobre las capas de dibujo de Clicky */
+  right: var(--hinty-dock-right, 24px);
+  bottom: var(--hinty-dock-bottom, 24px);
+  z-index: 2147483001; /* sobre las capas de dibujo de Hinty */
   display: flex;
   align-items: center;
   gap: 12px;
@@ -11,10 +12,10 @@
 }
 .clicky-dock-side {
   position: fixed;
-  right: 24px;
+  right: var(--hinty-dock-right, 24px);
   top: 88px;
   bottom: 120px;
-  width: min(360px, calc(100vw - 48px));
+  width: min(320px, calc(100vw - 48px));
   pointer-events: none;
   visibility: hidden;
 }
@@ -22,72 +23,61 @@
 .clicky-dock-plane {
   pointer-events: auto;
   position: relative;
-  width: 72px;
-  height: 72px;
+  box-sizing: border-box;
+  width: 56px;
+  height: 56px;
+  padding: 0;
   display: grid;
   place-items: center;
   cursor: pointer;
-  background: #111;
-  border: 3px solid #3b82f6;
-  /* sombra dura de 4 px, sin desenfoque: se ve "pixel" */
-  box-shadow: 4px 4px 0 #000, inset -4px -4px 0 rgba(59, 130, 246, 0.18);
-  transition: transform 0.12s steps(2), background 0.2s;
-  image-rendering: pixelated;
+  background: var(--bg-100);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-toast);
+  transition: background-color .15s, border-color .15s, box-shadow .15s, transform .1s;
 }
-.clicky-dock-plane:hover { transform: translate(-2px, -2px); }
-.clicky-dock-plane:active { transform: translate(1px, 1px); }
-.clicky-dock-plane:focus-visible { outline: 3px solid #60a5fa; outline-offset: 4px; }
-.clicky-dock-plane .clicky-plane-svg { animation: clicky-bob 1.6s steps(4) infinite; position: relative; z-index: 1; }
-.clicky-dock[data-status="on"] .clicky-dock-plane { background: #2563eb; border-color: #000; box-shadow: 4px 4px 0 #000, inset -4px -4px 0 rgba(0, 0, 0, 0.12); }
-.clicky-dock[data-status="on"] .clicky-plane-svg { animation: clicky-fly 0.5s steps(2) infinite; }
-.clicky-dock[data-status="starting"] .clicky-plane-svg { animation: clicky-fly 0.25s steps(2) infinite; }
-@keyframes clicky-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-@keyframes clicky-fly { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(2px, -2px); } }
+.clicky-dock-plane svg { display: block; }
+.clicky-dock-plane:hover { background: var(--bg-200); border-color: rgb(46 230 255 / .6); }
+.clicky-dock-plane:active { background: var(--bg-300); border-color: var(--defense); transform: translateY(1px); }
+.clicky-dock-plane:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
-/* estela de velocidad cuando está activo */
-.clicky-dock-trail { position: absolute; left: 7px; top: 44px; display: none; flex-direction: column; gap: 3px; }
-.clicky-dock-trail i { display: block; height: 3px; background: #bfdbfe; animation: clicky-trail 0.5s steps(3) infinite; }
-.clicky-dock-trail i:nth-child(1) { width: 10px; }
-.clicky-dock-trail i:nth-child(2) { width: 6px; margin-left: 3px; animation-delay: 0.15s; }
-.clicky-dock-trail i:nth-child(3) { width: 8px; animation-delay: 0.3s; }
-.clicky-dock[data-status="on"] .clicky-dock-trail { display: flex; }
-@keyframes clicky-trail { 0% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; transform: translateX(-6px); } }
+.clicky-dock[data-status="starting"] .clicky-dock-plane,
+.clicky-dock[data-ended][data-status="off"] .clicky-dock-plane { background: var(--bg-100); border-color: var(--defense); }
+.clicky-dock[data-status="on"] .clicky-dock-plane { background: var(--defense-deep); border: 2px solid var(--defense); }
+.clicky-dock[data-status="on"][data-seeing] .clicky-dock-plane { box-shadow: var(--glow-defense), var(--shadow-toast); }
 
-/* luz: verde = viendo la pantalla, ámbar = solo texto */
-.clicky-dock-led { position: absolute; right: 5px; top: 5px; width: 6px; height: 6px; background: #ff9f1c; box-shadow: 0 0 0 2px #111; z-index: 2; }
-.clicky-dock-led.seeing { background: #2bd96b; animation: clicky-blink 1.2s steps(2) infinite; }
-@keyframes clicky-blink { 50% { opacity: 0.35; } }
+/* Activando: una línea de escaneo de 2 px baja por el tile (600 ms, en loop). Es movimiento, no luz. */
+.clicky-dock-scan { position: absolute; left: 4px; right: 4px; top: 3px; height: 2px; background: var(--defense); animation: clicky-scan .6s linear infinite; }
+@keyframes clicky-scan { from { transform: translateY(0); } to { transform: translateY(46px); } }
 
+/* Al encenderse: un solo pulso de radio que crece hasta 1,15× y se desvanece en 400 ms. */
+.clicky-dock-pulse { position: absolute; inset: -2px; border: 1px solid var(--defense); border-radius: var(--radius-md); pointer-events: none; opacity: 0; animation: clicky-radio .4s cubic-bezier(.2, .8, .2, 1); }
+@keyframes clicky-radio { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.15); } }
+
+/* Pixel de estado: lleno = ve la pantalla, vacío = solo texto. Fijo, no parpadea. */
+.clicky-dock-led { position: absolute; right: 4px; top: 4px; box-sizing: border-box; width: 6px; height: 6px; border: 1.5px solid var(--defense); background: transparent; }
+.clicky-dock-led.seeing { background: var(--defense); }
+
+/* Etiqueta: aparece en hover, en el foco, en la primera visita y mientras se conecta. */
 .clicky-dock-tip {
   pointer-events: none;
-  position: relative;
-  padding: 8px 10px;
-  background: #fff;
-  color: #111;
-  border: 3px solid #111;
-  box-shadow: 4px 4px 0 #111;
-  font-size: 11px;
-  line-height: 1;
-  letter-spacing: 0.02em;
+  padding: 6px 10px;
+  background: var(--bg-100);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-toast);
+  font: 400 13px/18px var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   white-space: nowrap;
   opacity: 0;
-  transform: translateX(6px);
-  transition: opacity 0.15s steps(2), transform 0.15s steps(2);
+  transform: translateY(4px);
+  transition: opacity .2s cubic-bezier(.2, .8, .2, 1), transform .2s cubic-bezier(.2, .8, .2, 1);
 }
-.clicky-dock-tip::after { content: ""; position: absolute; right: -9px; top: 50%; margin-top: -3px; width: 6px; height: 6px; background: #111; }
-.clicky-dock:hover .clicky-dock-tip { opacity: 1; transform: none; }
-
-/* La isla de Clicky va arriba al centro, como en el kit. */
-.clicky-root .clicky-island input { min-width: min(320px, 50vw); }
+.clicky-dock-tip.on { opacity: 1; transform: none; }
 
 @media (max-width: 640px) {
   .clicky-dock { right: 14px; bottom: 14px; }
-  .clicky-root .clicky-island .hint { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .clicky-dock *, .clicky-dock-plane { animation: none !important; transition: none !important; }
 }
-
-/* Sobre fondo oscuro el anillo "haz clic aquí" del tema platanus va en amarillo. */
-.clicky-root[data-surface="dark"][data-theme="platanus"] .clicky-target { border-color: #ffd23f; }
-

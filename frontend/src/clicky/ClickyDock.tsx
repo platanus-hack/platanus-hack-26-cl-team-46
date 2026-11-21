@@ -1,46 +1,142 @@
 "use client";
 
-import { Silkscreen } from "next/font/google";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_URL } from "@/lib/api";
 import { useClickySimulation } from "./active-sim";
 import { CLICKY_CONFIG } from "./config";
-import { PixelPlane } from "./PixelPlane";
+import { HintyHeadset } from "./HintyHeadset";
 import { startTabCapture, type TabCapture } from "./screen";
 import "./dock.css";
 
-const pixelFont = Silkscreen({ weight: "400", subsets: ["latin"] });
-
 import type { ClickyInstance } from "./kit/index.js";
 
-type Status = "off" | "starting" | "on";
+export type DockStatus = "off" | "starting" | "on";
 
 /**
- * Muestra el avioncito solo con una simulación en curso o terminada (y en las rutas de CLICKY_CONFIG).
- * Si la simulación cambia o termina, el dock se desmonta o se vuelve a montar y suelta la
- * isla y la captura.
+ * Hinty, el profesor del simulacro (antes Clicky). Muestra su tile solo con una simulación en curso
+ * o terminada (y en las rutas de CLICKY_CONFIG). Si la simulación cambia, el dock se vuelve a
+ * montar y suelta la isla y la captura.
  */
 export function ClickyDock() {
   const pathname = usePathname();
-  const simId = useClickySimulation();
+  const sim = useClickySimulation();
   const visible =
-    !!simId &&
+    !!sim &&
     CLICKY_CONFIG.enabled &&
     (!CLICKY_CONFIG.routes || CLICKY_CONFIG.routes.some((r) => pathname === r || pathname.startsWith(r + "/")));
-  return visible ? <Dock key={simId} simId={simId} /> : null;
+  return visible ? <Dock key={sim.id} simId={sim.id} ended={sim.ended} /> : null;
+}
+
+/** Textos del dock por estado (DESIGN.md › Hinty › 2 y 10). */
+export function dockCopy(status: DockStatus, seeing: boolean, ended: boolean) {
+  const tip =
+    status === "starting"
+      ? "Conectando con Hinty…"
+      : status === "on"
+        ? seeing
+          ? "Hinty ve tu pantalla"
+          : "Hinty lee solo el texto"
+        : ended
+          ? "Repasa el simulacro con Hinty"
+          : "¿Te trabaste? Pregúntale a Hinty";
+  const hoverTip = status === "off" && !ended ? "Activa a Hinty: te explica lo que ves en pantalla" : tip;
+  const aria =
+    status === "on" ? "Apagar Hinty" : status === "starting" ? "Conectando con Hinty…" : "Activa a Hinty: te explica lo que ves en pantalla";
+  return { tip, hoverTip, aria };
 }
 
 /**
- * Avioncito pixel abajo a la derecha. Un clic activa Clicky (pide ver la pestaña, monta la isla
- * para preguntar por texto o voz) y queda activo; otro clic lo apaga y suelta la captura.
+ * El tile del audífono y su etiqueta, sin lógica: lo usan el dock real y la vista previa de /design.
+ * Estados: apagado, activando (línea de escaneo), encendido viendo la pantalla (pixel lleno) o solo
+ * con texto (pixel vacío), y simulación terminada. Al encenderse sale un solo pulso de radio.
  */
-function Dock({ simId }: { simId: string }) {
-  const [status, setStatus] = useState<Status>("off");
+export function DockView({
+  status,
+  seeing = false,
+  ended = false,
+  tipVisible = false,
+  hovered = false,
+  onClick,
+  onHoverChange,
+  className = "",
+  withSideRegion = false,
+}: {
+  status: DockStatus;
+  seeing?: boolean;
+  ended?: boolean;
+  tipVisible?: boolean;
+  hovered?: boolean;
+  onClick?: () => void;
+  onHoverChange?: (hovered: boolean) => void;
+  className?: string;
+  withSideRegion?: boolean;
+}) {
+  const { tip, hoverTip, aria } = dockCopy(status, seeing, ended);
+  return (
+    <div
+      className={`clicky-dock ${className}`}
+      data-clicky-ignore
+      data-status={status}
+      data-ended={ended || undefined}
+      data-seeing={seeing || undefined}
+    >
+      {/* respaldo de la columna de tarjetas (en /simulate manda la región stage-side) */}
+      {withSideRegion && <div data-clicky-region="side" className="clicky-dock-side" aria-hidden="true" />}
+      <span className={`clicky-dock-tip ${tipVisible || hovered || status === "starting" ? "on" : ""}`} aria-hidden="true">
+        {hovered ? hoverTip : tip}
+      </span>
+      <button
+        type="button"
+        className="clicky-dock-plane"
+        onClick={onClick}
+        onPointerEnter={() => onHoverChange?.(true)}
+        onPointerLeave={() => onHoverChange?.(false)}
+        onFocus={() => onHoverChange?.(true)}
+        onBlur={() => onHoverChange?.(false)}
+        aria-label={aria}
+        aria-pressed={status === "on"}
+      >
+        <HintyHeadset size={32} />
+        {status === "starting" && <span className="clicky-dock-scan" aria-hidden="true" />}
+        {status === "on" && <span className="clicky-dock-pulse" aria-hidden="true" />}
+        {status === "on" && <span className={`clicky-dock-led ${seeing ? "seeing" : ""}`} aria-hidden="true" />}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * Un clic activa a Hinty (pide ver la pestaña, monta la isla para preguntar por texto o voz) y queda
+ * activo; otro clic lo apaga y suelta la captura.
+ */
+function Dock({ simId, ended }: { simId: string; ended: boolean }) {
+  const [status, setStatus] = useState<DockStatus>("off");
   const [seeing, setSeeing] = useState(false);
+  const [hovered, setHovered] = useState(false);
+  const [intro, setIntro] = useState(false);
   const clicky = useRef<ClickyInstance | null>(null);
   const capture = useRef<TabCapture | null>(null);
   const alive = useRef(true);
+  useColumnAnchor();
+
+  // Primera visita de la sesión: la etiqueta se muestra sola unos segundos.
+  useEffect(() => {
+    let seen = true;
+    try {
+      seen = sessionStorage.getItem("hinty:visto") === "1";
+      sessionStorage.setItem("hinty:visto", "1");
+    } catch {
+      // sin sessionStorage: no se insiste
+    }
+    if (seen) return;
+    const show = setTimeout(() => setIntro(true), 400);
+    const hide = setTimeout(() => setIntro(false), 6400);
+    return () => {
+      clearTimeout(show);
+      clearTimeout(hide);
+    };
+  }, []);
 
   const release = useCallback(() => {
     clicky.current?.destroy();
@@ -56,11 +152,12 @@ function Dock({ simId }: { simId: string }) {
 
   const activate = useCallback(async () => {
     setStatus("starting");
+    setIntro(false);
     const cap = CLICKY_CONFIG.captureScreen
       ? await startTabCapture(() => {
           capture.current = null;
           setSeeing(false);
-          clicky.current?.caption("Dejé de ver tu pantalla; sigo leyendo el texto");
+          clicky.current?.caption("Dejé de ver tu pantalla. Sigo leyendo el texto.");
         })
       : null;
     const { createClicky } = await import("./kit/index.js");
@@ -73,13 +170,11 @@ function Dock({ simId }: { simId: string }) {
       theme: CLICKY_CONFIG.theme,
       surface: CLICKY_CONFIG.surface,
       voice: CLICKY_CONFIG.voice,
-      hint: "espacio = hablar",
+      hint: "ESPACIO · Mantén apretado para hablar",
       context: CLICKY_CONFIG.context,
       screenshot: () => capture.current?.grab() ?? Promise.resolve(null),
     });
-    clicky.current.caption(
-      cap ? "Estoy viendo tu pantalla. ¿Qué quieres saber?" : "No veo tu pantalla, pero leo el texto. ¿Qué quieres saber?",
-    );
+    clicky.current.caption(cap ? "Veo tu pantalla. ¿En qué te ayudo?" : "No veo tu pantalla, pero leo el texto. ¿En qué te ayudo?");
     clicky.current.openInput();
     setStatus("on");
   }, [simId]);
@@ -87,13 +182,14 @@ function Dock({ simId }: { simId: string }) {
   const toggle = () => {
     if (status === "starting") return;
     if (status === "on") shutdown();
-    else activate().catch((e) => {
-      console.error("[clicky]", e);
-      shutdown();
-    });
+    else
+      activate().catch((e) => {
+        console.error("[hinty]", e);
+        shutdown();
+      });
   };
 
-  // Al desmontar (cambio a una ruta sin Clicky), soltar la isla y la captura.
+  // Al desmontar (cambio a una ruta sin Hinty), soltar la isla y la captura.
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -102,33 +198,54 @@ function Dock({ simId }: { simId: string }) {
     };
   }, [release]);
 
-  const label =
-    status === "on"
-      ? "Apagar Clicky"
-      : status === "starting"
-        ? "Activando Clicky…"
-        : "Activar Clicky: pregúntale a tu pantalla";
-
   return (
-    <div className="clicky-dock" data-clicky-ignore data-status={status}>
-      {/* espacio libre para las tarjetas de Clicky, sobre el avioncito */}
-      <div data-clicky-region="side" className="clicky-dock-side" aria-hidden="true" />
-      {status === "off" && (
-        <span className={`clicky-dock-tip ${pixelFont.className}`} aria-hidden="true">
-          ¿Dudas? ¡Pregúntame!
-        </span>
-      )}
-      <button type="button" className="clicky-dock-plane" onClick={toggle} aria-label={label} title={label} aria-pressed={status === "on"}>
-        <span className="clicky-dock-trail" aria-hidden="true">
-          <i />
-          <i />
-          <i />
-        </span>
-        <PixelPlane />
-        {status === "on" && (
-          <span className={`clicky-dock-led ${seeing ? "seeing" : ""}`} aria-hidden="true" title={seeing ? "Viendo tu pantalla" : "Solo texto"} />
-        )}
-      </button>
-    </div>
+    <DockView
+      status={status}
+      seeing={seeing}
+      ended={ended}
+      tipVisible={intro}
+      hovered={hovered}
+      onClick={toggle}
+      onHoverChange={setHovered}
+      withSideRegion
+    />
   );
+}
+
+/**
+ * Hinty vive en la columna principal (Chrome + logs), nunca sobre el panel del Agente
+ * (DESIGN.md › Hinty › 11). Si la página marca esa columna con data-clicky-region="column", el tile
+ * va abajo a su derecha (16 px adentro) y la isla arriba al centro; si no, en las esquinas de la
+ * pantalla. Las posiciones van como variables CSS en <html> (las leen dock.css y styles.css).
+ */
+const ANCHOR_VARS = ["--hinty-dock-right", "--hinty-dock-bottom", "--hinty-col-cx", "--hinty-col-top", "--hinty-col-w"];
+
+function useColumnAnchor() {
+  useEffect(() => {
+    const root = document.documentElement;
+    let raf = 0;
+    const update = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const col = document.querySelector('[data-clicky-region="column"]');
+        const r = col?.getBoundingClientRect();
+        if (!r || !r.width) return ANCHOR_VARS.forEach((v) => root.style.removeProperty(v));
+        root.style.setProperty("--hinty-dock-right", `${Math.max(8, window.innerWidth - r.right + 16)}px`);
+        root.style.setProperty("--hinty-dock-bottom", `${Math.max(8, window.innerHeight - r.bottom + 16)}px`);
+        root.style.setProperty("--hinty-col-cx", `${r.left + r.width / 2}px`);
+        root.style.setProperty("--hinty-col-top", `${Math.max(8, r.top)}px`);
+        root.style.setProperty("--hinty-col-w", `${r.width}px`);
+      });
+    };
+    update();
+    // La columna puede montarse después que el dock o cambiar de tamaño sin un resize de la ventana.
+    const poll = setInterval(update, 1000);
+    window.addEventListener("resize", update);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearInterval(poll);
+      window.removeEventListener("resize", update);
+      ANCHOR_VARS.forEach((v) => root.style.removeProperty(v));
+    };
+  }, []);
 }

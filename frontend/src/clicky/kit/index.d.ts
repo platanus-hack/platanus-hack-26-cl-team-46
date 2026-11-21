@@ -4,7 +4,8 @@ export interface ClickyOptions {
   api?: string;
   /** Headers extra en cada petición; el backend exige `x-sim-id` de una simulación en curso. */
   headers?: () => Record<string, string>;
-  theme?: "platanus" | "sketch" | "ink";
+  /** Único tema: "mayday" (DESIGN.md › Hinty › 13). */
+  theme?: "mayday";
   voice?: boolean;
   pushToTalkKey?: string;
   cssHref?: string;
@@ -16,7 +17,7 @@ export interface ClickyOptions {
   autoTag?: boolean;
   /** Selector de lo que Clicky no debe mirar ni marcar. */
   ignore?: string;
-  /** "dark" si la app es oscura: las marcas sobre la pantalla usan los colores onDark del tema. */
+  /** "dark" si la app es oscura (el tema mayday ya es oscuro y no tiene colores onDark aparte). */
   surface?: "light" | "dark";
   /** Dictado en vivo mientras se mantiene la tecla (si falla, se sube el audio al soltar). Default: true. */
   liveTranscription?: boolean;

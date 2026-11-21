@@ -71,14 +71,15 @@ function SimulateConsole() {
     };
   }, [refresh]);
 
-  // Clicky responde con una simulación en curso o terminada (para repasarla).
+  // Hinty responde con una simulación en curso o terminada (para repasarla).
   const selectedSim = sims.find((s) => s.sim_id === selected);
   const clickySim =
     selectedSim && ["starting", "ready", "running", "paused", "finished"].includes(selectedSim.status) ? selectedSim.sim_id : null;
+  const clickyEnded = selectedSim?.status === "finished";
   useEffect(() => {
-    setClickySimulation(clickySim);
+    setClickySimulation(clickySim, clickyEnded);
     return () => setClickySimulation(null);
-  }, [clickySim]);
+  }, [clickySim, clickyEnded]);
 
   const key = `${selected}|${godMode}`;
   useEffect(() => {
@@ -176,9 +177,12 @@ function SimulateConsole() {
 
       {sim && (
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] gap-3">
-          {/* Izquierda: el espacio de trabajo simulado (arriba) y el historial de sucesos (abajo) */}
-          <div className="flex min-h-0 min-w-0 flex-col gap-3">
-            <div className="min-h-0 flex-[3]">
+          {/* Izquierda: el espacio de trabajo simulado (arriba) y el historial de sucesos (abajo).
+              Es la columna de Hinty: su tile, su isla, su pizarra y sus tarjetas van aquí, nunca sobre el Agente. */}
+          <div className="flex min-h-0 min-w-0 flex-col gap-3" data-clicky-region="column">
+            <div className="relative min-h-0 flex-[3]" data-clicky-region="stage">
+              {/* Columna de tarjetas de Hinty: 320 px pegada al borde derecho de Chrome (invisible). */}
+              <div data-clicky-region="stage-side" aria-hidden="true" className="pointer-events-none invisible absolute top-3 right-3 bottom-3 w-80" />
               <BrowserWindow
                 key={sim.sim_id}
                 project={project}
