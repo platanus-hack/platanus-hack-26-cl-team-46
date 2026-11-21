@@ -18,7 +18,7 @@ import { ClickyService } from './clicky.service.js';
 
 /**
  * Copiloto en pantalla del simulador. Todas las rutas exigen `x-sim-id` de una
- * simulación en curso (ClickyAccessGuard).
+ * simulación en curso o terminada (ClickyAccessGuard).
  *
  * - POST /clicky/lesson (Content-Type application/vnd.clicky+json): pregunta, elementos
  *   visibles y captura → NDJSON, una línea por beat (lo que dice, lo que marca, en qué

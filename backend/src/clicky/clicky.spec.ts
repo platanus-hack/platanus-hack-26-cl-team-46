@@ -31,8 +31,13 @@ describe('ClickyAccessGuard', () => {
     expect(() => guard('running').canActivate(ctx({ 'x-sim-id': '../etc' }))).toThrow(HttpException);
   });
 
-  it('rechaza una simulación terminada', () => {
-    expect(() => guard('finished').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toThrow(ConflictException);
+  it('deja pasar una simulación terminada, para repasarla', () => {
+    expect(guard('finished').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toBe(true);
+  });
+
+  it('rechaza una simulación fallida o detenida', () => {
+    expect(() => guard('failed').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toThrow(ConflictException);
+    expect(() => guard('stopped').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' }))).toThrow(ConflictException);
   });
 
   it('limita las preguntas por minuto por IP', () => {
@@ -108,6 +113,50 @@ describe('cleanLesson', () => {
   });
 });
 
+describe('pizarra por piezas', () => {
+  const ids = new Set<string>();
+  const marks = (beats: unknown[]) => cleanLesson({ beats }, ids).map((b) => b.marks);
+
+  it('arma la pizarra beat a beat: abrir, cajas y flechas entre cajas ya dibujadas', () => {
+    const [open, first, second] = marks([
+      { say: 'Te dibujo cómo funciona', marks: [{ type: 'board', title: 'Token', cols: 9, rows: 2 }] },
+      { say: 'Primero inicias sesión', marks: [{ type: 'node', id: 'a', text: 'Inicias sesión', col: 0, row: 0, at: 'inicias' }] },
+      {
+        say: 'y recibes un token',
+        marks: [
+          { type: 'edge', from: 'a', to: 'b', label: 'entrega' },
+          { type: 'node', id: 'b', text: 'Token', col: 1, row: 0, at: 'un token' },
+          { type: 'edge', from: 'a', to: 'b', label: 'entrega', at: 'recibes' },
+        ],
+      },
+    ]);
+    expect(open[0]).toMatchObject({ type: 'board', cols: 4, rows: 2 });
+    expect(first[0]).toMatchObject({ type: 'node', id: 'a', col: 0, row: 0, word: 1 });
+    // la flecha antes de su caja se descarta; la que va después queda
+    expect(second.map((m) => m.type)).toEqual(['node', 'edge']);
+    // anclada a "recibes" (1), pero su caja "un token" va en la 2: la flecha espera a la caja
+    expect(second[1]).toMatchObject({ from: 'a', to: 'b', word: 2 });
+  });
+
+  it('sin pizarra abierta no hay cajas, y una celda ocupada pasa a la siguiente libre', () => {
+    expect(marks([{ say: 'hola', marks: [{ type: 'node', id: 'a', text: 'x' }] }])[0]).toEqual([]);
+    const [, , dup] = marks([
+      { say: 'abro', marks: [{ type: 'board', title: 't', cols: 2, rows: 1 }] },
+      { say: 'uno', marks: [{ type: 'node', id: 'a', text: 'A', col: 0, row: 0 }] },
+      { say: 'dos', marks: [{ type: 'node', id: 'b', text: 'B', col: 0, row: 0 }] },
+    ]);
+    expect(dup[0]).toMatchObject({ id: 'b', col: 1, row: 0 });
+  });
+
+  it('una sola pizarra o chart por respuesta', () => {
+    const [, second] = marks([
+      { say: 'abro', marks: [{ type: 'board', title: 't' }] },
+      { say: 'otra', marks: [{ type: 'board', title: 'u' }, { type: 'chart', title: 'c', bars: [{ label: 'a', value: 1 }, { label: 'b', value: 2 }] }] },
+    ]);
+    expect(second).toEqual([]);
+  });
+});
+
 describe('anchorWord', () => {
   it('ignora tildes, mayúsculas y puntuación', () => {
     expect(anchorWord('Fíjate en la sesión, arriba.', 'sesion')).toBe(3);
@@ -166,7 +215,7 @@ describe('ClickyService.lesson (ensayo)', () => {
       voice: true,
     }))
       events.push(e);
-    expect(events.map((e) => e.type)).toEqual(['beat', 'beat', 'beat', 'done']);
+    expect(events.map((e) => e.type)).toEqual([...Array(7).fill('beat'), 'done']);
     const second = events[1] as Extract<LessonEvent, { type: 'beat' }>;
     expect(second.index).toBe(1);
     expect(second.marks[0]).toMatchObject({ type: 'target', target: 'b', word: 1 });

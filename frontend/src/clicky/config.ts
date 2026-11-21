@@ -3,7 +3,7 @@ export const CLICKY_CONFIG = {
   enabled: true,
   /**
    * Rutas donde puede aparecer el avioncito. null = en todas.
-   * Igual solo aparece con una simulación en curso (la página de la simulación avisa con
+   * Igual solo aparece con una simulación en curso o terminada (la página de la simulación avisa con
    * setClickySimulation); fuera de una, no se muestra.
    */
   routes: null as string[] | null,

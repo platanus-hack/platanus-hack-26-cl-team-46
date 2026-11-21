@@ -17,7 +17,7 @@ import type { ClickyInstance } from "./kit/index.js";
 type Status = "off" | "starting" | "on";
 
 /**
- * Muestra el avioncito solo con una simulación en curso (y en las rutas de CLICKY_CONFIG).
+ * Muestra el avioncito solo con una simulación en curso o terminada (y en las rutas de CLICKY_CONFIG).
  * Si la simulación cambia o termina, el dock se desmonta o se vuelve a montar y suelta la
  * isla y la captura.
  */

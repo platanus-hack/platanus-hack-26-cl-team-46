@@ -1,15 +1,21 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { AgentChat } from "@/components/agent/AgentChat";
 import { setClickySimulation } from "@/clicky/active-sim";
+import { BrowserWindow } from "@/components/workspace/BrowserWindow";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
+import { eventToMessage, seedMessages } from "@/lib/workspace-chat";
+import { eventToMail, seedMails } from "@/lib/workspace-mail";
 
 /**
  * Consola de la simulación multi-agente: sirve para jugar un incidente de punta a punta.
  * Izquierda: feed de notificaciones. Derecha: chat con el agente de código, que es la
  * única forma de actuar (como en la vida real: no hay botones que den la respuesta).
- * La "vista interna" muestra lo que el developer no ve: ataque, estado y control de los agentes.
+ * Arriba: estado de la simulación y control del flujo (partir, pausa, siguiente vuln, terminar).
+ * La "vista interna" muestra lo que el developer no ve: ataque, estado del incidente y agentes.
  */
 export default function SimulatePage() {
   return (
@@ -46,9 +52,7 @@ function SimulateConsole() {
   const [godMode, setGodMode] = useState(() => searchParams.get("view") === "all");
   const [log, setLog] = useState<{ key: string; list: TimelineEvent[] }>({ key: "", list: [] });
   const [repo, setRepo] = useState("");
-  const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const chatEnd = useRef<HTMLDivElement>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -67,10 +71,10 @@ function SimulateConsole() {
     };
   }, [refresh]);
 
-  // Clicky solo responde con una simulación en curso.
+  // Clicky responde con una simulación en curso o terminada (para repasarla).
   const selectedSim = sims.find((s) => s.sim_id === selected);
   const clickySim =
-    selectedSim && ["starting", "ready", "running", "paused"].includes(selectedSim.status) ? selectedSim.sim_id : null;
+    selectedSim && ["starting", "ready", "running", "paused", "finished"].includes(selectedSim.status) ? selectedSim.sim_id : null;
   useEffect(() => {
     setClickySimulation(clickySim);
     return () => setClickySimulation(null);
@@ -94,12 +98,6 @@ function SimulateConsole() {
   const feed = events.filter((e) => !CHAT_TYPES.has(e.type) && e.type !== "deploy.progress");
   const chat = events.filter((e) => CHAT_TYPES.has(e.type) || e.type === "change.deployed" || e.type === "change.deploy_failed");
 
-  // Con llaves a propósito: scrollIntoView devuelve una Promise en Chrome reciente, y si el efecto
-  // la retorna React la trata como cleanup ("destroy is not a function") y bota la página.
-  useEffect(() => {
-    chatEnd.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat.length]);
-
   const run = async (fn: () => Promise<unknown>) => {
     setError(null);
     try {
@@ -111,6 +109,22 @@ function SimulateConsole() {
   };
 
   const sim = sims.find((s) => s.sim_id === selected);
+  const project = sim ? sim.repo_url.replace(/\/$/, "").split("/").pop() || "proyecto" : "proyecto";
+  const simStart = sim?.created_at;
+  const mails = [
+    ...seedMails(project, simStart ? new Date(simStart) : new Date()),
+    ...events.flatMap((e) => {
+      const m = eventToMail(e);
+      return m ? [m] : [];
+    }),
+  ];
+  const chatMessages = [
+    ...seedMessages(project, simStart ? new Date(simStart) : new Date()),
+    ...events.flatMap((e) => {
+      const m = eventToMessage(e);
+      return m ? [m] : [];
+    }),
+  ];
 
   return (
     <main className="flex h-screen flex-col gap-3 p-4 font-sans text-sm">
@@ -150,10 +164,7 @@ function SimulateConsole() {
           </button>
         </form>
         <div className="ml-auto flex items-center gap-4">
-          {sim?.status === "ready" && <Btn onClick={() => run(() => simApi.start(sim.sim_id))}>Partir</Btn>}
-          {(sim?.status === "running" || sim?.status === "paused") && (
-            <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>
-          )}
+          {sim && <FlowControls sim={sim} run={run} />}
           <label className="flex items-center gap-1">
             <input type="checkbox" checked={godMode} onChange={(e) => setGodMode(e.target.checked)} />
             Vista interna (ataque, estado, control)
@@ -164,57 +175,94 @@ function SimulateConsole() {
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
 
       {sim && (
-        <div className="grid min-h-0 flex-1 grid-cols-[1fr_420px] gap-3">
-          {/* Panel izquierdo: el incidente en vivo */}
-          <section className="flex min-h-0 flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
-            {godMode && <InternalPanel sim={sim} run={run} />}
-            {sim.debrief && <Debrief debrief={sim.debrief} />}
-            {[...feed].reverse().map((e) => (
-              <FeedItem key={e.seq} e={e} />
-            ))}
-          </section>
-
-          {/* Panel derecho: chat con el agente de código */}
-          <section className="flex min-h-0 flex-col rounded-md border border-line bg-bg-100">
-            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-2">
-              {chat.map((e) => (
-                <ChatItem key={e.seq} e={e} />
-              ))}
-              <div ref={chatEnd} />
-            </div>
-            <form
-              className="flex gap-2 border-t border-line p-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (!text.trim()) return;
-                const msg = text;
-                setText("");
-                run(() => simApi.message(sim.sim_id, msg));
-              }}
-            >
-              <textarea
-                className="h-16 flex-1 resize-none rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-1"
-                placeholder="Pídele algo a tu agente de código…"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    e.currentTarget.form?.requestSubmit();
-                  }
-                }}
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] gap-3">
+          {/* Izquierda: el espacio de trabajo simulado (arriba) y el historial de sucesos (abajo) */}
+          <div className="flex min-h-0 min-w-0 flex-col gap-3">
+            <div className="min-h-0 flex-[3]">
+              <BrowserWindow
+                key={sim.sim_id}
+                project={project}
+                appUrl={sim.sandbox.deployed_url}
+                previewUrl={sim.sandbox.preview_url ?? null}
+                chatMessages={chatMessages}
+                mails={mails}
               />
-              <button className="rounded-md bg-defense font-medium text-on-defense hover:bg-defense-strong disabled:opacity-50 px-3">Enviar</button>
-            </form>
-          </section>
+            </div>
+            <section className="flex min-h-0 flex-[2] flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
+              <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Historial de sucesos</h2>
+              {godMode && <InternalPanel sim={sim} />}
+              {sim.debrief && <Debrief debrief={sim.debrief} />}
+              {[...feed].reverse().map((e) => (
+                <FeedItem key={e.seq} e={e} />
+              ))}
+            </section>
+          </div>
+
+          {/* Panel derecho: chat con el agente */}
+          <AgentChat
+            title={sim.repo_url.replace(/\/$/, "").split("/").pop() || "Respuesta a incidente"}
+            events={chat}
+            onSend={(msg) => run(() => simApi.message(sim.sim_id, msg))}
+          />
         </div>
       )}
     </main>
   );
 }
 
-/** Solo en vista interna: estado del incidente, agentes y control del ritmo. */
-function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<unknown>) => void }) {
+const STATUS_LABEL: Record<string, string> = {
+  starting: "Preparando",
+  ready: "Lista para partir",
+  running: "En curso",
+  paused: "En pausa",
+  finished: "Terminada",
+  failed: "Falló",
+  stopped: "Detenida",
+};
+
+/** Qué le falta a una simulación en `starting` para quedar lista (mismo criterio que el backend). */
+function pendingSteps(sim: Simulation): string[] {
+  return [
+    sim.sandbox.status !== "ready" && "desplegando la app",
+    !sim.tools_detected && "revisando herramientas",
+    !sim.attack_plan && "el atacante analiza el código",
+  ].filter((x): x is string => Boolean(x));
+}
+
+/** Estado de la simulación y control del flujo: partir, pausar, siguiente vuln y terminar. */
+function FlowControls({ sim, run }: { sim: Simulation; run: (fn: () => Promise<unknown>) => void }) {
+  const live = sim.status === "running" || sim.status === "paused";
+  const pending = sim.status === "starting" ? pendingSteps(sim) : [];
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-ink-muted" title={sim.error ?? undefined}>
+        <span className="font-medium text-ink">{STATUS_LABEL[sim.status] ?? sim.status}</span>
+        {pending.length > 0 && <> · {pending.join(" · ")}…</>}
+        {sim.status === "failed" && sim.error && <> · {sim.error.slice(0, 80)}</>}
+      </span>
+      {(sim.status === "starting" || sim.status === "ready") && (
+        <Btn disabled={sim.status !== "ready"} onClick={() => run(() => simApi.start(sim.sim_id))}>
+          Partir
+        </Btn>
+      )}
+      {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
+      {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
+      {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Siguiente vuln</Btn>}
+      {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>}
+      {sim.status === "finished" && (
+        <Link
+          href={`/result?sim=${sim.sim_id}`}
+          className="rounded-md bg-defense px-3 py-1 font-medium text-on-defense hover:bg-defense-strong"
+        >
+          Ver resultado
+        </Link>
+      )}
+    </div>
+  );
+}
+
+/** Solo en vista interna: estado del incidente y de los agentes. */
+function InternalPanel({ sim }: { sim: Simulation }) {
   return (
     <div className="flex flex-col gap-2 rounded-md border border-dashed border-line-strong p-2 text-xs text-ink-muted">
       {sim.state && (
@@ -236,23 +284,30 @@ function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<
             workspace en Conductor
           </a>
         )}
-        <span>threads: {sim.threads.map((t) => `${t.role}(${t.wakes})`).join(" · ")}</span>
+        <span>
+          threads:{" "}
+          {sim.threads
+            .map((t) =>
+              t.mode === "api"
+                ? `${t.role}(api${t.model ? ` ${t.model.replace(/^claude-/, "")}` : ""}${t.last_ms ? ` ${(t.last_ms / 1000).toFixed(1)}s` : ""}${t.last_error ? " ⚠" : ""})`
+                : `${t.role}(${t.wakes})`,
+            )
+            .join(" · ")}
+        </span>
         <span>canales: {sim.channels.join(", ")}</span>
-        <div className="ml-auto flex gap-2">
-          {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
-          {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
-          {(sim.status === "running" || sim.status === "paused") && (
-            <Btn onClick={() => run(() => simApi.control(sim.sim_id, "next"))}>Siguiente vuln</Btn>
-          )}
-        </div>
       </div>
     </div>
   );
 }
 
-function Btn({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
+function Btn({ onClick, children, disabled }: { onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
   return (
-    <button type="button" className="rounded-md border border-line-strong px-2 py-1 hover:bg-bg-200" onClick={onClick}>
+    <button
+      type="button"
+      className="rounded-md border border-line-strong px-2 py-1 hover:bg-bg-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+      disabled={disabled}
+      onClick={onClick}
+    >
       {children}
     </button>
   );
@@ -285,20 +340,6 @@ function FeedItem({ e }: { e: TimelineEvent }) {
       {e.vuln_id && <span className="font-mono"> [{e.vuln_id}]</span>} — {e.title}
     </div>
   );
-}
-
-function ChatItem({ e }: { e: TimelineEvent }) {
-  if (e.type === "user.message" || e.type === "user.action") {
-    return (
-      <div className="ml-8 self-end rounded-lg bg-bg-300 px-3 py-2 text-ink">
-        {e.type === "user.action" ? <i>⚡ {e.title}</i> : <span className="whitespace-pre-wrap">{e.body || e.title}</span>}
-      </div>
-    );
-  }
-  if (e.type === "coder.reply") {
-    return <div className="mr-8 whitespace-pre-wrap rounded-lg bg-bg-200 px-3 py-2">{e.body || e.title}</div>;
-  }
-  return <div className="text-center text-xs text-ink-muted">{e.title}</div>;
 }
 
 function Debrief({ debrief }: { debrief: Record<string, unknown> }) {

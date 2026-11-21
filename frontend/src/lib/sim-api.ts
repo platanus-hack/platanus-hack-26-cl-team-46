@@ -24,10 +24,29 @@ export interface Simulation {
   status: SimStatus;
   error: string | null;
   repo_url: string;
-  sandbox: { sandbox_id: string; status: string; deployed_url: string | null; seed_users: unknown[] };
+  sandbox: {
+    sandbox_id: string;
+    status: string;
+    deployed_url: string | null;
+    /** La app servida por el proxy de preview (mismo site que mayday.rip: las cookies funcionan en el iframe). */
+    preview_url?: string | null;
+    seed_users: unknown[];
+  };
   workspace_link: string | null;
-  threads: { role: SimRole; session_id: string | null; deep_link: string | null; wakes: number }[];
+  threads: {
+    role: SimRole;
+    /** conductor: thread en la VM · api: corre en el backend con la API de Claude · external: motor externo */
+    mode: "conductor" | "api" | "external";
+    session_id: string | null;
+    deep_link: string | null;
+    wakes: number;
+    model?: string | null;
+    last_ms?: number | null;
+    last_error?: string | null;
+  }[];
   channels: string[];
+  /** Herramientas de monitoreo detectadas en el código (null = aún no se revisa). */
+  tools_detected: string[] | null;
   context: Record<string, unknown> | null;
   attack_plan: { findings?: { vuln_id: string; file: string; line?: number; severity: string }[] } | null;
   state: {

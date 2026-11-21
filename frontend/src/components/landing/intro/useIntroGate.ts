@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from "react";
 
 /**
  * Decide si se reproduce la intro "te están hackeando" y en qué versión.
- * - Una vez por sesión (sessionStorage, en try/catch: en modo privado puede fallar).
- * - `/#intro` la fuerza siempre (para la demo del pitch); `replay()` también.
+ * - Se reproduce en cada carga de la página (también al recargar).
+ * - `/#intro` la vuelve a lanzar sin recargar (para la demo del pitch); `replay()` también.
  * - prefers-reduced-motion: nunca hay intro.
  * - Dispositivo por capacidades, no por user agent: puntero grueso + menos de 768 px = teléfono.
  *   Se decide una vez cada vez que arranca.
@@ -15,8 +15,6 @@ import { useCallback, useEffect, useState } from "react";
 export type IntroDevice = "desktop" | "mobile";
 export type IntroPhase = "pending" | "playing" | "done";
 
-const STORAGE_KEY = "mayday:intro-vista";
-
 export function useIntroGate() {
   const [state, setState] = useState<{ phase: IntroPhase; device: IntroDevice; runId: number }>({
     phase: "pending",
@@ -24,19 +22,8 @@ export function useIntroGate() {
     runId: 0,
   });
 
-  const decide = useCallback((force: boolean) => {
+  const decide = useCallback(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setState((s) => ({ ...s, phase: "done" }));
-      return;
-    }
-    let seen = false;
-    try {
-      seen = window.sessionStorage.getItem(STORAGE_KEY) === "1";
-      window.sessionStorage.setItem(STORAGE_KEY, "1");
-    } catch {
-      // sin sessionStorage: se ve la intro y listo
-    }
-    if (seen && !force) {
       setState((s) => ({ ...s, phase: "done" }));
       return;
     }
@@ -45,9 +32,9 @@ export function useIntroGate() {
   }, []);
 
   useEffect(() => {
-    const id = requestAnimationFrame(() => decide(window.location.hash === "#intro"));
+    const id = requestAnimationFrame(decide);
     const onHash = () => {
-      if (window.location.hash === "#intro") decide(true);
+      if (window.location.hash === "#intro") decide();
     };
     window.addEventListener("hashchange", onHash);
     return () => {
@@ -64,7 +51,7 @@ export function useIntroGate() {
   /** Vuelve arriba y la reproduce de nuevo ("Ver la intro de nuevo"). */
   const replay = useCallback(() => {
     window.scrollTo({ top: 0, behavior: "instant" });
-    decide(true);
+    decide();
   }, [decide]);
 
   return { ...state, finish, replay };

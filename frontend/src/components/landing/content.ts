@@ -8,9 +8,8 @@ import type { DeployLogRow } from "@/components/mayday";
 
 export const HERO = {
   title: "Ensaya el hackeo antes de que pase",
-  scrollHint: "O BAJA PARA EMPEZAR",
-  /** Secundario (el único primario de la landing es Entra con GitHub). */
-  simulate: { label: "Ir al simulacro", href: "/simulate" },
+  /** Única salida del hero: el flujo pasa por la landing y termina en Entra con GitHub (/start). */
+  scrollHint: "BAJA PARA EMPEZAR",
   project: "apuntes.dev",
 };
 
