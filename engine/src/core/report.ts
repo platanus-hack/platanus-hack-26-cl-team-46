@@ -61,6 +61,20 @@ export function renderGuide(diag: DiagnosisResult, plugin: EnginePlugin, scenari
     L.push('');
   }
 
+  // Plan de ejecución (scheduler)
+  if (diag.schedule && diag.schedule.lanes.length) {
+    L.push('## Plan de ejecución (scheduler)');
+    L.push('');
+    L.push(`${diag.schedule.lanes.length} lane(s). Dentro de una lane las tácticas corren en paralelo; las lanes van en orden.`);
+    L.push('');
+    L.push('| Lane | Táctica | En paralelo con | Por qué |');
+    L.push('|---|---|---|---|');
+    for (const e of diag.schedule.explanation.sort((a, b) => a.lane - b.lane)) {
+      L.push(`| ${e.lane} | ${e.vuln_id} | ${e.parallelWith.join(', ') || '—'} | ${e.reason} |`);
+    }
+    L.push('');
+  }
+
   // Cadena de ataque confirmada
   if (confirmed.length > 0) {
     L.push('## Cadena de ataque (lo que confirmamos de punta a punta)');

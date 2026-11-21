@@ -165,10 +165,26 @@ export interface AttackContext {
   log: (msg: string) => void;
 }
 
+/** Metadata para el scheduler (requisito B): cómo se secuencia este ataque. */
+export interface SchedulingMeta {
+  /** vuln_ids que deben completar antes (foothold, señal, etc.). */
+  dependsOn?: string[];
+  /** No correr en paralelo con estos vuln_ids (contaminan señales / alarma). */
+  mutex?: string[];
+  /** Debe correr sobre un estado/limpio, antes de ensuciar señales. */
+  needsCleanBaseline?: boolean;
+  /** Huella de alarma: cuánto ruido deja (para decidir secuenciación). */
+  alarmFootprint?: 'low' | 'medium' | 'high';
+  /** Requisitos (credenciales/capacidades). */
+  requires?: string[];
+}
+
 export interface Attack {
   meta: VulnMeta;
   /** true si crea/modifica estado en el target (cuentas, notas, roles). */
   mutating: boolean;
+  /** Metadata de scheduling (si falta, se asume independiente y paralelizable). */
+  scheduling?: SchedulingMeta;
   /** Ejecuta el ataque real y devuelve el resultado con evidencia. */
   run(ctx: AttackContext): Promise<AttackResult>;
 }

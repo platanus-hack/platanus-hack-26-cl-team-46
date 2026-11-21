@@ -13,6 +13,7 @@ const LEAK_FIELDS = ['code', 'detail', 'hint', 'position', 'where', 'stack'];
 export const verboseErrors: Attack = {
   meta: CATALOG['verbose-errors'],
   mutating: false, // GET como usuario de baja privilegia (read-only)
+  scheduling: { alarmFootprint: 'medium' },
   async run(ctx: AttackContext): Promise<AttackResult> {
     const steps: AttackStep[] = [];
     const token = (await lowPrivSession(ctx)).token;

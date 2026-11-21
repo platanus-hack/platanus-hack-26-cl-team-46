@@ -12,6 +12,13 @@ const COMMON = ['123456', 'password', 'martin2024', 'qwerty', 'admin123', '12345
 export const weakPassword: Attack = {
   meta: CATALOG['weak-password-no-rate-limit'],
   mutating: false, // solo intentos de login (read-only en datos)
+  scheduling: {
+    // Detectar "sin rate limit" exige baseline limpio (sin 429/401 previos de otros módulos).
+    needsCleanBaseline: true,
+    alarmFootprint: 'high',
+    // No interleaves con jwt-reuse: ambos golpean el login y confundirían los logs de auth.
+    mutex: ['jwt-not-invalidated-on-password-change'],
+  },
   async run(ctx: AttackContext): Promise<AttackResult> {
     const target = ctx.target.weak_login;
     const steps: AttackStep[] = [];

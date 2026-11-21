@@ -21,6 +21,11 @@ const BCRYPT = /^\$2[aby]\$/;
 export const sqlInjection: Attack = {
   meta: CATALOG['sql-injection'],
   mutating: false, // GET como usuario de baja privilegia (read-only)
+  scheduling: {
+    // Primero confirmar que la búsqueda es inyectable (verbose-errors), luego el dump.
+    dependsOn: ['verbose-errors'],
+    alarmFootprint: 'high',
+  },
   async run(ctx: AttackContext): Promise<AttackResult> {
     const steps: AttackStep[] = [];
     const token = (await lowPrivSession(ctx)).token;

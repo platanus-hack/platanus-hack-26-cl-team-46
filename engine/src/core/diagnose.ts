@@ -9,6 +9,7 @@ import { PROFILES, randomIdentity, type ProfileName } from './evasion.ts';
 import { pool } from './evasion.ts';
 import { RecordingClient } from './http.ts';
 import { makeRng, realClock, shuffle, type Clock } from './rng.ts';
+import { planSchedule, type SchedulePlan } from './scheduler.ts';
 import { ResourceTracker } from './tracker.ts';
 import type { Attack, AttackContext, AttackResult, EnginePlugin, HttpExchange, TargetConfig } from './types.ts';
 
@@ -22,6 +23,8 @@ export interface DiagnosisResult {
   duration_ms: number;
   results: AttackResult[];
   telemetry: HttpExchange[];
+  /** Plan del scheduler: lanes y por qué cada táctica fue paralela o secuencial. */
+  schedule: SchedulePlan;
   /** Recursos que no se pudieron limpiar (para decidir el reset). */
   residue: string[];
   summary: {
@@ -59,43 +62,57 @@ export async function diagnose(target: TargetConfig, plugin: EnginePlugin, opts:
 
   log(`perfil: ${profile.name} · seed: ${seed}${opts.readOnly ? ' · read-only' : ''} (concurrencia ${profile.concurrency}, jitter ${profile.minDelayMs}-${profile.maxDelayMs}ms, identidad ${profile.rotateIdentity})`);
 
+  // Scheduler (B): construye lanes (paralelo por defecto, secuencia por
+  // dependencia/baseline/mutex). Lane por lane; paralelo dentro de cada lane.
+  const schedule = planSchedule(toRun);
+  log(`scheduler: ${schedule.lanes.length} lane(s) — ${schedule.lanes.map((l) => `[${l.attackIds.join(',')}]`).join(' → ')}`);
+
   const clients: RecordingClient[] = [];
-  let results: AttackResult[] = [];
+  const resultsById = new Map<string, AttackResult>();
+
+  async function runOne(attack: Attack): Promise<AttackResult> {
+    // RNG por-ataque: determinista e independiente del orden/concurrencia.
+    const rng = makeRng(`${seed}:${attack.meta.id}`);
+    const identity = randomIdentity(rng);
+    const http = new RecordingClient(target.url, identity, { profile, rng, clock });
+    clients.push(http);
+    const ctx: AttackContext = { target, http, attacker: identity, rng, clock, tracker, log };
+
+    log(`▶ ${attack.meta.id}${attack.mutating ? ' (mutante)' : ' (read-only)'} — ${attack.meta.title}`);
+    try {
+      const r = await attack.run(ctx);
+      const tag = r.confirmed ? 'CONFIRMADO' : r.blocked ? 'bloqueado' : r.error ? 'ERROR' : 'no confirmado';
+      log(`  → [${attack.meta.id}] ${tag}: ${r.summary}`);
+      return r;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log(`  → [${attack.meta.id}] ERROR de ejecución: ${msg}`);
+      return {
+        vuln_id: attack.meta.id,
+        confirmed: false,
+        blocked: false,
+        steps: [],
+        gained: [],
+        attacker_active: false,
+        summary: `No se pudo ejecutar el ataque: ${msg}`,
+        error: msg,
+      } satisfies AttackResult;
+    }
+  }
 
   try {
-    results = await pool(toRun, profile.concurrency, async (attack) => {
-      // RNG por-ataque: determinista e independiente del orden/concurrencia.
-      const rng = makeRng(`${seed}:${attack.meta.id}`);
-      const identity = randomIdentity(rng);
-      const http = new RecordingClient(target.url, identity, { profile, rng, clock });
-      clients.push(http);
-      const ctx: AttackContext = { target, http, attacker: identity, rng, clock, tracker, log };
-
-      log(`▶ ${attack.meta.id}${attack.mutating ? ' (mutante)' : ' (read-only)'} — ${attack.meta.title}`);
-      try {
-        const r = await attack.run(ctx);
-        const tag = r.confirmed ? 'CONFIRMADO' : r.blocked ? 'bloqueado' : r.error ? 'ERROR' : 'no confirmado';
-        log(`  → [${attack.meta.id}] ${tag}: ${r.summary}`);
-        return r;
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : String(e);
-        log(`  → [${attack.meta.id}] ERROR de ejecución: ${msg}`);
-        return {
-          vuln_id: attack.meta.id,
-          confirmed: false,
-          blocked: false,
-          steps: [],
-          gained: [],
-          attacker_active: false,
-          summary: `No se pudo ejecutar el ataque: ${msg}`,
-          error: msg,
-        } satisfies AttackResult;
-      }
-    });
+    const byId = new Map(toRun.map((a) => [a.meta.id, a]));
+    for (const lane of schedule.lanes) {
+      const laneAttacks = lane.attackIds.map((id) => byId.get(id)!);
+      const laneResults = await pool(laneAttacks, profile.concurrency, runOne);
+      laneAttacks.forEach((a, i) => resultsById.set(a.meta.id, laneResults[i]));
+    }
   } finally {
     // Teardown robusto: corre aunque algún ataque haya lanzado.
     if (tracker.items.length) log(`▶ teardown: ${tracker.items.length} recurso(s)`);
   }
+
+  const results: AttackResult[] = toRun.map((a) => resultsById.get(a.meta.id)!).filter(Boolean);
 
   const residue = await tracker.teardown(log);
 
@@ -112,6 +129,7 @@ export async function diagnose(target: TargetConfig, plugin: EnginePlugin, opts:
     duration_ms: clock.now() - started,
     results,
     telemetry,
+    schedule,
     residue,
     summary: {
       total: results.length,
