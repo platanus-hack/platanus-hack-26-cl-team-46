@@ -50,7 +50,7 @@ export function AgentChat({
 
 function AgentHeader({ title }: { title: string }) {
   return (
-    <header className="flex h-12 flex-none items-center gap-2.5 border-b border-sim-line px-4">
+    <header className="flex h-14 flex-none items-center gap-2.5 border-b border-sim-line px-4">
       <AgentMascot />
       <span className="text-[14px] font-medium text-sim-ink">Claude</span>
       <h2 className="truncate text-[13px] text-sim-ink-muted" title={title}>
@@ -91,22 +91,22 @@ function AgentMascot() {
           </g>
           {/* La bandera sale de detrás de la cabeza: solo se ve sobre y = 0, más el asta junto a la mano. */}
           <clipPath id={clipId}>
-            <rect x="0" y="-9" width="12" height="9" />
+            <rect x="0" y="-12" width="12" height="12" />
             <rect x="10" y="0" width="1" height="2" />
           </clipPath>
           <g clipPath={`url(#${clipId})`}>
             <g className="agent-mascot__flag">
-              <rect x="10" y="-5" width="1" height="7" fill="#A0A3A8" />
-              <rect x="1" y="-5" width="9" height="4" fill="#0A0A0B" />
-              <rect x="8" y="-5" width="1" height="1" fill="#8A5A14" />
+              <rect x="10" y="-7" width="1" height="9" fill="#A0A3A8" />
+              <rect x="1" y="-7" width="9" height="6" fill="#0A0A0B" />
+              <rect x="8" y="-6" width="1" height="1" fill="#8A5A14" />
               <g fill="#FFEC40">
-                <rect x="2" y="-4" width="1" height="1" />
-                <rect x="7" y="-4" width="2" height="1" />
-                <rect x="3" y="-3" width="4" height="1" />
+                <rect x="2" y="-5" width="1" height="1" />
+                <rect x="7" y="-5" width="2" height="1" />
+                <rect x="3" y="-4" width="4" height="1" />
               </g>
               <g fill="#F9BC12">
-                <rect x="7" y="-3" width="1" height="1" />
-                <rect x="3" y="-2" width="4" height="1" />
+                <rect x="7" y="-4" width="1" height="1" />
+                <rect x="3" y="-3" width="4" height="1" />
               </g>
             </g>
           </g>
@@ -129,12 +129,12 @@ const MASCOT_CSS = `
 @keyframes agent-mascot-step { 50% { transform: translateY(-.5px); } }
 @keyframes agent-mascot-arm { 50% { transform: translateY(-1px); } }
 @keyframes agent-mascot-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(.15); } }
-.agent-mascot__flag { transform: translateY(9px); animation: agent-mascot-flag 10s infinite -5s; }
+.agent-mascot__flag { transform: translateY(12px); animation: agent-mascot-flag 10s infinite -5s; }
 @keyframes agent-mascot-flag {
-  0%, 72% { transform: translateY(9px); animation-timing-function: steps(1); }
-  72.01% { transform: translateY(9px); animation-timing-function: steps(9, end); }
-  76%, 96% { transform: translateY(0); animation-timing-function: steps(9, end); }
-  100% { transform: translateY(9px); }
+  0%, 72% { transform: translateY(12px); animation-timing-function: steps(1); }
+  72.01% { transform: translateY(12px); animation-timing-function: steps(12, end); }
+  76%, 96% { transform: translateY(0); animation-timing-function: steps(12, end); }
+  100% { transform: translateY(12px); }
 }
 @media (prefers-reduced-motion: reduce) { .agent-mascot * { animation: none !important; } }
 `;
