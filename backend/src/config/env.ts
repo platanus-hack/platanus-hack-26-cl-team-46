@@ -89,6 +89,15 @@ export const envSchema = z.object({
     .string()
     .min(16, 'AGENT_API_SECRET debe tener al menos 16 caracteres')
     .optional(),
+  /**
+   * Secreto del que se derivan (HMAC) las contraseñas de los roles de Postgres
+   * de cada sandbox. Si falta se usa AGENT_API_SECRET. Debe ser estable: si
+   * cambia, cada sandbox recupera su contraseña en el siguiente deploy.
+   */
+  SANDBOX_DB_SECRET: z
+    .string()
+    .min(16, 'SANDBOX_DB_SECRET debe tener al menos 16 caracteres')
+    .optional(),
   /** URL pública del backend, a la que llaman los agentes desde sus VMs. */
   PUBLIC_BACKEND_URL: z.url().optional(),
   CONDUCTOR_API_KEY: z.string().optional(),
@@ -107,7 +116,7 @@ export const envSchema = z.object({
   CONDUCTOR_AGENT_BLANK_ENV: z
     .string()
     .default(
-      'RENDER_API_KEY,GITHUB_TOKEN,GITHUB_HACK26_ORG_TOKEN,AGENT_API_SECRET,OPENAI_API_KEY,ELEVENLABS_API_KEY,CLOUDFLARE_API_TOKEN,DATABASE_URL,GITHUB_APP_CLIENT_SECRET,SESSION_SECRET',
+      'RENDER_API_KEY,GITHUB_TOKEN,GITHUB_HACK26_ORG_TOKEN,AGENT_API_SECRET,OPENAI_API_KEY,ELEVENLABS_API_KEY,CLOUDFLARE_API_TOKEN,DATABASE_URL,GITHUB_APP_CLIENT_SECRET,SESSION_SECRET,SANDBOX_DB_SECRET',
     )
     .transform((v) =>
       v

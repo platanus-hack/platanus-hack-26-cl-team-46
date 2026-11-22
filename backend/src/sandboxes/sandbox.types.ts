@@ -92,7 +92,15 @@ export interface SandboxRecord {
   env: Record<string, string>;
   pending_inputs: InputRequest[];
 
-  database?: { postgres_id: string; database_name?: string };
+  database?: {
+    postgres_id: string;
+    database_name?: string;
+    /**
+     * Rol de Postgres propio del sandbox (modo shared): dueño de su base y sin
+     * acceso a las demás. Sin rol = base creada antes del aislamiento (se migra).
+     */
+    role?: string;
+  };
   render?: {
     service_id: string;
     service_name: string;
