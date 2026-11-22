@@ -69,6 +69,12 @@ export const jwtReuse: Attack = {
         : undefined,
     });
 
+    // Persistimos el token robado: en el verify tras un parche re-testeamos ESTE
+    // acceso para saber si el atacante sigue adentro (no solo si la vuln existe).
+    if (stillValid) {
+      ctx.footholds.set(jwtReuse.meta.id, { kind: 'jwt', token: stolenToken, detail: `JWT robado (iat=${iatBefore})` });
+    }
+
     return {
       vuln_id: jwtReuse.meta.id,
       confirmed: stillValid,

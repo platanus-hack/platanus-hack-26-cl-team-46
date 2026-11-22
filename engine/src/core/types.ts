@@ -157,6 +157,8 @@ export interface TargetConfig {
   ssrf_path?: string; // endpoint que hace fetch de una URL del usuario (default '/fetch')
   chat_path?: string; // endpoint LLM para prompt injection (default '/chat')
   redirect_path?: string; // endpoint de redirect para phishing (default '/go')
+  /** Endpoint autenticado para re-testear un token robado (default '/api/users/me'). */
+  whoami_path?: string;
 }
 
 /** Contexto que recibe cada módulo de ataque. */
@@ -172,6 +174,8 @@ export interface AttackContext {
   clock: import('./rng.ts').Clock;
   /** Registro de recursos creados, para el teardown. */
   tracker: import('./tracker.ts').ResourceTracker;
+  /** Footholds del atacante, persistentes entre ataques/verificaciones. */
+  footholds: import('./footholds.ts').FootholdStore;
   log: (msg: string) => void;
 }
 

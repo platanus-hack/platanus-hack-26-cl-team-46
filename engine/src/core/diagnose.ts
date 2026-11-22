@@ -8,6 +8,7 @@
 import { PROFILES, randomIdentity, type ProfileName } from './evasion.ts';
 import { pool } from './evasion.ts';
 import { RecordingClient } from './http.ts';
+import { FootholdStore } from './footholds.ts';
 import { makeRng, realClock, shuffle, type Clock } from './rng.ts';
 import { planSchedule, type SchedulePlan } from './scheduler.ts';
 import { ResourceTracker } from './tracker.ts';
@@ -45,6 +46,8 @@ export interface DiagnoseOpts {
   readOnly?: boolean;
   /** Habilita los módulos destructivos (DoS, etc.). Default: OFF. */
   destructive?: boolean;
+  /** Store de footholds compartido (para persistir accesos entre llamadas). */
+  footholds?: FootholdStore;
   clock?: Clock;
 }
 
@@ -54,6 +57,7 @@ export async function diagnose(target: TargetConfig, plugin: EnginePlugin, opts:
   const seed = opts.seed ?? 'default';
   const clock = opts.clock ?? realClock;
   const tracker = new ResourceTracker();
+  const footholds = opts.footholds ?? new FootholdStore();
 
   const started = clock.now();
   const started_at = clock.iso();
@@ -80,7 +84,7 @@ export async function diagnose(target: TargetConfig, plugin: EnginePlugin, opts:
     const identity = randomIdentity(rng);
     const http = new RecordingClient(target.url, identity, { profile, rng, clock });
     clients.push(http);
-    const ctx: AttackContext = { target, http, attacker: identity, rng, clock, tracker, log };
+    const ctx: AttackContext = { target, http, attacker: identity, rng, clock, tracker, footholds, log };
 
     log(`▶ ${attack.meta.id}${attack.mutating ? ' (mutante)' : ' (read-only)'} — ${attack.meta.title}`);
     try {

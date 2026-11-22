@@ -16,17 +16,25 @@ export interface Account {
  * seed. La app no deja borrar usuarios: se registra como residuo para el reset.
  */
 export async function registerThrowaway(ctx: AttackContext): Promise<Account> {
-  const tag = hex(ctx.rng, 6);
-  const email = `rt-${tag}@redteam.local`;
-  const password = `Rt-${hex(ctx.rng, 4)}-${hex(ctx.rng, 4)}!`;
-  const res = await ctx.http.post('/api/auth/register', { email, password, name: `redteam-${tag}` });
-  const body = res.json as { token: string; user: { id: number; role: string } };
-  if (res.status !== 201 || !body?.token) {
-    throw new Error(`registro falló: HTTP ${res.status} ${res.text.slice(0, 200)}`);
+  // El primer intento usa el tag determinista (reproducible con --seed). Si ese
+  // email ya existe (409 — estado sucio o un re-run/verify), reintenta con otro
+  // tag; así no se rompe la reproducibilidad en corridas frescas ni choca al re-verificar.
+  let last = '';
+  for (let i = 0; i < 5; i++) {
+    const tag = hex(ctx.rng, 6);
+    const email = `rt-${tag}@redteam.local`;
+    const password = `Rt-${hex(ctx.rng, 4)}-${hex(ctx.rng, 4)}!`;
+    const res = await ctx.http.post('/api/auth/register', { email, password, name: `redteam-${tag}` });
+    if (res.status === 409) { last = `409 ${email}`; continue; }
+    const body = res.json as { token: string; user: { id: number; role: string } };
+    if (res.status !== 201 || !body?.token) {
+      throw new Error(`registro falló: HTTP ${res.status} ${res.text.slice(0, 200)}`);
+    }
+    // Sin undo: la app no expone borrado de usuarios → residuo para el reset.
+    ctx.tracker.add(`cuenta desechable ${email} (la app no permite borrarla)`);
+    return { email, password, token: body.token, id: body.user.id, role: body.user.role };
   }
-  // Sin undo: la app no expone borrado de usuarios → residuo para el reset.
-  ctx.tracker.add(`cuenta desechable ${email} (la app no permite borrarla)`);
-  return { email, password, token: body.token, id: body.user.id, role: body.user.role };
+  throw new Error(`registro falló tras reintentos: ${last}`);
 }
 
 export async function loginApi(
