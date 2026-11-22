@@ -71,7 +71,7 @@ export const lessonSchema = z.object({
   /** false: el usuario apagó la voz, no se gasta ElevenLabs. */
   voice: z.boolean().default(true),
   /**
-   * Lo que el usuario marcó con el cursor mientras preguntaba (Control + Option, como en
+   * Lo que el usuario marcó con el cursor mientras preguntaba (modo marcar + shift, como en
    * HeyClicky): uno o varios trazos, cada uno con lo que iba diciendo. Se aceptan los dos
    * formatos (un trazo suelto o `marks`) y quedan siempre como `{ marks }`.
    */

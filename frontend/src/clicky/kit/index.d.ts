@@ -7,9 +7,13 @@ export interface ClickyOptions {
   /** Único tema: "mayday" (DESIGN.md › Hinty › 13). */
   theme?: "mayday";
   voice?: boolean;
+  /** Tecla que se mantiene para hablar (KeyboardEvent.key o .code). Por defecto "Space". */
   pushToTalkKey?: string;
   cssHref?: string;
+  /** Cómo se muestra esa tecla en la nube del botón de hablar (por defecto "espacio"). */
   hint?: string;
+  /** La X de la barra: quien monta el kit apaga a Hinty (destroy y soltar la captura). */
+  onClose?: () => void;
   /** Captura de lo que ve el usuario (data URL) o null. */
   screenshot?: () => Promise<string | null>;
   context?: string | (() => string);
