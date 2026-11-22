@@ -394,7 +394,7 @@ Un tile cuadrado de **56×56 px**, `radius-md` (8 px), con el ícono a 32 px (2 
 
 ### 3. Barra de arriba
 
-- **Forma:** una barra de borde a borde que **baja desde arriba** (320 ms) y se pone **encima del header** mientras Hinty está activo. Mide **lo mismo que el header** (la página lo marca con `data-clicky-region="header"`; 64 px si no hay), así nunca tapa las apps de abajo. No crece: si el subtítulo es largo, quedan a la vista sus últimas 2 líneas.
+- **Forma:** una barra de borde a borde que **baja desde arriba** (320 ms) y se pone **encima del header** mientras Hinty está activo. Mide **lo mismo que el header** (la página lo marca con `data-clicky-region="header"`; 64 px si no hay), así nunca tapa las apps de abajo. En mobile (< 768 px) mide 56 px, lo mismo que la barra de la app, y el subtítulo va en el espacio libre en vez de centrado. No crece: si el subtítulo es largo, quedan a la vista sus últimas 2 líneas.
 - **Fondo:** **todo cian** (`defense`), con borde inferior 2 px `defense-strong` y un glow cian hacia abajo. El texto va en `on-defense`. Tiene que ser imposible no notar que estás hablando con Hinty.
 - **Marco de pantalla:** mientras Hinty está activo, los bordes de la ventana llevan un marco cian de 4 px con un brillo cian hacia adentro. No sale en la captura que ve el modelo.
 - **Avatar:** un tile cuadrado de 40 px en `on-defense` y `radius-sm`, con el audífono cian a 16 px.
