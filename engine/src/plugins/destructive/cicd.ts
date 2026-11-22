@@ -4,6 +4,7 @@
  * inyección de expresiones, exposición de secrets), con archivo/línea. Es
  * análisis read-only sobre el repo; no toca registries de terceros.
  */
+import path from 'node:path';
 import { scanRepo } from '../../discovery/scan.ts';
 
 export interface CicdFinding {
@@ -13,7 +14,8 @@ export interface CicdFinding {
 }
 
 export async function analyzeCicd(repoPath: string, commit = 'working-tree'): Promise<CicdFinding[]> {
-  const files = (await scanRepo(repoPath)).filter((f) => /\.github\/workflows\/.*\.ya?ml$/.test(f.rel));
+  // Solo los workflows de la raíz: GitHub Actions no corre los de subcarpetas (fixtures, ejemplos).
+  const files = (await scanRepo(repoPath)).filter((f) => /^\.github\/workflows\/[^/]+\.ya?ml$/.test(f.rel.split(path.sep).join('/')));
   const out: CicdFinding[] = [];
   for (const f of files) {
     f.lines.forEach((line, i) => {

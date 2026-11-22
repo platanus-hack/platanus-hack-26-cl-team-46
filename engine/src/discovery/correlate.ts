@@ -11,9 +11,19 @@ export function correlate(angle: string, repo: RepoModel): FileRef | undefined {
     case 'stored-xss':
       return sig('unescaped-render');
     case 'admin-endpoint-no-authz':
-      return sig('missing-authz') ?? route((r) => /\/admin/.test(r.path));
+      // Sin señal: una ruta de admin (por path o por archivo, p. ej. routes/admin.ts montado en /api/admin)
+      // que NO tenga autorización de admin. Nunca una ruta que sí la tiene.
+      return (
+        sig('missing-authz') ??
+        route((r) => (/\/admin/.test(r.path) || /(^|\/)admin[^/]*$/i.test(r.ref.file.replace(/\.[^.]+$/, ''))) && r.auth !== 'admin')
+      );
     case 'jwt-not-invalidated-on-password-change':
-      return sig('weak-jwt') ?? repo.manifests.env.find((e) => /JWT/i.test(e.name))?.ref;
+      // El error está donde se cambia la contraseña sin invalidar los tokens; si no se ve esa ruta, el JWT.
+      return (
+        route((r) => /password/i.test(r.path) && r.method !== 'GET') ??
+        sig('weak-jwt') ??
+        repo.manifests.env.find((e) => /JWT/i.test(e.name))?.ref
+      );
     case 'mass-assignment':
       return sig('mass-assignment') ?? route((r) => r.method === 'PATCH' && /users?\/me|profile/.test(r.path));
     case 'verbose-errors':

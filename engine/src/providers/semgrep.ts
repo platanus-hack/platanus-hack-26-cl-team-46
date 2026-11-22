@@ -33,24 +33,33 @@ async function hasBinary(cmd: string): Promise<boolean> {
   }
 }
 
-export async function runSemgrep(repoPath: string, opts: { config?: string } = {}): Promise<ExternalFinding[]> {
+/** Tests y fixtures traen código vulnerable a propósito: no son parte de la app. */
+const SEMGREP_EXCLUDES = ['test', 'tests', '__tests__', 'spec', 'fixtures', '__fixtures__', 'e2e', '*.test.*', '*.spec.*'];
+
+export async function runSemgrep(
+  repoPath: string,
+  opts: { config?: string; subdir?: string } = {},
+): Promise<ExternalFinding[]> {
   const prov = requireApproved('semgrep'); // lanza si no aprobado
   // 'auto' usa el set recomendado del registry (requiere red). p/security-audit
   // resultó demasiado estrecho (0 reglas útiles) en la validación.
   const config = opts.config ?? 'auto';
   const abs = path.resolve(repoPath);
+  const excludes = SEMGREP_EXCLUDES.flatMap((p) => ['--exclude', p]);
+  // En un monorepo se escanea solo la app desplegada; las rutas siguen relativas a la raíz (scanRoot).
+  const target = (root: string) => (opts.subdir ? path.join(root, opts.subdir) : root);
 
   let out: string;
   let scanRoot: string;
   if (await hasBinary('semgrep')) {
     // Binario horneado en la imagen (Modal/Render) o instalado local.
     scanRoot = abs;
-    out = await run('semgrep', ['--config', config, '--json', '--quiet', abs]);
+    out = await run('semgrep', ['--config', config, '--json', '--quiet', ...excludes, target(abs)]);
   } else {
     // Fallback: imagen oficial pinneada vía Docker (dev local con daemon).
     scanRoot = '/src';
     const image = `semgrep/semgrep:${prov.pinned ?? 'latest'}`;
-    out = await run('docker', ['run', '--rm', '-v', `${abs}:/src:ro`, image, 'semgrep', '--config', config, '--json', '--quiet', '/src']);
+    out = await run('docker', ['run', '--rm', '-v', `${abs}:/src:ro`, image, 'semgrep', '--config', config, '--json', '--quiet', ...excludes, target('/src')]);
   }
 
   let data: any;

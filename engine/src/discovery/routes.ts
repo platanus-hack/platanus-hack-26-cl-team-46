@@ -17,6 +17,11 @@ function inferAuth(line: string): string | undefined {
   return undefined;
 }
 
+/** Chequeo de rol dentro del handler, al comienzo (`if (req.user.role !== 'admin') return 403`). */
+function inlineAdminCheck(lines: string[]): 'admin' | undefined {
+  return lines.some((l) => /\brole\s*[!=]==?\s*['"]admin['"]|\bisAdmin\b/.test(l)) ? 'admin' : undefined;
+}
+
 export function extractExpressRoutes(files: ScannedFile[], commit: string): RouteDef[] {
   const routes: RouteDef[] = [];
   for (const f of files) {
@@ -31,7 +36,8 @@ export function extractExpressRoutes(files: ScannedFile[], commit: string): Rout
         method,
         path: p,
         ref: { file: f.rel, line: i + 1, commit },
-        auth: inferAuth(line),
+        // El chequeo de rol en el handler manda: requireLogin + `role !== 'admin'` es una ruta de admin.
+        auth: inlineAdminCheck(f.lines.slice(i + 1, i + 5)) ?? inferAuth(line),
         params: expressParams(p),
         source: 'express',
       });
