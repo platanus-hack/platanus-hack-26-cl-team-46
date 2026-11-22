@@ -223,9 +223,12 @@ function statusOf(v: VulnFacts): VulnStatus {
   if (!v.attacked_seq) return 'pending';
   if (!v.done_seq) return 'exploiting';
   const lv = v.last_verify;
-  if (!lv || lv.seq < v.done_seq)
-    // Un ataque que terminó sin ningún attack.success lo detuvo una defensa.
-    return v.succeeded || v.attacker_active ? 'exploited' : 'contained';
+  if (!lv || lv.seq < v.done_seq) {
+    if (v.succeeded || v.attacker_active) return 'exploited';
+    // Sin attack.success lo detuvo una defensa. Si además el motor lo verificó a
+    // mitad del ataque (un cambio del developer) y ya no es explotable, quedó arreglado.
+    return lv && !lv.still_exploitable ? 'fixed' : 'contained';
+  }
   if (!lv.still_exploitable && !lv.attacker_active) return 'fixed';
   if (lv.still_exploitable && !lv.attacker_active) return 'contained';
   return 'exploited';

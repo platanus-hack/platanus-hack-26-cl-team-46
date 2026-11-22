@@ -453,10 +453,12 @@ export interface EngineVerify {
   vuln_id: string;
   call_id?: string;
   requested_at: string;
-  /** seq del control.verify que la pidió. */
+  /** seq del control.verify que la pidió (o del cambio del developer, si es de la repetición). */
   seq: number;
   status: 'running' | 'done' | 'failed';
   error?: string;
+  /** La pidió el propio motor a mitad de la repetición: el developer cambió algo antes de que el ataque lograra su objetivo. */
+  during_replay?: boolean;
 }
 
 /**
@@ -489,6 +491,10 @@ export interface EngineRecord {
   /** Vulns cuya repetición ya partió. */
   played: string[];
   current?: string | null;
+  /** Último cambio del developer (seq) ya considerado en la repetición en curso; parte en el seq del control que la inició. */
+  current_checked_seq?: number;
+  /** Verificación (seq) que tiene detenida la repetición en curso. */
+  holding?: number | null;
   verifies: EngineVerify[];
 }
 
