@@ -16,3 +16,4 @@ export { BackButton } from "./BackButton";
 export { DemoVideo } from "./DemoVideo";
 export { TypedLog } from "./TypedLog";
 export { Select, type SelectOption } from "./Select";
+export { ConfirmProvider, useConfirm, type ConfirmOptions } from "./ConfirmDialog";

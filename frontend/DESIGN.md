@@ -157,6 +157,15 @@ Acción del usuario. El primario es cian sólido (`defense`) con texto `on-defen
 - Tamaños: 40px (escritorio, paneles) y 52px `md-btn--lg` (landing).
 - Hover del primario: `defense-strong` + `glow-defense`. Foco: anillo `focus-ring`.
 
+### ConfirmDialog
+
+Reemplaza a los pop-ups nativos del navegador. **Nunca uses `window.confirm`, `alert` ni `prompt`**: abren la caja gris del sistema, que no es Mayday. Usa `const confirm = useConfirm()` y `if (await confirm({ title, description, confirmLabel })) …` (el provider ya está en `app/layout.tsx`).
+
+- Capa Mayday: tarjeta `bg-100`, borde `line-strong`, `radius-md`, `shadow-window`, sobre un fondo `bg-000` al 70%. Arriba un label mono con pixel cian, después el título (20, peso 600) y el texto de apoyo en `ink-muted`.
+- Botones a la derecha: "Cancelar" fantasma y el de confirmar primario cian, **aunque la acción sea destructiva** (es defensa). El label del botón dice el verbo: "Borra el sandbox", no "OK".
+- Con `destructive: true` el foco parte en "Cancelar". Esc o clic en el fondo cancelan. `cancelLabel: null` lo deja como aviso de un botón.
+- Entra con opacidad y `translateY(8px)` en 200 ms; nada con `prefers-reduced-motion`.
+
 ### BackButton
 
 Volver al paso anterior en la landing. Es sutil a propósito: label mono en `ink-faint` (`ink` al pasar el mouse), flecha Lucide, sin borde ni relleno, para no competir con el único primario.
