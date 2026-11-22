@@ -84,12 +84,12 @@ function DeployConsole() {
   const current = sandboxes.find((s) => s.sandbox_id === selected);
 
   return (
-    <main className="mx-auto w-full max-w-6xl p-8 font-sans">
+    <main className="mx-auto w-full max-w-6xl p-5 font-sans md:p-8">
       <h1 className="text-2xl font-semibold">Servicio de deploy</h1>
       <p className="mb-6 text-sm text-ink-muted">Repo de GitHub → sandbox en Render → URL</p>
 
       <form
-        className="mb-6 flex gap-2"
+        className="mb-6 flex flex-col gap-2 sm:flex-row"
         onSubmit={(e) => {
           e.preventDefault();
           run(async () => {
@@ -100,14 +100,14 @@ function DeployConsole() {
         }}
       >
         <input
-          className="h-10 min-w-0 flex-1 rounded-md border border-line-strong bg-bg-100 px-4 text-[13px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33]"
+          className="h-12 min-w-0 flex-none rounded-md border border-line-strong bg-bg-100 px-4 text-[16px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] sm:h-10 sm:flex-1 sm:text-[13px]"
           placeholder="https://github.com/usuario/repo"
           value={repoUrl}
           onChange={(e) => setRepoUrl(e.target.value)}
           required
         />
-        <Select aria-label="Modo de deploy" value={mode} options={MODE_OPTIONS} onChange={setMode} className="w-[300px]" />
-        <Button type="submit" variant="primary" disabled={busy} className="disabled:cursor-not-allowed disabled:opacity-50">
+        <Select aria-label="Modo de deploy" value={mode} options={MODE_OPTIONS} onChange={setMode} className="w-full sm:w-[300px]" />
+        <Button type="submit" variant="primary" disabled={busy} className="justify-center disabled:cursor-not-allowed disabled:opacity-50 max-sm:h-12!">
           Desplegar
         </Button>
       </form>

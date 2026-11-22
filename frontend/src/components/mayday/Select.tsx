@@ -127,7 +127,7 @@ export function Select<T extends string>({
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={onKeyDown}
-        className={`flex h-10 w-full items-center justify-between gap-4 rounded-md border bg-bg-100 px-4 text-left text-[13px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 focus-visible:border-defense focus-visible:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] disabled:cursor-not-allowed disabled:opacity-50 ${
+        className={`flex h-12 w-full items-center justify-between gap-4 rounded-md border bg-bg-100 px-4 text-left text-[15px] text-ink sm:h-10 sm:text-[13px] outline-none! transition-[border-color,box-shadow] duration-150 focus-visible:border-defense focus-visible:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] disabled:cursor-not-allowed disabled:opacity-50 ${
           open ? "border-defense shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33]" : "border-line-strong hover:bg-bg-200"
         }`}
       >
