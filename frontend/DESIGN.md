@@ -442,7 +442,7 @@ Todas las marcas de Hinty son **cian, rectas (wobble 0) y de 3 px**. Es una torr
 - **`md-evidence`** (contorno ámbar sólido de 2 px) sigue siendo el rastro del atacante, y no lo dibuja Hinty.
 - **Cuándo Hinty usa ámbar:** solo para señalar algo del atacante (una línea comprometida, un log de ataque). En ese caso, `ring`, `frame` o `arrow` van en ámbar **punteado** (6/6), nunca relleno, y siempre con una etiqueta cian al lado que lo explique. Así no se confunde con `md-evidence`, que es sólido.
 
-### 6. Pizarra (`board` / `node` / `edge`) y `chart`
+### 6. Pizarra (`board` / `zone` / `node` / `edge`) y `chart`
 
 La pizarra es **la pantalla del radar de la torre**: oscura, con grilla fina, donde Hinty arma el diagrama frente a ti.
 
@@ -454,6 +454,12 @@ La pizarra es **la pantalla del radar de la torre**: oscura, con grilla fina, do
 - **`node` del atacante** (si el contenido lo pide): fondo `attack-deep`, borde 2 px `attack` punteado y texto `attack-strong`.
 - **`edge`:** líneas rectas con codos a 90°, de 2 px `line-strong`. El edge activo (el que se está explicando) va en cian, con una punta triangular de 8 px.
 - **Etiqueta del `edge`:** Geist Mono 12 px `ink-muted`, sobre un parche de `hinty-board` para que la línea no la cruce.
+- **Pizarra de arquitectura** (cuando explica un ataque o cómo se defiende un sistema):
+  - **`zone`** (límite de confianza: Internet, tu app, tus datos): recuadro punteado fino (1,25 px, `3 5`, `radius-lg`) detrás de las cajas, a medio pasillo de ellas, con un velo apenas visible. Su nombre va en Geist Mono 10 px en mayúsculas sobre el borde, recortado sobre `hinty-board`. Gris `line-strong`; ámbar si la controla el atacante; cian si es lo que se protege. Máx 3.
+  - **`node.icon`:** ícono pixel de 16×16 del componente (atacante, usuario, navegador, API, servidor, base de datos, secreto, token, repo, logs, alerta…) en `currentColor`, en la línea chica de arriba junto a su técnica de ATT&CK, su tono o qué componente es. Si no cabe, queda solo el ícono.
+  - **`node.mitre`:** la técnica (T…) o mitigación (M…) de ATT&CK de la caja, validada contra la copia local. Va en la línea chica y en la leyenda del pie: una barra de 30 px como la de arriba, "MITRE ATT&CK" en `ink-faint` y cada ID en negrita (ámbar si es técnica, cian si es mitigación) con su nombre oficial.
+  - **`edge.n`:** el número de paso de la ruta del ataque, un cuadrado de 16 px (`radius` 3) sobre la línea, ámbar con texto oscuro en el ataque y cian en lo demás. La barra de arriba resume el dibujo a la derecha: "5 componentes · 2 zonas · ataque en 3 pasos".
+  - **Movimiento:** el punteado del ataque avanza hacia su punta y un paquete cuadrado de 6 px recorre las flechas del ataque y la que se está explicando. Con movimiento reducido, todo queda quieto.
 - **Cómo se dibuja:** primero aparecen las cajas (rise de 8 px + fade, 240 ms, una tras otra cada 120 ms), después se trazan los edges a 600 px/s, y el blip (el lápiz) recorre cada trazo.
 - **`chart`:** barras horizontales, una fila cada una. La pista es `bg-300`, la barra normal `line-strong` y **la barra destacada va en cian**, con su valor en Geist Mono 16 px a la derecha. Una barra con datos del atacante va en ámbar. La etiqueta de cada fila va a la izquierda, en Geist 14 px `ink-muted`.
 

@@ -10,3 +10,5 @@ export const MIC: string[];
 export function micSvg(size?: number): string;
 export const PENCIL: string[];
 export function pencilSvg(size?: number): string;
+export const NODE_ICONS: Record<string, string[]>;
+export function iconSvg(name: string, size?: number): string;
