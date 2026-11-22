@@ -51,7 +51,19 @@ export interface InputRequest {
 }
 
 /** Lo que guardamos internamente de cada sandbox. */
+/**
+ * Qué instancia del backend está trabajando en el sandbox. Render despliega sin
+ * downtime (dos instancias conviven unos segundos), así que una instancia nueva
+ * solo retoma un sandbox si su dueño dejó de renovar el heartbeat.
+ */
+export interface SandboxLease {
+  owner: string;
+  heartbeat_at: string;
+}
+
 export interface SandboxRecord {
+  /** Instancia del backend con una operación en curso (ver SandboxLease). */
+  lease?: SandboxLease;
   sandbox_id: string;
   /** Nombre que le puso el usuario. Si no hay, se muestra `owner/repo` (sandboxDisplayName). */
   name?: string;

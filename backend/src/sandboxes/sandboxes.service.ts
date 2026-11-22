@@ -1,13 +1,15 @@
 import {
   BadRequestException,
+  BeforeApplicationShutdown,
   ConflictException,
   Injectable,
   Logger,
   NotFoundException,
+  OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { AgentOrchestrator } from '../agent/agent.orchestrator.js';
 import type { Env } from '../config/env.js';
@@ -30,6 +32,11 @@ import {
   type SandboxManifest,
 } from './manifest.js';
 import { SandboxEventsService } from './sandbox-events.service.js';
+import {
+  decideRecovery,
+  heldByOtherInstance,
+  LEASE_HEARTBEAT_MS,
+} from './sandbox-recovery.js';
 import { SandboxStore } from './sandbox.store.js';
 import {
   sandboxDisplayName,
@@ -77,10 +84,17 @@ export interface SetEnvInput {
  * background: el progreso sale por SandboxEventsService.
  */
 @Injectable()
-export class SandboxesService implements OnModuleInit {
+export class SandboxesService
+  implements OnModuleInit, OnModuleDestroy, BeforeApplicationShutdown
+{
   private readonly logger = new Logger(SandboxesService.name);
   /** Una operación a la vez por sandbox. */
   private readonly locks = new Map<string, Promise<void>>();
+  /** Identifica a esta instancia en los leases (Render despliega sin downtime: conviven dos). */
+  readonly instanceId = `${process.env.RENDER_INSTANCE_ID ?? 'local'}-${randomUUID().slice(0, 8)}`;
+  private readonly heartbeats = new Map<string, NodeJS.Timeout>();
+  private recoveryTimer?: NodeJS.Timeout;
+  private recovering = false;
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -92,25 +106,113 @@ export class SandboxesService implements OnModuleInit {
     private readonly agents: AgentOrchestrator,
   ) {}
 
-  /** Retoma deploys que estaban en curso cuando el backend se reinició. */
+  /**
+   * No se marca nada como fallido al arrancar: durante un deploy la instancia
+   * vieja todavía puede estar trabajando. El loop de recuperación retoma solo
+   * lo que quedó huérfano (lease sin heartbeat).
+   */
   onModuleInit() {
-    for (const s of this.store.list()) {
-      if (s.status !== 'provisioning' && s.status !== 'deploying') continue;
-      const deploy = s.current_deploy;
-      if (s.render && deploy && !deploy.finished_at) {
-        this.logger.log(
-          `Retomando seguimiento del deploy ${deploy.id} de ${s.sandbox_id}`,
-        );
-        this.runExclusive(s.sandbox_id, () =>
-          this.followDeploy(s.sandbox_id, deploy.id),
-        );
-      } else if (!this.agentActive(s)) {
-        this.store.update(s.sandbox_id, {
-          status: 'failed',
-          error: 'El backend se reinició durante el aprovisionamiento',
-        });
-      }
+    const tick = () => {
+      void this.recover().finally(() => {
+        this.recoveryTimer = setTimeout(tick, RECOVERY_INTERVAL_MS);
+      });
+    };
+    this.recoveryTimer = setTimeout(tick, RECOVERY_FIRST_DELAY_MS);
+  }
+
+  onModuleDestroy() {
+    clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = undefined;
+  }
+
+  /**
+   * Al apagarse (SIGTERM en un deploy), espera a que terminen las operaciones
+   * en curso antes de cerrar. Mientras tanto sigue renovando los leases, así
+   * la instancia nueva no las retoma en paralelo. Si Render mata el proceso
+   * antes, el lease vence y la instancia nueva las retoma.
+   */
+  async beforeApplicationShutdown() {
+    const pending = [...this.locks.values()];
+    if (pending.length === 0) return;
+    this.logger.log(
+      `Apagando: esperando ${pending.length} operación(es) de sandboxes en curso`,
+    );
+    const done = await Promise.race([
+      Promise.allSettled(pending).then(() => true),
+      sleep(SHUTDOWN_DRAIN_MAX_MS).then(() => false),
+    ]);
+    if (!done) {
+      this.logger.warn(
+        'Apagando con operaciones en curso: otra instancia las retomará cuando venza su lease',
+      );
     }
+  }
+
+  /** Retoma sandboxes cuya instancia dueña murió (deploy, crash, OOM). */
+  private async recover() {
+    if (this.recovering) return;
+    this.recovering = true;
+    try {
+      await this.store.refreshFromDatabase((id) => this.locks.has(id));
+      for (const s of this.store.list()) {
+        if (this.locks.has(s.sandbox_id)) continue;
+        const action = decideRecovery(s, this.instanceId);
+        if (action.kind === 'skip') continue;
+        const id = s.sandbox_id;
+        this.logger.log(
+          `[${id}] retomando tras reinicio del backend: ${action.kind}`,
+        );
+        switch (action.kind) {
+          case 'follow':
+            this.runExclusive(id, () => this.followDeploy(id, action.deployId));
+            break;
+          case 'agent':
+            this.store.update(id, { status: 'analyzing', lease: undefined });
+            break;
+          case 'reprovision':
+            this.events.emit(
+              id,
+              'warning',
+              'Retomando el aprovisionamiento',
+              'El backend se reinició mientras preparaba el sandbox; se repiten los pasos pendientes.',
+            );
+            this.runExclusive(id, () => this.provision(id));
+            break;
+          case 'interrupted':
+            this.markInterrupted(id);
+            break;
+        }
+      }
+    } catch (err) {
+      this.logger.warn(`Recuperación de sandboxes: ${(err as Error).message}`);
+    } finally {
+      this.recovering = false;
+    }
+  }
+
+  /** Una operación se cortó antes de lanzar el deploy en Render: se informa y se deja reintentar. */
+  private markInterrupted(id: string) {
+    const s = this.get(id);
+    const message =
+      'El backend se reinició antes de lanzar el deploy en Render. Vuelve a intentarlo.';
+    if (this.agentActive(s)) {
+      // El plan nunca llegó a Render: se le devuelve al agente para que lo relance.
+      this.store.update(id, (r) => {
+        r.status = 'analyzing';
+        r.error = message;
+        r.lease = undefined;
+        if (r.agent && r.agent.plans_submitted > 0)
+          r.agent.plans_submitted -= 1;
+      });
+    } else {
+      const stillServing = s.deploys.some((d) => d.status === 'live');
+      this.store.update(id, {
+        status: stillServing ? 'ready' : 'failed',
+        error: message,
+        lease: undefined,
+      });
+    }
+    this.events.emit(id, 'warning', 'Operación interrumpida', message);
   }
 
   // ------------------------------------------------------------ consultas
@@ -138,7 +240,9 @@ export class SandboxesService implements OnModuleInit {
   }
 
   isBusy(id: string): boolean {
-    return this.locks.has(id);
+    if (this.locks.has(id)) return true;
+    const s = this.store.get(id);
+    return Boolean(s && heldByOtherInstance(s, this.instanceId));
   }
 
   agentActive(s: SandboxRecord): boolean {
@@ -865,6 +969,7 @@ export class SandboxesService implements OnModuleInit {
 
   /** Encola `fn` detrás de cualquier otra operación del mismo sandbox y registra errores. */
   private runExclusive(id: string, fn: () => Promise<void>) {
+    if (!this.locks.has(id)) this.claimLease(id);
     const prev = this.locks.get(id) ?? Promise.resolve();
     const next = prev
       .catch(() => undefined)
@@ -872,8 +977,35 @@ export class SandboxesService implements OnModuleInit {
       .catch((err: Error) => this.handleFailure(id, err));
     this.locks.set(id, next);
     void next.finally(() => {
-      if (this.locks.get(id) === next) this.locks.delete(id);
+      if (this.locks.get(id) !== next) return; // quedó otra operación encolada
+      this.locks.delete(id);
+      this.releaseLease(id);
     });
+  }
+
+  /** Marca el sandbox como tomado por esta instancia y renueva el heartbeat mientras trabaja. */
+  private claimLease(id: string) {
+    const beat = () => {
+      if (!this.store.get(id)) return;
+      this.store.update(id, {
+        lease: {
+          owner: this.instanceId,
+          heartbeat_at: new Date().toISOString(),
+        },
+      });
+    };
+    beat();
+    clearInterval(this.heartbeats.get(id));
+    this.heartbeats.set(id, setInterval(beat, LEASE_HEARTBEAT_MS));
+  }
+
+  private releaseLease(id: string) {
+    clearInterval(this.heartbeats.get(id));
+    this.heartbeats.delete(id);
+    const s = this.store.get(id);
+    if (s?.lease?.owner === this.instanceId) {
+      this.store.update(id, { lease: undefined });
+    }
   }
 
   private handleFailure(id: string, err: Error) {
@@ -1073,5 +1205,16 @@ const ANSI = /\u001b\[[0-9;]*[A-Za-z]/g;
 function stripAnsi(s: string): string {
   return s.replace(ANSI, '');
 }
+
+/** Primera pasada de recuperación tras arrancar, y cada cuánto se repite. */
+const RECOVERY_FIRST_DELAY_MS = 5_000;
+const RECOVERY_INTERVAL_MS = 15_000;
+/**
+ * Máximo que se espera a las operaciones en curso al apagar. En Render free el
+ * proceso se mata a los ~30 s (maxShutdownDelaySeconds no es configurable); con
+ * plan pagado conviene subirlo a 300. Lo que no alcance, lo retoma otra
+ * instancia cuando vence el lease.
+ */
+const SHUTDOWN_DRAIN_MAX_MS = 280_000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

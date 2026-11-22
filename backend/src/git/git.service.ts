@@ -108,12 +108,18 @@ export class GitService {
   ): Promise<{ mirrorUrl: string; sha: string; removedWorkflows: boolean }> {
     this.assertToken();
     const dir = this.workdir(sandboxId);
-    await this.github('POST', `/orgs/${this.org}/repos`, {
-      name: repoName,
-      private: true,
-      auto_init: false,
-      description: `Sandbox snapshot de ${source.url}@${source.sha.slice(0, 7)}`,
-    });
+    try {
+      await this.github('POST', `/orgs/${this.org}/repos`, {
+        name: repoName,
+        private: true,
+        auto_init: false,
+        description: `Sandbox snapshot de ${source.url}@${source.sha.slice(0, 7)}`,
+      });
+    } catch (err) {
+      // Idempotente: si un intento anterior (cortado por un reinicio del backend)
+      // ya creó el repo, se reutiliza y el snapshot se sube con force push.
+      if (!isRepoAlreadyExists(err)) throw err;
+    }
 
     await rm(path.join(dir, '.git'), { recursive: true, force: true });
     const removedWorkflows = await stripWorkflows(dir);
@@ -124,7 +130,9 @@ export class GitService {
       ['remote', 'add', 'origin', `${this.mirrorUrl(repoName)}.git`],
       dir,
     );
-    await this.git(['push', '-u', 'origin', 'main'], dir, { auth: true });
+    await this.git(['push', '--force', '-u', 'origin', 'main'], dir, {
+      auth: true,
+    });
     const sha = (await this.git(['rev-parse', 'HEAD'], dir)).trim();
     return { mirrorUrl: this.mirrorUrl(repoName), sha, removedWorkflows };
   }
@@ -356,4 +364,10 @@ export function classifySourceRepo(
     .split('/');
   if (owner.toLowerCase() !== org.toLowerCase()) return 'external';
   return /^sbx-[0-9a-f]{8}(-\d+)?$/i.test(name) ? 'mirror' : 'org';
+}
+
+/** GitHub responde 422 "name already exists on this account" al crear un repo repetido. */
+export function isRepoAlreadyExists(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes('→ 422') && /already exists/i.test(msg);
 }
