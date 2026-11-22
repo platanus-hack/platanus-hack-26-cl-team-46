@@ -7,7 +7,20 @@ import type { DeployLogRow } from "@/components/mayday";
  */
 
 export const HERO = {
-  title: "Ensaya el hackeo antes de que pase",
+  /** Titular: prefijo fijo + una frase que rota con borrado de pixeles (PixelRotator). */
+  titlePrefix: "Defiende un ataque antes de que",
+  /** Lo que le puede pasar a un dev con su proyecto. La última es el remate y se queda más tiempo. */
+  titlePhrases: [
+    "se te filtre una key",
+    "te roben una contraseña",
+    "te detecten una API abierta",
+    "te vacíen la base de datos",
+    "alguien entre como admin",
+    "te secuestren la sesión",
+    "tus usuarios se enteren primero",
+    "te llegue la factura de la nube",
+    "sea real",
+  ],
   /** Única salida del hero: el flujo pasa por la landing y termina en Entra con GitHub (/start). */
   scrollHint: "BAJA PARA EMPEZAR",
   project: "apuntes.dev",

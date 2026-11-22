@@ -18,13 +18,19 @@ export function MaydayAlert({
   right?: ReactNode;
 }) {
   if (solid) {
-    const repeated = Array.from({ length: 4 }, () => message).join("   ·   ");
+    // Cada copia mide más que una pantalla ancha (8 mensajes ≈ 3.000 px), y termina en separador
+    // para que el empalme entre copias sea igual al de adentro.
+    const sep = "\u00a0\u00a0·\u00a0\u00a0"; // espacios no separables: el del final no se recorta
+    const copy = Array.from({ length: 8 }, () => message).join(sep) + sep;
     return (
       <div className="md-alert md-alert--solid" role="status">
         <span className="md-alert__call shrink-0" aria-hidden="true" />
+        {/* Loop sin fin: dos copias iguales; el track se corre la mitad y vuelve a empezar. */}
         <div className="md-marquee min-w-0 flex-1">
-          {/* Delay negativo: el texto ya se ve al cargar en vez de entrar desde el borde. */}
-          <span style={{ animationDelay: "-11s" }}>{repeated}</span>
+          <div className="md-marquee__track">
+            <span>{copy}</span>
+            <span aria-hidden="true">{copy}</span>
+          </div>
         </div>
         {right}
       </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState, type CSSProperties, type ReactNode, type Ref } from "react";
 import { Hud, Logo, StatusChip, useReducedMotion, type HudItem } from "@/components/mayday";
 import { CALM, HERO, UNDER_ATTACK, type LogRow } from "./content";
+import { PixelRotator } from "./PixelRotator";
 
 /**
  * Escena 1 · Hero partido en dos (la dualidad).
@@ -49,8 +50,15 @@ export function HeroSplit({
         className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-4 text-center md:justify-start md:gap-6 md:pt-[9svh]"
       >
         <Logo height={28} priority />
-        <h1 className="max-w-[11ch] text-[clamp(40px,min(8.4vw,13svh),120px)] leading-[0.92] font-semibold tracking-[-0.045em] text-ink md:max-w-[16ch]">
-          {HERO.title}
+        {/* El lector de pantalla lee la frase completa con el remate; la rotación es solo visual. */}
+        <h1
+          aria-label={`${HERO.titlePrefix} ${HERO.titlePhrases[HERO.titlePhrases.length - 1]}`}
+          className="max-w-[12ch] text-[clamp(36px,min(6.6vw,8.4svh),104px)] leading-[0.95] font-semibold tracking-[-0.045em] text-ink md:max-w-[17ch]"
+        >
+          <span aria-hidden="true" className="block text-balance">
+            {HERO.titlePrefix}
+          </span>
+          <PixelRotator phrases={HERO.titlePhrases} className="w-full text-attack-strong" />
         </h1>
         <span className="md-index flex items-center gap-2">
           {HERO.scrollHint}
