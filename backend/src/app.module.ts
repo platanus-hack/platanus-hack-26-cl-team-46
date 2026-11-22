@@ -3,7 +3,6 @@ import { ConfigModule } from '@nestjs/config';
 import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
 import { AuthModule } from './auth/auth.module.js';
-import { DeployWatcherModule } from './deploy-watcher/deploy-watcher.module.js';
 import { ClickyModule } from './clicky/clicky.module.js';
 import { validateEnv } from './config/env.js';
 import { PreviewModule } from './preview/preview.module.js';
@@ -30,7 +29,6 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
     PreviewModule,
     SimulationsModule,
     ClickyModule,
-    DeployWatcherModule,
   ],
   controllers: [AppController],
 })

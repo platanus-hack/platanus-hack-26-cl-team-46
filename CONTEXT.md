@@ -307,7 +307,7 @@ Pregunta abierta del ADR 0007 (PR #2): los eventos `attack.*` del timeline son `
 | Backend | https://api.mayday.rip, servicio Render `hack26-backend` (Docker, `backend/Dockerfile`, incluye `git`). También responde en `hack26-backend.onrender.com`. |
 | DNS | Cloudflare, zona `mayday.rip`, 3 CNAME en modo **DNS only** (lo exige Render para emitir certificados). |
 | Base de datos | Instancia compartida `hack26-shared-pg` (free, expira a los 30 días). DB `hack26_backend` para el estado del backend; una DB `sbx_xxxx` por sandbox. |
-| GitHub | Repo `platanus-hack/platanus-hack-26-cl-team-46` (público, de donde despliega Render; antes `rmena1/hack-26`). Org `hack26-sandboxes`: repo `apuntes` (víctima), `zz-fallback-test` (demo del rescate con IA) y un mirror `sbx-xxxx` por sandbox. La Render GitHub App está instalada con "All repositories". |
+| GitHub | Repo de trabajo y de deploy: `rmena1/hack-26` (privado, conectado a Render). Espejo público para la evaluación: `platanus-hack/platanus-hack-26-cl-team-46` (Render no puede conectarse a repos de la organización). Org `hack26-sandboxes`: repo `apuntes` (víctima), `zz-fallback-test` (demo del rescate con IA) y un mirror `sbx-xxxx` por sandbox. La Render GitHub App está instalada con "All repositories". |
 | Conductor | Proyecto `hack-26` (base de las VMs de agentes, rama `CONDUCTOR_PROJECT_BRANCH=main`). VMs de agentes: `deploy sbx-…` y `sim sim-…`. |
 | Sandboxes vivos conocidos | `sbx-8e92f100` (Apuntes, usado por `sim-193e5206`). |
 

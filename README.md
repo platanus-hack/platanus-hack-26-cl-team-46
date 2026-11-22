@@ -82,7 +82,14 @@ pnpm dev                                  # backend :3001 + frontend :3000
 | `hack26-frontend` | https://mayday.rip (también https://hack26-frontend.onrender.com) | Docker, `frontend/Dockerfile` (contexto: raíz) |
 | `hack26-backend` | https://api.mayday.rip (también https://hack26-backend.onrender.com) | Docker, `backend/Dockerfile` (contexto: raíz) |
 
-- **Se despliegan desde este repo** (`platanus-hack/platanus-hack-26-cl-team-46`, rama `main`). Render no puede conectarse a repos de la organización `platanus-hack`, así que los servicios usan la URL pública del repo y Render solo los despliega a pedido. El deploy automático lo hace el backend (`backend/src/deploy-watcher`): cada minuto lee la punta de `main` con `git ls-remote` y, si cambió, le pide a Render el deploy de ese commit en los dos servicios (`SELF_DEPLOY_REPO_URL` y `SELF_DEPLOY_SERVICE_IDS`). Un push a `main` queda en producción en unos 5 minutos.
+- **Se despliegan desde un repo personal, `rmena1/hack-26`**, con cada push a su `main`. Render no puede conectarse a repos de la organización `platanus-hack`, así que seguimos la recomendación de la organización: el deploy sale del repo personal y este repo es su espejo, con todos los commits para la evaluación. Para pushear a los dos con un solo `git push`:
+
+  ```bash
+  git remote set-url --add --push origin https://github.com/platanus-hack/platanus-hack-26-cl-team-46.git
+  git remote set-url --add --push origin https://github.com/rmena1/hack-26.git
+  ```
+
+  Lo que se mergea por PR en `rmena1/hack-26` se trae acá con un push de su `main` a este repo.
 - Dominio: `mayday.rip` en Cloudflare, con CNAME "DNS only" hacia los servicios de Render (`@` y `www` → frontend, `api` → backend). Render emite los certificados.
 - El backend guarda el estado en la base `hack26_backend` de la instancia compartida `hack26-shared-pg` (`DATABASE_URL`), porque el disco de Render es efímero.
 - Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, a la que llaman los agentes. Conductor crea las VMs de los agentes desde `main` (se puede cambiar con `CONDUCTOR_PROJECT_BRANCH`).
