@@ -462,7 +462,7 @@ describe('marcas con color y formas variadas', () => {
   });
 });
 
-describe('lo que marca el usuario (Control + Option)', () => {
+describe('lo que marca el usuario (modo marcar + shift)', () => {
   const body = (annotation: unknown) =>
     lessonSchema.safeParse({
       question: '¿qué es esto?',

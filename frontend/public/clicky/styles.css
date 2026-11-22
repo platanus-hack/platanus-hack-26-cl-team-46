@@ -270,18 +270,14 @@ html.clicky-drawing, html.clicky-drawing * { cursor: crosshair !important; }
 
 /* Mientras el usuario habla encima de una explicación, lo dibujado se atenúa (no se borra). */
 .clicky-root.clicky-dimmed > .clicky-layer:not(.clicky-penlayer), .clicky-root.clicky-dimmed > .clicky-panels { filter: opacity(.3); transition: filter .15s; }
-/* En la captura no salen el blip ni la cápsula (sí el trazo del usuario: el modelo tiene que verlo). */
-.clicky-root.clicky-capturing .clicky-penlayer, .clicky-root.clicky-capturing .clicky-capsule { visibility: hidden; }
+/* En la captura no sale el blip (sí el trazo del usuario: el modelo tiene que verlo). */
+.clicky-root.clicky-capturing .clicky-penlayer { visibility: hidden; }
 
-/* El trazo del usuario (Control + Option): blanco (ink), a mano alzada; el cian es de Hinty. */
+/* El trazo del usuario (modo marcar + shift): blanco (ink), a mano alzada; el cian es de Hinty. */
 .clicky-user { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; transition: opacity .4s; }
 .clicky-user path { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 1px var(--bg-000)) drop-shadow(0 1px 3px #000000a0); }
 .clicky-user.fading { opacity: 0; }
 
-/* Cápsula junto al cursor con lo que el usuario va diciendo mientras marca. */
-.clicky-capsule { position: fixed; display: none; max-width: 260px; padding: 4px 8px; background: var(--bg-100); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow-toast); font: 400 13px/18px var(--f-ui); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clicky-capsule.on { display: block; animation: clicky-in .2s var(--ease-in) both; }
-.clicky-capsule.muted { color: var(--ink-muted); }
 
 /* check y "?": cuadros de 24 px con borde cian junto al elemento */
 .clicky-tick, .clicky-q { position: absolute; width: 24px; height: 24px; display: grid; place-items: center; background: var(--bg-000); box-shadow: 0 0 0 2px var(--defense); }

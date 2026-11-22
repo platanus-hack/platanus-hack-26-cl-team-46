@@ -99,9 +99,9 @@ export function createIsland(parent, { talkKey = 'fn', onType, onTalk, onMark, o
     input.focus();
     const close = () => { if (!input.isConnected) return; input.remove(); cap.style.display = ''; delete el.dataset.input; };
     closeInput = close;
-    // Control, Option y Shift pasan: con el input abierto igual se puede hablar y marcar (⌃⌥, o shift con el modo marcar)
-    // y con el input vacío, la tecla de hablar también pasa (el kit la toma y no escribe el espacio)
-    const modifier = e => e.key === 'Control' || e.key === 'Alt' || e.key === 'Shift' || ((e.code === talkCode || e.key === talkCode) && !input.value);
+    // Shift pasa (con el modo marcar dibuja) y la tecla de hablar también (fn no escribe; si fuera
+    // espacio, solo con el input vacío): con el input abierto igual se puede hablar y marcar.
+    const modifier = e => e.key === 'Shift' || ((e.code === talkCode || e.key === talkCode) && !input.value);
     input.addEventListener('keydown', e => {
       if (modifier(e)) return;
       e.stopPropagation();

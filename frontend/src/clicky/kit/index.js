@@ -25,7 +25,7 @@ import { harvestScreen, labelShot, shownFraction, ATTACK } from './harvest.js';
 // their voice already synthesized (beat.audio); otherwise the browser speaks.
 // Talking: hold fn (or the talk button; a short click keeps it listening). Marking: the pencil turns on
 // the mark mode, and while it is on, holding Shift draws with the cursor; the marks go with the next
-// question (spoken or typed). Holding Control + Option still talks and marks at the same time.
+// question (spoken or typed).
 // buddy: the blip follows the cursor when Hinty is not drawing. proactive: when a new attacker
 // signal shows up, Hinty flies there and offers to explain it (at most once every 45 s).
 export function createClicky({
@@ -55,7 +55,6 @@ export function createClicky({
   layers.spot.style.opacity = 0;
   const gesture = createGesture(root, { words: () => partial.split(/\s+/).filter(Boolean).length });
   const penLayer = svgEl('svg', { class: 'clicky-layer clicky-penlayer' }, root);
-  const capsule = htmlEl('div', 'clicky-capsule', root);
 
   let current = THEMES[theme] || THEMES.mayday, voiceOn = voice, history = [], busy = false, answering = null;
   let talking = false, askGen = 0, lastQuestion = '', lastAnswerAt = 0, partial = '', interruptedSay = '', stepSeen = () => {};
@@ -393,10 +392,10 @@ export function createClicky({
     if (nudging !== token) return true;
     if (res?.tag) {
       res.tag.classList.add('clicky-nudge');
-      res.tag.innerHTML = 'Nueva señal del atacante <kbd>⌃⌥</kbd><span>o clic y te explico</span>';
+      res.tag.innerHTML = `Nueva señal del atacante <kbd>${talkKey}</kbd><span>o clic y te explico</span>`;
       res.tag.onclick = () => explainNudge(el);
     }
-    island.caption('Señal nueva del atacante. Mantén ⌃⌥ y pregúntame.', { muted: true });
+    island.caption(`Señal nueva del atacante. Mantén ${talkKey} y pregúntame.`, { muted: true });
     setTimeout(() => { if (nudging === token && !listening && !busy) { nudgeEl = null; wipe({ fast: true }); island.idle(); } }, 10_000);
     return true;
   }
@@ -431,27 +430,20 @@ export function createClicky({
     if (ctx.strokes.length || ctx.items.length) dim(true);
   }
 
-  // listening: null, 'key' (fn o el botón) o 'combo' (Control + Option: además marca con el cursor).
+  // listening: true mientras se escucha (fn o el botón).
   // latched: sigue escuchando aunque se suelte la tecla (un clic corto en el botón).
   // markMode: el lápiz encendido; con él, mantener shift dibuja con el cursor.
   let listening = null, latched = false, markMode = false;
-  function startMarking() {
-    gesture.start();
-    capsule.textContent = 'Te escucho…';
-    capsule.classList.add('on', 'muted');
-    island.caption('Te escucho · marca con el cursor lo que quieras mostrarme');
-  }
-  async function listen(mode) {
+  async function listen() {
     if (busy || listening) return;
-    listening = mode;
+    listening = true;
     latched = false;
     partial = '';
     island.closeInput(); // para que se vea lo que vas diciendo
     sounds.unlock();
     sounds.listen();
     interrupt();
-    if (mode === 'combo') startMarking();
-    else island.caption('Te escucho…');
+    island.caption('Te escucho…');
     island.state('listening');
     try {
       await mic.start({
@@ -460,14 +452,11 @@ export function createClicky({
         onPartial: t => {
           partial = t;
           island.caption('“' + t + '”');
-          if (listening === 'combo') { capsule.classList.remove('muted'); capsule.textContent = t.split(/\s+/).slice(-9).join(' '); }
         },
       });
     } catch (e) {
       listening = null;
       latched = false;
-      gesture.clear(true);
-      capsule.classList.remove('on');
       dim(false);
       island.caption('No tengo acceso al micrófono: ' + e.message, { error: true });
       island.state('idle');
@@ -475,16 +464,14 @@ export function createClicky({
   }
   async function send() {
     if (!listening) return;
-    const mode = listening;
     listening = null;
     latched = false;
-    if (mode === 'combo' || markMode) gesture.stop();
-    capsule.classList.remove('on');
+    if (markMode) gesture.stop();
     const h = harvest(); // ahora, antes de que algo se mueva
     const { text, blob } = await mic.stop();
     prefetchStt();
-    let strokes = mode === 'combo' || markMode ? gesture.finish(candidates(h), text || '') : [];
-    // ⌃⌥ con un aviso en pantalla y sin marcar nada: la pregunta es por ese aviso
+    let strokes = markMode ? gesture.finish(candidates(h), text || '') : [];
+    // Hablando con un aviso en pantalla y sin marcar nada: la pregunta es por ese aviso
     if (!strokes.length && nudging && nudgeEl?.isConnected) { const m = pointAt(nudgeEl, h); if (m) strokes = [m]; }
     const annotation = strokes.length ? { marks: strokes } : null;
     const interrupted = interruptedSay;
@@ -495,7 +482,7 @@ export function createClicky({
       if (fallback) return ask(fallback, { annotation, harvest: h, interrupted });
       gesture.clear();
       dim(false);
-      island.idle(mode === 'combo' ? 'Habla mientras marcas con el cursor' : `Mantén ${talkKey} o el botón mientras hablas`);
+      island.idle(`Mantén ${talkKey} o el botón mientras hablas`);
       return;
     }
     island.caption('Transcribiendo…');
@@ -518,7 +505,7 @@ export function createClicky({
     if (t === 'down') {
       stopOnUp = !!listening;
       pressedAt = performance.now();
-      if (!listening) listen('key');
+      if (!listening) listen();
       return;
     }
     if (!listening) return;
@@ -535,7 +522,7 @@ export function createClicky({
       if (!listening) island.idle('Modo marcar: mantén shift y mueve el cursor sobre lo que quieras mostrarme');
     } else {
       shiftDraw(false);
-      if (listening !== 'combo') gesture.clear();
+      gesture.clear();
       if (!listening && !busy) island.idle();
     }
   }
@@ -545,7 +532,7 @@ export function createClicky({
     shiftDown = on;
     document.documentElement.classList.toggle('clicky-drawing', on);
     if (on && !gesture.drawing) gesture.start();
-    if (!on && listening !== 'combo') gesture.lift();
+    if (!on) gesture.lift();
   }
   // Una pregunta escrita con el modo marcar lleva lo marcado.
   function typed(q) {
@@ -558,33 +545,25 @@ export function createClicky({
   const hintyInputEmpty = () => { const a = document.activeElement; return a?.tagName === 'INPUT' && root.contains(a) && !a.value; };
   const isTalkKey = e => e.key === pushToTalkKey || e.code === pushToTalkKey;
   const typing = () => ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
-  const isCombo = e => e.ctrlKey && e.altKey && (e.key === 'Control' || e.key === 'Alt');
   const down = e => {
     if (e.key === 'Shift' && markMode) shiftDraw(true);
-    if (isCombo(e)) { e.preventDefault(); if (!e.repeat && !listening) listen('combo'); return; }
     if (e.key === 'Escape' && (pending || ctx.walk) && !listening) { stopWalk(); return; }
     if (!isTalkKey(e) || e.ctrlKey || e.altKey || e.metaKey) return;
     if (listening) { e.preventDefault(); return; }
     // fn no escribe nada, así que funciona aunque el foco esté en un campo. Otra tecla (espacio) escribe,
     // salvo en el input de Hinty vacío (un espacio al inicio no sirve).
-    if (!e.repeat && (pushToTalkKey === 'Fn' || !typing() || hintyInputEmpty())) { e.preventDefault(); listen('key'); }
+    if (!e.repeat && (pushToTalkKey === 'Fn' || !typing() || hintyInputEmpty())) { e.preventDefault(); listen(); }
   };
   const up = e => {
     if (e.key === 'Shift') shiftDraw(false);
     if (latched) return; // con un clic corto en el botón, se envía con otro clic
-    if (listening === 'combo' && (e.key === 'Control' || e.key === 'Alt')) { e.preventDefault(); send(); }
-    else if (listening === 'key' && isTalkKey(e)) { e.preventDefault(); send(); }
+    if (listening && isTalkKey(e)) { e.preventDefault(); send(); }
   };
   const lost = () => { shiftDraw(false); if (listening) send(); };
   const move = e => {
     ctx.pen.cursor(e.clientX, e.clientY);
     if (markMode) shiftDraw(e.shiftKey); // por si shift se apretó o soltó fuera de la ventana
-    if (markMode && e.shiftKey && listening !== 'combo') gesture.add(e.clientX, e.clientY);
-    if (listening === 'combo') {
-      gesture.add(e.clientX, e.clientY);
-      capsule.style.left = Math.min(innerWidth - 280, e.clientX + 22) + 'px';
-      capsule.style.top = Math.min(innerHeight - 40, e.clientY + 30) + 'px';
-    }
+    if (markMode && e.shiftKey) gesture.add(e.clientX, e.clientY);
     if (pending) glow(e.clientX, e.clientY);
   };
   addEventListener('keydown', down);
