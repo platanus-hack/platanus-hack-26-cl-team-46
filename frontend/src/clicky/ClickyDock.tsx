@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_URL } from "@/lib/api";
+import { simApi } from "@/lib/sim-api";
 import { useClickySimulation } from "./active-sim";
 import { CLICKY_CONFIG } from "./config";
 import { HintyHeadset } from "./HintyHeadset";
@@ -112,6 +113,7 @@ export function DockView({
  */
 function Dock({ simId, ended }: { simId: string; ended: boolean }) {
   const [status, setStatus] = useState<DockStatus>("off");
+  useHintyPause(simId, !ended && (status === "on" || status === "starting"));
   const [seeing, setSeeing] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [intro, setIntro] = useState(false);
@@ -170,14 +172,14 @@ function Dock({ simId, ended }: { simId: string; ended: boolean }) {
       theme: CLICKY_CONFIG.theme,
       surface: CLICKY_CONFIG.surface,
       voice: CLICKY_CONFIG.voice,
-      hint: "⌃⌥ / ESPACIO · Mantén apretado para hablar",
       context: CLICKY_CONFIG.context,
       screenshot: () => capture.current?.grab() ?? Promise.resolve(null),
+      onClose: () => shutdown(),
     });
     clicky.current.caption(cap ? "Veo tu pantalla. ¿En qué te ayudo?" : "No veo tu pantalla, pero leo el texto. ¿En qué te ayudo?");
     clicky.current.openInput();
     setStatus("on");
-  }, [simId]);
+  }, [simId, shutdown]);
 
   const toggle = () => {
     if (status === "starting") return;
@@ -214,7 +216,8 @@ function Dock({ simId, ended }: { simId: string; ended: boolean }) {
 
 /**
  * Hinty vive en la columna principal (Chrome + logs), nunca sobre el panel del Agente
- * (DESIGN.md › Hinty › 11). Si la página marca esa columna con data-clicky-region="column", el tile
+ * (DESIGN.md › Hinty › 11). La barra de arriba toma el alto del header marcado con
+ * data-clicky-region="header". Si la página marca esa columna con data-clicky-region="column", el tile
  * va abajo a su derecha (16 px adentro) y la isla arriba al centro; si no, en las esquinas de la
  * pantalla. Las posiciones van como variables CSS en <html> (las leen dock.css y styles.css).
  */
@@ -227,6 +230,10 @@ function useColumnAnchor() {
     const update = () => {
       cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
+        // La barra de Hinty calza justo con el header (incluida su línea de abajo): tapa el header, no las apps.
+        const header = document.querySelector('[data-clicky-region="header"]')?.getBoundingClientRect();
+        if (header?.height) root.style.setProperty("--hinty-bar-h", `${Math.max(56, Math.round(header.bottom))}px`);
+        else root.style.removeProperty("--hinty-bar-h");
         const col = document.querySelector('[data-clicky-region="column"]');
         const r = col?.getBoundingClientRect();
         if (!r || !r.width) return ANCHOR_VARS.forEach((v) => root.style.removeProperty(v));
@@ -246,6 +253,34 @@ function useColumnAnchor() {
       clearInterval(poll);
       window.removeEventListener("resize", update);
       ANCHOR_VARS.forEach((v) => root.style.removeProperty(v));
+      root.style.removeProperty("--hinty-bar-h");
     };
   }, []);
+}
+
+/**
+ * Mientras Hinty está encendido, el incidente se pausa (el atacante y el reloj se detienen) y
+ * se reanuda al apagarlo, al cambiar de página o al cerrar la pestaña. Si la simulación no está
+ * corriendo, el backend lo ignora; y si una pausa quedara colgada, se reanuda sola a los 10 min.
+ */
+function useHintyPause(simId: string, active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    void simApi.control(simId, "pause", undefined, "hinty").catch(() => {});
+    const resume = () => {
+      // keepalive: el pedido sale aunque la pestaña se esté cerrando.
+      void fetch(`${API_URL}/simulations/${simId}/control`, {
+        method: "POST",
+        credentials: "include",
+        keepalive: true,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "resume", reason: "hinty" }),
+      }).catch(() => {});
+    };
+    window.addEventListener("pagehide", resume);
+    return () => {
+      window.removeEventListener("pagehide", resume);
+      resume();
+    };
+  }, [simId, active]);
 }

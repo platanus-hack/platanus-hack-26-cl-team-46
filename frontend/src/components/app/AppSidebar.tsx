@@ -39,7 +39,11 @@ export function AppFrame({ children }: { children: ReactNode }) {
   if (WITHOUT_SIDEBAR.includes(pathname)) return children;
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-4 border-b border-line bg-bg-000 pr-4 max-md:hidden">
+      {/* data-clicky-region="header": la barra azul de Hinty calza con esta barra. */}
+      <header
+        data-clicky-region="header"
+        className="fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-4 border-b border-line bg-bg-000 pr-4 max-md:hidden"
+      >
         {/* pl-4: el símbolo queda centrado sobre la franja de íconos de la barra lateral (56 px). */}
         <Link href="/" aria-label="Mayday, inicio" className="flex h-full shrink-0 items-center rounded-sm pr-2 pl-4 focus-visible:outline-offset-[-2px]">
           <Logo height={24} priority />

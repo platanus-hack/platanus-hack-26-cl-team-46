@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { computeFacts, type IncidentFacts } from '../brain/facts.js';
+import {
+  activeElapsedMs,
+  computeFacts,
+  type IncidentFacts,
+} from '../brain/facts.js';
 import { factsBlock } from '../brain/tasks.js';
 import type { SimulationRecord, TimelineEvent } from '../simulation.types.js';
 import {
@@ -84,10 +88,8 @@ export function computeReportMetrics(s: ReportSim): ReportMetrics {
     started_at: startedAt,
     ended_at: endedAt,
     time: start
-      ? Math.max(
-          0,
-          Math.round((Date.parse(endedAt) - Date.parse(startedAt)) / 1000),
-        )
+      ? // Tiempo activo: las pausas por Hinty no cuentan.
+        Math.round(activeElapsedMs(tl, startedAt, Date.parse(endedAt)) / 1000)
       : 0,
     prompts,
     manual,

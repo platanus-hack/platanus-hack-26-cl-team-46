@@ -154,8 +154,8 @@ export const simApi = {
   create: (body: { repo_url?: string; sandbox_id?: string }) => post<Simulation>("/simulations", body),
   /** Con el motor real se pueden elegir los incidentes (en orden). */
   start: (id: string, vulns?: string[]) => post<Simulation>(`/simulations/${id}/start`, vulns?.length ? { vulns } : {}),
-  control: (id: string, action: "next" | "pause" | "resume" | "finish", vuln_id?: string) =>
-    post<Simulation>(`/simulations/${id}/control`, { action, vuln_id }),
+  control: (id: string, action: "next" | "pause" | "resume" | "finish", vuln_id?: string, reason?: "hinty") =>
+    post<Simulation>(`/simulations/${id}/control`, { action, vuln_id, ...(reason ? { reason } : {}) }),
   message: (id: string, text: string) => post<TimelineEvent>(`/simulations/${id}/messages`, { text }),
   action: (id: string, action: string, params: Record<string, unknown> = {}, free_text?: string) =>
     post<TimelineEvent>(`/simulations/${id}/actions`, { action, params, free_text }),

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 
 import { DockView, dockCopy, type DockStatus } from "@/clicky/ClickyDock";
 import { HintyHeadset } from "@/clicky/HintyHeadset";
 import { rectD } from "@/clicky/kit/geometry.js";
-import { checkSvg, headsetSvg } from "@/clicky/kit/icons.js";
+import { checkSvg, headsetSvg, micSvg, pencilSvg } from "@/clicky/kit/icons.js";
 import { Browser, DeployLogs, StatusChip } from "@/components/mayday";
 // El CSS del kit (el mismo que carga createClicky desde /clicky/styles.css).
 import "../../../public/clicky/styles.css";
@@ -137,7 +137,7 @@ export function HintyPreview() {
           </svg>
 
           {/* Isla hablando: la palabra recién dicha en cian, las que faltan no se muestran */}
-          <div className="clicky-island" data-state="speaking" style={{ position: "absolute", left: COL.x + COL.w / 2, top: COL.y }}>
+          <div className="clicky-island" data-state="speaking" style={{ position: "absolute", left: 0, right: 0, top: 0, animation: "none" }}>
             <div className="av" dangerouslySetInnerHTML={{ __html: headsetSvg(16, { mic: true }) }} />
             <div className="wave">
               {[8, 16, 20, 12, 8].map((h, i) => (
@@ -146,17 +146,15 @@ export function HintyPreview() {
             </div>
             <span className="err" />
             <div className="cap">
-              {CAPTION.split(" ").map((w, i) => (
-                <span key={i} className={i < SAID ? `on ${i === SAID - 1 ? "now" : ""}` : ""}>
-                  {w}{" "}
-                </span>
-              ))}
+              <div className="cap-in">
+                {CAPTION.split(" ").map((w, i) => (
+                  <span key={i} className={i < SAID ? `on ${i === SAID - 1 ? "now" : ""}` : ""}>
+                    {w}{" "}
+                  </span>
+                ))}
+              </div>
             </div>
-            <span className="hint">
-              <kbd>⌃⌥</kbd>
-              <kbd>Espacio</kbd>
-              <span>Mantén apretado para hablar</span>
-            </span>
+            <TalkHint />
           </div>
         </div>
 
@@ -372,17 +370,23 @@ export function HintyPieces() {
         </div>
         <Island state="thinking">
           <div className="cap">
-            <span className="on">“¿Cómo</span> <span className="on">entró?”</span>
+            <div className="cap-in">
+              <span className="on">“¿Cómo</span> <span className="on">entró?”</span>
+            </div>
           </div>
         </Island>
         <Island state="listening" bars={[4, 12, 16, 8, 4]}>
           <div className="cap">
-            <span className="on">Te</span> <span className="on">escucho…</span>
+            <div className="cap-in">
+              <span className="on">Te</span> <span className="on">escucho…</span>
+            </div>
           </div>
         </Island>
         <Island state="idle" error>
           <div className="cap">
-            <span className="on">No tengo acceso al micrófono: permiso denegado</span>
+            <div className="cap-in">
+              <span className="on">No tengo acceso al micrófono: permiso denegado</span>
+            </div>
           </div>
         </Island>
         <Island state="idle" input />
@@ -410,7 +414,7 @@ function Island({
       data-state={state}
       data-error={error ? "" : undefined}
       data-input={input ? "" : undefined}
-      style={{ position: "relative", left: 0, top: 0, transform: "none", width: "100%", maxWidth: 560 }}
+      style={{ position: "relative", left: 0, top: 0, animation: "none", width: "100%" }}
     >
       <div className="av" dangerouslySetInnerHTML={{ __html: headsetSvg(16, { mic: true }) }} />
       <div className="wave">
@@ -425,11 +429,41 @@ function Island({
       </div>
       <span className="err" />
       {input ? <input readOnly placeholder="Escribe tu pregunta y aprieta Enter" aria-label="Pregúntale a Hinty" /> : children}
-      <span className="hint">
-        <kbd>⌃⌥</kbd>
-        <kbd>Espacio</kbd>
-        <span>Mantén apretado para hablar</span>
+      <TalkHint />
+    </div>
+  );
+}
+
+/** El botón de hablar, el lápiz del modo marcar y la X (igual que kit/island.js). */
+function TalkHint() {
+  return (
+    <div className="hint">
+      <span className="tool talk-wrap">
+        <button type="button" className="talk" aria-label="Hablar con Hinty: mantén fn o este botón" dangerouslySetInnerHTML={{ __html: micSvg(32) }} />
+        <span className="tip" role="tooltip">
+          <b>Hablar con Hinty</b>
+          <span>
+            Mantén <kbd>fn</kbd> (o este botón) mientras hablas y suelta para enviar.
+          </span>
+          <span className="m">Un clic corto lo deja escuchando hasta que vuelvas a apretarlo.</span>
+        </span>
       </span>
+      <span className="tool mark-wrap">
+        <button type="button" className="mark" aria-label="Modo marcar: con él encendido, mantén shift para marcar la pantalla" dangerouslySetInnerHTML={{ __html: pencilSvg(32) }} />
+        <span className="tip" role="tooltip">
+          <b>Modo marcar</b>
+          <span>
+            Un clic lo enciende. Con el modo encendido, mantén <kbd>⇧ shift</kbd> y mueve el cursor sobre lo que quieras mostrarle.
+          </span>
+          <span className="m">Lo marcado va con tu próxima pregunta, hablada o escrita. Otro clic lo apaga.</span>
+        </span>
+      </span>
+      <span className="sep" aria-hidden="true" />
+      <button type="button" className="close" aria-label="Cerrar Hinty" title="Cerrar Hinty">
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M3 3l10 10M13 3L3 13" stroke="currentColor" strokeWidth="2.5" strokeLinecap="square" />
+        </svg>
+      </button>
     </div>
   );
 }

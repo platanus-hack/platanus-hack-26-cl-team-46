@@ -213,6 +213,13 @@ export const EVENT_TYPES: Record<string, EventTypeSpec> = {
     visibility: 'internal',
     description: 'Nuevo estado del incidente (raw = IncidentState)',
   },
+  'incident.pulse': {
+    by: ['observer'],
+    wakes: ['generator'],
+    visibility: 'internal',
+    description:
+      'El atacante sigue adentro sin ataques nuevos: el generador cuenta las consecuencias',
+  },
   'sim.finished': {
     by: ['observer'],
     wakes: [],
@@ -402,6 +409,14 @@ export interface SimulationRecord {
   report?: ReportRecord;
   /** Motor de hacking real (hacker_mode external): primera pasada, repetición y verificaciones. */
   engine?: EngineRecord;
+  /**
+   * Alertas de apertura: el generador las escribe antes de partir (a partir del
+   * primer ataque del plan) y salen apenas el developer parte, para que no
+   * espere a que el atacante avance para ver algo.
+   */
+  opening?: SimOpening;
+  /** Desde cuándo están listos deploy, herramientas, plan y contexto (espera máxima por el resto). */
+  ready_wait_since?: string;
 
   /** Cuándo quedó arriba la app por primera vez. */
   deploy_ready_at?: string;
@@ -475,4 +490,19 @@ export interface EngineRecord {
   played: string[];
   current?: string | null;
   verifies: EngineVerify[];
+}
+
+export interface SimOpening {
+  status: 'preparing' | 'ready' | 'failed' | 'skipped';
+  notifications: Array<{
+    channel: string;
+    title: string;
+    body: string;
+    severity: Severity;
+    vuln_id: string | null;
+    from?: string;
+    room?: string;
+  }>;
+  error?: string;
+  published?: boolean;
 }

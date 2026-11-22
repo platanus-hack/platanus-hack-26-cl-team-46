@@ -392,19 +392,20 @@ Un tile cuadrado de **56×56 px**, `radius-md` (8 px), con el ícono a 32 px (2 
 - **Etiqueta:** Geist 13 px, `ink`, sobre `bg-100`, con borde 1 px `line` y `radius-sm`. Sale Silkscreen.
 - **Ubicación:** abajo a la derecha de la **columna principal** (Chrome + logs), a 16 px del borde del panel de logs. Nunca encima del panel del Agente (ver punto 11).
 
-### 3. Isla de arriba
+### 3. Barra de arriba
 
-- **Forma:** rectángulo `radius-lg` (12 px). No es una píldora. Mide 48 px de alto cerrado y crece hacia abajo cuando hay subtítulo o input. El ancho va de 360 a 560 px.
-- **Fondo:** `bg-100` al 96%, con borde 1 px `line` y `shadow-toast`.
-- **Avatar:** un tile cuadrado de 32 px, `defense-deep` y `radius-sm`, con el audífono a 16 px. Reemplaza al círculo con triángulo.
-- **Escuchando:** 5 barras cuadradas de 4 px de ancho con 2 px de separación. Las alturas van en pasos de 4 px (de 4 a 20) según el nivel del micrófono. Van en color `ink`, porque eres tú hablando.
-- **Hablando:** las mismas 5 barras, en cian, animadas con `steps(4)` a unos 8 fps. La punta del micrófono del avatar se enciende (#7FF0FF + glow).
-- **Pensando:** 3 pixeles cuadrados de 4×4 en fila que se encienden en cian uno tras otro, en un ciclo de 900 ms (cada pixel prende 1 vez por ciclo). Reemplazan a los puntitos redondos.
-- **Subtítulo palabra por palabra:** Geist 16 px. La palabra que se acaba de encender va en cian y pasa a `ink` cuando llega la siguiente. Las palabras que faltan no se muestran.
-- **Input:** fondo `bg-200`, borde 1 px `line-strong`, `radius-sm`, Geist 16 px y placeholder en `ink-faint`. En foco, borde cian.
-- **Atajo:** una tecla dibujada como `kbd` (borde 1 px `line-strong`, `radius-sm`, Geist Mono 11 px en mayúsculas) + texto: "ESPACIO" / "Mantén apretado para hablar".
-- **Error:** borde 1 px `attack`, un pixel de 6×6 `attack` a la izquierda y el texto en `attack-strong`. El mensaje siempre empieza con "No pude…" para que se lea como un error de Hinty y no como un ataque.
-- **Ubicación:** arriba al centro de la columna principal, 12 px debajo del ScenarioHeader, sin taparlo.
+- **Forma:** una barra de borde a borde que **baja desde arriba** (320 ms) y se pone **encima del header** mientras Hinty está activo. Mide **lo mismo que el header** (la página lo marca con `data-clicky-region="header"`; 64 px si no hay), así nunca tapa las apps de abajo. En mobile (< 768 px) mide 56 px, lo mismo que la barra de la app, y el subtítulo va en el espacio libre en vez de centrado. No crece: si el subtítulo es largo, quedan a la vista sus últimas 2 líneas.
+- **Fondo:** **todo cian** (`defense`), con borde inferior 2 px `defense-strong` y un glow cian hacia abajo. El texto va en `on-defense`. Tiene que ser imposible no notar que estás hablando con Hinty.
+- **Marco de pantalla:** mientras Hinty está activo, los bordes de la ventana llevan un marco cian de 4 px con un brillo cian hacia adentro. No sale en la captura que ve el modelo.
+- **Avatar:** un tile cuadrado de 40 px en `on-defense` y `radius-sm`, con el audífono cian a 16 px.
+- **Escuchando / hablando:** 5 barras cuadradas de 4 px de ancho con 2 px de separación, en `on-defense`. Las alturas van en pasos de 4 px (de 4 a 20). Hablando, la punta del micrófono del avatar se enciende (#7FF0FF + glow).
+- **Pensando:** 3 pixeles cuadrados de 4×4 en fila que se encienden en `on-defense` uno tras otro, en un ciclo de 900 ms.
+- **Subtítulo palabra por palabra:** Geist 15 px en `on-defense`, **centrado** en la barra (en alto y en ancho), en un bloque de un poco más de media pantalla (58vw). La palabra que se acaba de decir va en un bloque negro con letra cian. Las palabras que faltan no se muestran.
+- **Input:** **negro**, 44 px de alto, `radius-md`, Geist 16 px en `ink`, cursor cian y placeholder en `ink-faint`.
+- **Botón de hablar:** la única pieza redonda de Hinty, junto con el lápiz. Un círculo de 44 px (el mismo alto que el input) en `on-defense` con un micrófono pixel cian, y un halo que respira cada 2,4 s para invitar a apretarlo. Mantenerlo apretado = hablar mientras está apretado; un clic corto lo deja escuchando hasta el siguiente clic. También se habla manteniendo **fn** (funciona aunque el foco esté en el input, porque fn no escribe). Escuchando, se invierte a blanco con ondas que salen. No hay atajos escritos en la barra: al pasar el cursor baja una nube negra con borde cian que los explica.
+- **Lápiz (modo marcar):** siempre a la derecha del micrófono, del mismo tamaño. Un clic enciende el modo marcar (el lápiz queda en blanco); encendido no dibuja solo: se dibuja **manteniendo shift** y moviendo el cursor (el cursor pasa a cruz). Lo marcado va con la próxima pregunta, hablada o escrita. Otro clic lo apaga.
+- **Cerrar:** una X de 32 px en `on-defense` en el extremo derecho, separada de los botones por una línea. Apaga a Hinty igual que apretar el audífono.
+- **Error:** borde inferior `attack` y un pixel de 8×8 `attack` a la izquierda. El texto sigue oscuro para leerse sobre el cian. El mensaje siempre empieza con "No pude…".
 
 ### 4. Lápiz
 
@@ -480,14 +481,14 @@ La pizarra es **la pantalla del radar de la torre**: oscura, con grilla fina, do
 | Apagar Clicky | Apagar Hinty |
 | Viendo tu pantalla | Hinty ve tu pantalla |
 | Solo texto | Hinty lee solo el texto |
-| espacio = hablar | ESPACIO · Mantén apretado para hablar |
+| espacio = hablar | Hablar con Hinty · Mantén fn (o este botón) mientras hablas y suelta para enviar |
 | Estoy viendo tu pantalla. ¿Qué quieres saber? | Veo tu pantalla. ¿En qué te ayudo? |
 | No veo tu pantalla, pero leo el texto. ¿Qué quieres saber? | No veo tu pantalla, pero leo el texto. ¿En qué te ayudo? |
 | Dejé de ver tu pantalla; sigo leyendo el texto | Dejé de ver tu pantalla. Sigo leyendo el texto. |
 | Escribe tu pregunta y presiona Enter | Escribe tu pregunta y aprieta Enter |
 | Pregúntame lo que quieras de tu pantalla | Pregúntame por lo que ves en pantalla |
 | Te escucho… | Te escucho… |
-| Mantén apretado mientras hablas | Mantén apretado espacio mientras hablas |
+| Mantén apretado mientras hablas | Mantén fn o el botón mientras hablas |
 | Transcribiendo… | Transcribiendo… |
 | No pude responder: … | No pude responder: … |
 | Sin micrófono: … | No tengo acceso al micrófono: … |

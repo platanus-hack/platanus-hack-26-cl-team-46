@@ -100,3 +100,11 @@ body {
 @keyframes md-bar-in { from { transform: translateY(100%); } to { transform: none; } }
 .md-bar-in { animation: md-bar-in .2s cubic-bezier(.2,.8,.2,1) both; }
 @media (prefers-reduced-motion: reduce) { .md-bar-in { animation: none; } }
+
+/* Historial de sucesos: tres pixeles que se encienden en cian uno tras otro mientras la simulación corre. */
+.md-feed-dots { display: inline-flex; align-items: center; gap: 6px; height: 16px; }
+.md-feed-dots i { width: 6px; height: 6px; background: var(--line-strong); animation: md-feed-dot .9s steps(1, end) infinite; }
+.md-feed-dots i:nth-child(2) { animation-delay: .3s; }
+.md-feed-dots i:nth-child(3) { animation-delay: .6s; }
+@keyframes md-feed-dot { 0% { background: var(--defense); } 33.333% { background: var(--line-strong); } }
+@media (prefers-reduced-motion: reduce) { .md-feed-dots i { animation: none; } .md-feed-dots i:first-child { background: var(--defense); } }

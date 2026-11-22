@@ -152,7 +152,7 @@ export class SimulationsController {
     @CurrentUser() user: AuthUser | null,
   ) {
     this.owned(id, user);
-    return this.sims.control(id, body.action, body.vuln_id);
+    return this.sims.control(id, body.action, body.vuln_id, body.reason);
   }
 
   @Post(':id/messages')

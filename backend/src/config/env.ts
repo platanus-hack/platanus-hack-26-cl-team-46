@@ -187,8 +187,10 @@ export const envSchema = z.object({
   /** Plugin del motor (catálogo de ataques). Hoy: apuntes | tasks. */
   /** auto = plugin propio si el repo es Apuntes/Tasks; si no, el genérico (cualquier app). */
   ENGINE_PLUGIN: z.string().default('auto'),
-  /** Cuántas vulns se juegan antes de que el director cierre la simulación. */
-  SIM_MAX_INCIDENTS: z.coerce.number().int().min(1).default(3),
+  /** Tiempo activo entre un ataque y el siguiente (la simulación es continua). */
+  SIM_ATTACK_GAP_SECONDS: z.coerce.number().min(5).default(45),
+  /** Con el atacante adentro y sin ataques nuevos, cada cuánto llega una consecuencia. */
+  SIM_PULSE_SECONDS: z.coerce.number().min(15).default(75),
 });
 
 export type Env = z.infer<typeof envSchema>;

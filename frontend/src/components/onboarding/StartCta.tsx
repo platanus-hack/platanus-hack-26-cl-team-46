@@ -19,3 +19,17 @@ export function StartCta() {
     </ButtonLink>
   );
 }
+
+/**
+ * Atajo de la landing para quien ya entró con GitHub: arriba a la derecha del hero, va directo
+ * a elegir el repo. Sin sesión no se muestra: hay que recorrer la landing hasta el cierre.
+ */
+export function LandingEnterButton({ className }: { className?: string }) {
+  const { user } = useSession();
+  if (!user) return null;
+  return (
+    <ButtonLink href="/start/repos" variant="primary" icon={<GitHubIcon />} className={className}>
+      Continúa como @{user.login}
+    </ButtonLink>
+  );
+}
