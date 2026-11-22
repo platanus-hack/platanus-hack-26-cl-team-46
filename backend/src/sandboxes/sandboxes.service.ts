@@ -7,6 +7,7 @@ import {
   NotFoundException,
   OnModuleDestroy,
   OnModuleInit,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -38,6 +39,14 @@ import {
   heldByOtherInstance,
   LEASE_HEARTBEAT_MS,
 } from './sandbox-recovery.js';
+import {
+  activityAt,
+  isLive,
+  pickToFree,
+  planCleanup,
+  type CleanupOptions,
+  type SandboxUsage,
+} from './sandbox-gc.js';
 import { SandboxStore } from './sandbox.store.js';
 import {
   sandboxDisplayName,
@@ -88,6 +97,18 @@ export interface SetEnvInput {
  * web service en Render y sigue el deploy. Las operaciones largas corren en
  * background: el progreso sale por SandboxEventsService.
  */
+/** Lo implementa SimulationsService: cuánto se está usando un sandbox y cómo soltarlo. */
+export interface SandboxUsageProvider {
+  usage(sandboxId: string): SandboxUsage;
+  /** Detiene las simulaciones activas del sandbox antes de borrarlo. */
+  release(sandboxId: string): Promise<void>;
+}
+
+/** Render rechazó crear un servicio por el tope del plan. */
+export class RenderCapacityError extends Error {}
+
+const RENDER_LIMIT_RE = /limited to \d+ services/i;
+
 @Injectable()
 export class SandboxesService
   implements OnModuleInit, OnModuleDestroy, BeforeApplicationShutdown
@@ -102,6 +123,9 @@ export class SandboxesService
   private recovering = false;
   /** Último intento de aislar la base de cada sandbox existente (para no reintentar en cada vuelta). */
   private readonly isolationAttempts = new Map<string, number>();
+  private usageProvider?: SandboxUsageProvider;
+  private gcTimer?: NodeJS.Timeout;
+  private gcRunning?: Promise<string[]>;
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -126,9 +150,21 @@ export class SandboxesService
       });
     };
     this.recoveryTimer = setTimeout(tick, RECOVERY_FIRST_DELAY_MS);
+    const gc = () => {
+      void this.collectGarbage('limpieza periódica')
+        .catch((err: Error) =>
+          this.logger.warn(`Limpieza de sandboxes: ${err.message}`),
+        )
+        .finally(() => {
+          this.gcTimer = setTimeout(gc, this.gcIntervalMs);
+        });
+    };
+    this.gcTimer = setTimeout(gc, GC_FIRST_DELAY_MS);
   }
 
   onModuleDestroy() {
+    clearTimeout(this.gcTimer);
+    this.gcTimer = undefined;
     clearTimeout(this.recoveryTimer);
     this.recoveryTimer = undefined;
   }
@@ -215,6 +251,186 @@ export class SandboxesService
     } finally {
       this.recovering = false;
     }
+  }
+
+  // ------------------------------------------------- cupo y limpieza
+
+  /** SimulationsService informa el uso de cada sandbox (evita una dependencia circular). */
+  registerUsage(provider: SandboxUsageProvider) {
+    this.usageProvider = provider;
+  }
+
+  /** Marca actividad del usuario sobre el sandbox (lo usa la limpieza). */
+  touch(id: string) {
+    if (this.store.get(id)) {
+      this.store.update(id, { last_activity_at: new Date().toISOString() });
+    }
+  }
+
+  private usage(id: string): SandboxUsage {
+    try {
+      return this.usageProvider?.usage(id) ?? { activeSimulation: false };
+    } catch {
+      return { activeSimulation: false };
+    }
+  }
+
+  private get cleanupOptions(): CleanupOptions {
+    const h = 3_600_000;
+    return {
+      idleTtlMs: this.config.get('SANDBOX_IDLE_TTL_HOURS', { infer: true }) * h,
+      failedTtlMs:
+        this.config.get('SANDBOX_FAILED_TTL_HOURS', { infer: true }) * h,
+      duplicateGraceMs:
+        this.config.get('SANDBOX_DUPLICATE_GRACE_MIN', { infer: true }) *
+        60_000,
+    };
+  }
+
+  private get gcIntervalMs(): number {
+    return this.config.get('SANDBOX_GC_INTERVAL_MIN', { infer: true }) * 60_000;
+  }
+
+  /**
+   * Borra los sandboxes sin uso: inactivos, fallidos viejos y copias repetidas
+   * (planCleanup). Antes detiene sus simulaciones abandonadas. Una pasada a la vez.
+   */
+  collectGarbage(trigger: string): Promise<string[]> {
+    this.gcRunning ??= (async () => {
+      const plan = planCleanup(
+        this.store.list(),
+        (id) => this.usage(id),
+        (id) => this.isBusy(id),
+        Date.now(),
+        this.cleanupOptions,
+      );
+      const removed: string[] = [];
+      for (const { sandbox_id: id, reason } of plan) {
+        if (this.isBusy(id)) continue;
+        try {
+          await this.removeUnused(
+            id,
+            `Limpieza automática (${trigger}): ${reason}`,
+          );
+          removed.push(id);
+        } catch (err) {
+          this.logger.warn(
+            `[${id}] no se pudo limpiar: ${(err as Error).message}`,
+          );
+        }
+      }
+      if (removed.length) {
+        this.logger.log(
+          `Limpieza (${trigger}): ${removed.length} sandbox(es) borrados: ${removed.join(', ')}`,
+        );
+      }
+      return removed;
+    })().finally(() => {
+      this.gcRunning = undefined;
+    });
+    return this.gcRunning;
+  }
+
+  /** Borra un sandbox sin uso (deteniendo antes sus simulaciones) y deja constancia del motivo. */
+  private async removeUnused(id: string, reason: string) {
+    this.events.emit(id, 'info', 'Sandbox liberado', reason);
+    await this.usageProvider
+      ?.release(id)
+      .catch((err: Error) =>
+        this.logger.warn(
+          `[${id}] no se pudieron detener sus simulaciones: ${err.message}`,
+        ),
+      );
+    await this.remove(id);
+  }
+
+  /**
+   * Límite por usuario: si ya tiene SANDBOX_MAX_PER_USER sandboxes vivos, se
+   * liberan los suyos sin uso (primero del mismo repo). Si todos están en uso,
+   * se rechaza con un mensaje claro.
+   */
+  private async makeRoomForUser(
+    owner: CreateSandboxInput['owner'],
+    repoUrl: string,
+  ) {
+    if (!owner) return; // login apagado (local): sin cuota por usuario
+    const max = this.config.get('SANDBOX_MAX_PER_USER', { infer: true });
+    const mine = this.store
+      .list()
+      .filter((s) => s.owner?.github_id === owner.github_id && isLive(s));
+    const needed = mine.length - max + 1;
+    if (needed <= 0) return;
+    const toFree = pickToFree(
+      mine,
+      repoUrl,
+      needed,
+      (id) => this.usage(id),
+      (id) => this.isBusy(id),
+      Date.now(),
+      this.cleanupOptions,
+    );
+    for (const id of toFree) {
+      await this.removeUnused(
+        id,
+        `Liberado para crear un sandbox nuevo (máximo ${max} por usuario)`,
+      );
+    }
+    if (toFree.length < needed) {
+      throw new ConflictException(
+        `Ya tienes ${mine.length} sandboxes en uso (máximo ${max}). Termina o borra alguno para desplegar otro.`,
+      );
+    }
+  }
+
+  /**
+   * Cupo del workspace de Render (servicios + Postgres). Si está lleno, limpia
+   * lo que no se usa y, si no alcanza, libera el sandbox sin uso más antiguo.
+   */
+  private async ensureRenderCapacity() {
+    const limit = this.config.get('RENDER_SERVICE_LIMIT', { infer: true });
+    const used = async () => {
+      const c = await this.render.countPlanResources();
+      return c.services + c.postgres;
+    };
+    if ((await used()) < limit) return;
+    await this.collectGarbage('cupo de Render');
+    if ((await used()) < limit) return;
+    const opts = this.cleanupOptions;
+    const oldest = this.store
+      .list()
+      .filter(
+        (s) =>
+          isLive(s) &&
+          s.render &&
+          planCleanup(
+            [s],
+            (id) => this.usage(id),
+            (id) => this.isBusy(id),
+            Date.now(),
+            {
+              ...opts,
+              idleTtlMs: opts.duplicateGraceMs,
+            },
+          ).length > 0,
+      )
+      .sort(
+        (a, b) =>
+          activityAt(a, this.usage(a.sandbox_id)) -
+          activityAt(b, this.usage(b.sandbox_id)),
+      )[0];
+    if (oldest) {
+      await this.removeUnused(
+        oldest.sandbox_id,
+        'Liberado porque Render no tenía cupo (era el sandbox sin uso más antiguo)',
+      );
+      if ((await used()) < limit) return;
+    }
+    throw new ServiceUnavailableException(this.capacityMessage());
+  }
+
+  private capacityMessage(): string {
+    const limit = this.config.get('RENDER_SERVICE_LIMIT', { infer: true });
+    return `No hay cupo en Render: el plan admite ${limit} servicios y están todos en uso por sandboxes activos. Intenta en unos minutos o termina un simulacro.`;
   }
 
   /** Aísla la base del sandbox (idempotente) y guarda su rol. */
@@ -419,7 +635,7 @@ export class SandboxesService
 
   // -------------------------------------------------------------- crear
 
-  create(input: CreateSandboxInput): SandboxRecord {
+  async create(input: CreateSandboxInput): Promise<SandboxRecord> {
     const mode = input.mode ?? 'agent';
     if (classifySourceRepo(input.repo_url, this.git.org) === 'mirror') {
       throw new BadRequestException(
@@ -432,6 +648,10 @@ export class SandboxesService
       );
     }
     if (mode === 'agent') this.agents.assertConfigured();
+    // Cupo: primero el del usuario (liberando sus sandboxes sin uso), después el
+    // de Render. Así no se lanza un agente que no va a poder crear el servicio.
+    await this.makeRoomForUser(input.owner, input.repo_url);
+    await this.ensureRenderCapacity();
 
     const id = `sbx-${randomBytes(4).toString('hex')}`;
     const now = new Date().toISOString();
@@ -446,6 +666,7 @@ export class SandboxesService
       status: 'provisioning',
       created_at: now,
       updated_at: now,
+      last_activity_at: now,
       env: { ...input.env },
       pending_inputs: [],
       deploys: [],
@@ -733,16 +954,46 @@ export class SandboxesService
     const s = this.get(id);
     const name = generation === 0 ? id : `${id}-${generation}`;
     this.events.emit(id, 'info', 'Creando servicio en Render', name);
-    const { service, deployId } = await this.render.createWebService({
-      ...details,
-      name,
-      ownerId: await this.render.ownerId(),
-      repo: s.deploy_repo_url!,
-      branch: this.git.mirrorsEnabled ? 'main' : s.ref,
-      envVars,
-      plan: this.config.get('RENDER_SERVICE_PLAN', { infer: true }),
-      region: this.config.get('RENDER_REGION', { infer: true }),
-    });
+    const create = async () =>
+      this.render.createWebService({
+        ...details,
+        name,
+        ownerId: await this.render.ownerId(),
+        repo: s.deploy_repo_url!,
+        branch: this.git.mirrorsEnabled ? 'main' : s.ref,
+        envVars,
+        plan: this.config.get('RENDER_SERVICE_PLAN', { infer: true }),
+        region: this.config.get('RENDER_REGION', { infer: true }),
+      });
+    let created: Awaited<ReturnType<typeof create>>;
+    try {
+      created = await create();
+    } catch (err) {
+      if (
+        !(err instanceof RenderApiError) ||
+        !RENDER_LIMIT_RE.test(err.message)
+      )
+        throw err;
+      // Tope del plan: se intenta liberar cupo una vez y se reintenta.
+      this.events.emit(
+        id,
+        'warning',
+        'Render sin cupo',
+        'Se alcanzó el tope de servicios del plan. Liberando sandboxes sin uso…',
+      );
+      await this.collectGarbage('cupo de Render').catch(() => []);
+      try {
+        created = await create();
+      } catch (retryErr) {
+        if (
+          retryErr instanceof RenderApiError &&
+          RENDER_LIMIT_RE.test(retryErr.message)
+        )
+          throw new RenderCapacityError(this.capacityMessage());
+        throw retryErr;
+      }
+    }
+    const { service, deployId } = created;
     this.store.update(id, {
       render: {
         service_id: service.id,
@@ -1141,6 +1392,13 @@ export class SandboxesService
     this.logger.error(`[${id}] ${err.message}`, err.stack);
     const s = this.store.get(id);
     if (!s || s.status === 'deleted') return;
+    if (err instanceof RenderCapacityError) {
+      // No tiene sentido que el agente reintente: falta cupo, no es su repo.
+      this.store.update(id, { status: 'failed', error: err.message });
+      this.events.emit(id, 'critical', 'Render sin cupo', err.message);
+      void this.agents.stop(id, err.message);
+      return;
+    }
     if (this.agentActive(s)) {
       // El agente sigue a cargo: ve el error en `deployer wait` / `context` y decide.
       this.store.update(id, { status: 'analyzing', error: err.message });
@@ -1340,6 +1598,8 @@ const RECOVERY_FIRST_DELAY_MS = 5_000;
 const RECOVERY_INTERVAL_MS = 15_000;
 /** Si aislar la base de un sandbox existente falla, se reintenta después de esto. */
 const ISOLATION_RETRY_MS = 10 * 60_000;
+/** Primera limpieza automática tras arrancar. */
+const GC_FIRST_DELAY_MS = 60_000;
 /**
  * Máximo que se espera a las operaciones en curso al apagar. En Render free el
  * proceso se mata a los ~30 s (maxShutdownDelaySeconds no es configurable); con

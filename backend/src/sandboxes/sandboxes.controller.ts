@@ -77,7 +77,7 @@ export class SandboxesController {
       body.repo_url,
       classifySourceRepo(body.repo_url, this.sandboxes.org),
     );
-    const s = this.sandboxes.create({
+    const s = await this.sandboxes.create({
       ...body,
       owner: this.auth.ownerOf(user),
       private_repo: privateRepo,
@@ -98,6 +98,7 @@ export class SandboxesController {
     @CurrentUser() user: AuthUser | null,
   ) {
     this.owned(id, user);
+    this.sandboxes.touch(id);
     return this.sandboxes.toContract(this.sandboxes.rename(id, body.name));
   }
 
@@ -121,6 +122,7 @@ export class SandboxesController {
     @Query('wait') wait?: string,
   ) {
     this.owned(id, user);
+    this.sandboxes.touch(id);
     this.sandboxes.redeploy(id, body);
     return this.respond(id, wait);
   }
@@ -134,6 +136,7 @@ export class SandboxesController {
     @Query('wait') wait?: string,
   ) {
     this.owned(id, user);
+    this.sandboxes.touch(id);
     this.sandboxes.setEnv(id, body);
     return this.respond(id, wait);
   }
@@ -146,6 +149,7 @@ export class SandboxesController {
     @Query('wait') wait?: string,
   ) {
     this.owned(id, user);
+    this.sandboxes.touch(id);
     this.sandboxes.restart(id);
     return this.respond(id, wait);
   }
@@ -184,6 +188,7 @@ export class SandboxesController {
     @CurrentUser() user: AuthUser | null,
   ) {
     const s = this.owned(id, user);
+    this.sandboxes.touch(id);
     if (!this.sandboxes.agentActive(s))
       throw new ConflictException('No hay un agente esperando datos');
     this.agents.provideInputs(id, body.env);
