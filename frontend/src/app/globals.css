@@ -103,10 +103,21 @@ body {
 
 /* Historial de sucesos: luz de encendido. Un pixel cian que parpadea y la etiqueta ON, como el led de un equipo. */
 .md-power { display: inline-flex; align-items: center; gap: 8px; height: 16px; }
-.md-power i { width: 6px; height: 6px; background: var(--defense); animation: md-power 1.2s steps(1, end) infinite; }
+.md-power i {
+  width: 6px; height: 6px; background: var(--defense);
+  /* Glow de led: un halo pegado y otro más difuso, del mismo color de la luz. */
+  box-shadow: 0 0 3px 0 color-mix(in srgb, var(--defense) 80%, transparent), 0 0 8px 1px color-mix(in srgb, var(--defense) 45%, transparent);
+  animation: md-power 1.2s steps(1, end) infinite;
+}
 /* text-box recorta el interlineado a la altura de las mayúsculas: así "ON" queda centrado ópticamente con el pixel. */
 .md-power span { font: 300 11px/1 var(--font-geist-mono), ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-muted); text-box: trim-both cap alphabetic; }
-@keyframes md-power { 50% { background: var(--line-strong); } }
+/* Con la luz baja el glow casi desaparece: queda un resto tenue, como un led que se apaga. */
+@keyframes md-power {
+  50% { background: var(--line-strong); box-shadow: 0 0 2px 0 color-mix(in srgb, var(--defense) 18%, transparent), 0 0 4px 0 color-mix(in srgb, var(--defense) 8%, transparent); }
+}
 /* En pausa: la luz queda roja y fija y la etiqueta dice OFF, como un equipo en standby. */
-.md-power.is-paused i { background: var(--sim-close); animation: none; }
+.md-power.is-paused i {
+  background: var(--sim-close); animation: none;
+  box-shadow: 0 0 3px 0 color-mix(in srgb, var(--sim-close) 80%, transparent), 0 0 8px 1px color-mix(in srgb, var(--sim-close) 45%, transparent);
+}
 @media (prefers-reduced-motion: reduce) { .md-power i { animation: none; } }
