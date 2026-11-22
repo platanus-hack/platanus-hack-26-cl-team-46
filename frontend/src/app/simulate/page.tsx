@@ -552,14 +552,13 @@ function FeedLog({ status, follow, children }: { status: Simulation["status"]; f
         <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Historial de sucesos</h2>
         {children}
         <div className="flex items-center gap-2 px-2 py-1 font-mono text-xs" role="status" aria-live="polite">
-          {loading ? (
-            <span className="md-feed-dots" aria-label={STATUS_LABEL[status]}>
+          {loading || status === "paused" ? (
+            <span className={`md-power${status === "paused" ? " is-paused" : ""}`} aria-label={STATUS_LABEL[status]}>
               <i />
-              <i />
-              <i />
+              <span>{status === "paused" ? "Off" : "On"}</span>
             </span>
           ) : (
-            <span className={`uppercase tracking-[0.12em] ${status === "paused" ? "font-semibold text-ink" : "text-ink-muted"}`}>
+            <span className="uppercase tracking-[0.12em] text-ink-muted">
               {STATUS_LABEL[status] ?? status}
             </span>
           )}
