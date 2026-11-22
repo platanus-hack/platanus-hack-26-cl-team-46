@@ -23,7 +23,9 @@ function run(cmd: string, args: string[]): Promise<string> {
 export async function runSemgrep(repoPath: string, opts: { config?: string } = {}): Promise<ExternalFinding[]> {
   const prov = requireApproved('semgrep'); // lanza si no aprobado
   const image = `semgrep/semgrep:${prov.pinned ?? 'latest'}`;
-  const config = opts.config ?? 'p/security-audit';
+  // 'auto' usa el set recomendado del registry (requiere red). p/security-audit
+  // resultó demasiado estrecho (0 reglas útiles) en la validación.
+  const config = opts.config ?? 'auto';
   const abs = path.resolve(repoPath);
   const out = await run('docker', [
     'run', '--rm', '-v', `${abs}:/src:ro`, image,
@@ -39,6 +41,6 @@ export async function runSemgrep(repoPath: string, opts: { config?: string } = {
     tool: 'semgrep',
     kind: r.check_id ?? 'semgrep',
     detail: r.extra?.message ?? '',
-    ref: `${r.path}:${r.start?.line ?? ''}`,
+    ref: `${String(r.path).replace(/^\/src\//, '')}:${r.start?.line ?? ''}`,
   }));
 }

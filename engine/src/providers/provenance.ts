@@ -32,8 +32,9 @@ export interface Provenance {
 export const EXTERNAL_SOURCES: Record<string, Provenance> = {
   semgrep: {
     name: 'semgrep', repo: 'https://github.com/semgrep/semgrep', license: 'LGPL-2.1',
-    pinned: '1.90.0', reviewed: true, reviewedBy: 'equipo motor', reviewedAt: '2026-11-21',
-    notes: 'SAST. Imagen oficial semgrep/semgrep:1.90.0. Corre LOCAL sobre el repo (sin target vivo), sin red tras el pull. Fijar digest (sha256) en el primer pull. Aprobado.',
+    pinned: '1.90.0', digest: 'sha256:7b625711ba9b6d1a543e308967b18c01b59932490a5536a06422666474bf6ee4',
+    reviewed: true, reviewedBy: 'equipo motor', reviewedAt: '2026-11-21',
+    notes: 'SAST. Imagen oficial semgrep/semgrep:1.90.0 (digest fijado). Corre LOCAL sobre el repo. Config "auto" (baja reglas del registry). Validado sobre victim-app: 3 hallazgos (XSS en admin.ejs:24/note.ejs:6, TLS bypass en pool.ts:12). Aprobado.',
   },
   nuclei: {
     name: 'nuclei', repo: 'https://github.com/projectdiscovery/nuclei', license: 'MIT',
