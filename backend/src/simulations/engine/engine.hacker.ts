@@ -169,14 +169,8 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     this.store.update(simId, { engine: record });
     this.starting.add(simId);
     try {
-      // El código que está desplegado: el mirror (deploy_repo_url) en el commit del
-      // sandbox. sandbox_commit es un sha del mirror; no existe en el repo original.
-      const sbx = this.sandboxes.get(s.sandbox_id);
-      const repo = sbx.deploy_repo_url ?? s.repo_url;
       const callId = await this.client.start({
         ...this.baseSpec(s),
-        repo: repo.startsWith('https://') ? repo : undefined,
-        commit: repo.startsWith('https://') ? (s.sandbox_commit ?? sbx.commit_sha) : undefined,
         progress: {
           url: `${this.publicUrl()}/sim/${simId}/engine/progress`,
           token: this.token(simId),
@@ -194,7 +188,7 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
 
   private firstPassDone(simId: string, result: EngineRunResult) {
     const a = result.artifacts as {
-      attack_plan?: { raw?: { findings?: Record<string, unknown>[] } };
+      attack_plan?: { raw?: { findings?: Record<string, unknown>[]; plugin?: string } };
       diagnosis?: {
         summary?: { confirmed: number; total: number; requests: number };
         duration_ms?: number;
@@ -222,6 +216,7 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     this.store.update(simId, (r) => {
       Object.assign(r.engine!, {
         status: 'done',
+        plugin: raw.plugin,
         finished_at: new Date().toISOString(),
         findings,
         summary,
@@ -373,6 +368,8 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     try {
       const callId = await this.client.start({
         ...this.baseSpec(s),
+        // El mismo catálogo de la primera pasada (con auto, sin esto podría elegir otro).
+        ...(s.engine.plugin ? { plugin: s.engine.plugin } : {}),
         only: [vuln],
         no_recon: true,
         seed: `${simId}-verify-${seq}`,
@@ -511,8 +508,15 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       role?: string;
     }[];
     const weak = users.find((u) => u.email && u.password && u.role !== 'admin') ?? users.find((u) => u.email && u.password);
+    // El código que está desplegado: el mirror (deploy_repo_url) en el commit actual
+    // del sandbox (sandbox_commit es un sha del mirror; no existe en el repo original).
+    // En una verificación es el commit con el arreglo del developer.
+    const repo = sbx.deploy_repo_url ?? s.repo_url;
+    const https = repo.startsWith('https://');
     return {
       url,
+      repo: https ? repo : undefined,
+      commit: https ? (s.sandbox_commit ?? sbx.commit_sha) : undefined,
       plugin: this.config.get('ENGINE_PLUGIN', { infer: true }),
       profile: 'fast',
       seed: s.sim_id,

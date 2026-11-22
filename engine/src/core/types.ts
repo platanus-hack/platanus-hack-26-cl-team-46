@@ -226,4 +226,6 @@ export interface EnginePlugin {
   reconCandidates: CandidateRoute[];
   /** Beats de storytelling por vuln. */
   storylines: Record<string, StorylineBeat[]>;
+  /** Archivo/línea donde el plugin confirmó cada vuln (gana sobre la correlación por señales). */
+  refFor?: (vulnId: string) => { file: string; line?: number; commit: string } | undefined;
 }

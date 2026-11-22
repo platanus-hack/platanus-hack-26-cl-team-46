@@ -139,7 +139,7 @@ Authorization: Bearer wk-....ws-...
 ```json
 {
   "url": "https://sbx-xxxx.onrender.com",
-  "plugin": "apuntes",
+  "plugin": "auto",
   "profile": "fast",
   "seed": "sim-123",
   "repo": "https://github.com/org/app-victima",
@@ -155,7 +155,7 @@ Authorization: Bearer wk-....ws-...
 }
 ```
 
-Solo `url` es obligatorio. `plugin`: `apuntes` | `tasks` | `destructive`.
+Solo `url` es obligatorio. `plugin`: `auto` (default: el propio si reconoce el repo; si no, `generic`) | `generic` | `apuntes` | `tasks` | `destructive`.
 `profile`: `noisy` | `normal` | `fast` | `stealth`. `semgrep` y `providers` solo
 se aplican si viene `repo`. `repo` tiene que ser una URL `https`.
 
@@ -315,7 +315,9 @@ y el motor no la toca. Lo maneja
 
 ## Pendiente
 
-- El motor solo trae catálogos de ataques para la app víctima "Apuntes" y para
-  "Tasks" (`ENGINE_PLUGIN`). Otro repo necesita su propio plugin.
+- Con `ENGINE_PLUGIN=auto` (default) el motor usa el plugin propio de Apuntes o
+  Tasks si reconoce el repo y, si no, el plugin genérico (ver `engine/README.md`).
+  El genérico no ataca WebSockets, GraphQL ni XSS almacenado: una app sin API HTTP
+  termina con 0 confirmadas y la simulación falla con ese mensaje.
 - Las notificaciones (correos, alertas, tickets) las sigue escribiendo el generador
   a partir de los eventos `attack.*`; el motor no las produce.

@@ -30,6 +30,8 @@ export interface RequestOptions {
   path: string; // relativo a baseUrl, p. ej. "/api/notes?q=..."
   headers?: Record<string, string>;
   body?: unknown;
+  /** Cuerpo literal, sin serializar (p. ej. JSON malformado a propósito). */
+  rawBody?: string;
   token?: string;
   cookie?: string;
   /** No seguir redirects (para capturar el 302). */
@@ -107,7 +109,9 @@ export class RecordingClient {
     if (opts.cookie) headers['cookie'] = opts.cookie;
 
     let bodyInit: string | undefined;
-    if (opts.body !== undefined) {
+    if (opts.rawBody !== undefined) {
+      bodyInit = opts.rawBody;
+    } else if (opts.body !== undefined) {
       headers['content-type'] = headers['content-type'] ?? 'application/json';
       bodyInit = headers['content-type'].includes('json') ? JSON.stringify(opts.body) : String(opts.body);
     }
@@ -153,7 +157,7 @@ export class RecordingClient {
       path: opts.path,
       url,
       reqHeaders: redactHeaders(headers),
-      reqBody: redactBody(opts.body, headers['content-type']),
+      reqBody: opts.rawBody ?? redactBody(opts.body, headers['content-type']),
       status: res.status,
       resHeaders: sanitizeHeaders({ 'content-type': ct, ...pickHeaders(resHeaders) }),
       resBodyExcerpt: sanitizeText(text.slice(0, BODY_LIMIT)),

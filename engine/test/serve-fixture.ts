@@ -1,8 +1,11 @@
 /**
- * Levanta el fixture local (app víctima de prueba) e imprime su URL. Lo usa el
- * selftest de Modal para una corrida de punta a punta sin atacar nada externo.
+ * Levanta un fixture local e imprime su URL. Lo usa el selftest de Modal para
+ * corridas de punta a punta sin atacar nada externo.
+ *   node test/serve-fixture.ts           → app víctima Apuntes
+ *   node test/serve-fixture.ts generic   → app desconocida para el plugin genérico
  */
 import { startFixture } from './fixture.ts';
+import { startGenericFixture } from './fixtures/generic-fixture.ts';
 
-const fx = await startFixture();
+const fx = process.argv[2] === 'generic' ? await startGenericFixture() : await startFixture();
 console.log(fx.url);

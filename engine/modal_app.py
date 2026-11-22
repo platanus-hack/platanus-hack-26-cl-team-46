@@ -85,7 +85,7 @@ app = modal.App(APP_NAME)
 
 # ───────────────────────── validación del pedido ─────────────────────────
 
-PLUGINS = {"apuntes", "tasks", "destructive"}
+PLUGINS = {"auto", "generic", "apuntes", "tasks", "destructive"}
 PROFILES = {"noisy", "normal", "fast", "stealth"}
 
 
@@ -120,7 +120,7 @@ def validate_spec(spec: dict) -> dict:
     if not any(fnmatch.fnmatchcase(host, pattern) for pattern in allowed):
         raise SpecError(f"host fuera de la lista autorizada: {host}")
 
-    plugin = spec.get("plugin", "apuntes")
+    plugin = spec.get("plugin", "auto")
     if plugin not in PLUGINS:
         raise SpecError(f"plugin desconocido: {plugin} (usa {', '.join(sorted(PLUGINS))})")
     profile = spec.get("profile", "fast")
@@ -147,7 +147,7 @@ def validate_spec(spec: dict) -> dict:
 
 def _cli_args(spec: dict, out_dir: str, repo_dir: str | None) -> list[str]:
     args = ["node", "src/cli/run.ts", "--url", spec["url"], "--out", out_dir]
-    args += ["--plugin", spec.get("plugin", "apuntes"), "--profile", spec.get("profile", "fast")]
+    args += ["--plugin", spec.get("plugin", "auto"), "--profile", spec.get("profile", "fast")]
     if spec.get("seed"):
         args += ["--seed", str(spec["seed"])]
     if spec.get("budget_usd") is not None:
@@ -322,6 +322,7 @@ def selftest() -> None:
         os.environ["ENGINE_ALLOWED_HOSTS"] = "127.0.0.1"
         spec = {
             "url": url,
+            "plugin": "apuntes",
             "seed": "selftest",
             "weak_login": {"email": "martin.soto@example.com", "password": "qwerty123"},
         }
@@ -342,6 +343,20 @@ def selftest() -> None:
             raise AssertionError("la lista de hosts autorizados no bloqueó example.com")
         except SpecError:
             pass
+    finally:
+        fixture.kill()
+
+    print("$ plugin genérico: app desconocida (NestJS) sin plugin propio", flush=True)
+    fixture = subprocess.Popen(["node", "test/serve-fixture.ts", "generic"], cwd=REMOTE_ENGINE, stdout=subprocess.PIPE, text=True)
+    try:
+        url = fixture.stdout.readline().strip()
+        spec = {"url": url, "seed": "selftest-generic", "weak_login": {"email": "ana", "password": "qwerty123"}}
+        result = _execute(spec, repo_dir=f"{REMOTE_ENGINE}/test/fixtures/repo-nest")
+        print(result["log"][-2500:], flush=True)
+        summary = result["artifacts"].get("diagnosis", {}).get("summary", {})
+        assert result["ok"], result["stderr"]
+        assert "plugin: generic (auto)" in result["log"], "auto no eligió el plugin genérico"
+        assert summary.get("confirmed") == summary.get("total") == 11, summary
         print("✅ selftest OK", flush=True)
     finally:
         fixture.kill()
@@ -399,7 +414,7 @@ def api():
 @app.local_entrypoint()
 def main(
     url: str,
-    plugin: str = "apuntes",
+    plugin: str = "auto",
     profile: str = "fast",
     seed: str = "",
     repo: str = "",
