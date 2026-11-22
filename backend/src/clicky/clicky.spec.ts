@@ -380,6 +380,145 @@ describe('pizarra por piezas', () => {
     ).toBeLessThanOrEqual(110);
     expect(second).toEqual([]);
   });
+
+  it('arquitectura: zonas por rangos de celdas, íconos conocidos y pasos numerados', () => {
+    const [open, boxes, arrows] = marks([
+      {
+        say: 'abro con sus zonas',
+        marks: [
+          { type: 'board', title: 't', cols: 3, rows: 2 },
+          {
+            type: 'zone',
+            label: 'Internet',
+            cols: [0, 0],
+            rows: [0, 9],
+            tone: 'attack',
+          },
+          { type: 'zone', label: 'Tu app', cols: [2, 1], rows: 1 },
+          { type: 'zone', label: '' },
+        ],
+      },
+      {
+        say: 'las cajas',
+        marks: [
+          {
+            type: 'node',
+            id: 'a',
+            text: 'Atacante',
+            col: 0,
+            row: 0,
+            icon: 'attacker',
+          },
+          {
+            type: 'node',
+            id: 'b',
+            text: 'API',
+            col: 1,
+            row: 0,
+            icon: 'rocket',
+          },
+        ],
+      },
+      {
+        say: 'las flechas',
+        marks: [
+          { type: 'edge', from: 'a', to: 'b', tone: 'attack', n: 2 },
+          { type: 'edge', from: 'b', to: 'a', n: 40 },
+        ],
+      },
+    ]);
+    expect(open.slice(1).map(({ word: _w, ...z }) => z)).toEqual([
+      {
+        type: 'zone',
+        label: 'Internet',
+        cols: [0, 0],
+        rows: [0, 1],
+        tone: 'attack',
+      },
+      {
+        type: 'zone',
+        label: 'Tu app',
+        cols: [1, 2],
+        rows: [1, 1],
+        tone: undefined,
+      },
+    ]);
+    const pick = (ms: unknown[], k: string) =>
+      ms.map((m) => (m as Record<string, unknown>)[k]);
+    expect(pick(boxes, 'icon')).toEqual(['attacker', undefined]);
+    expect(pick(arrows, 'n')).toEqual([2, undefined]);
+  });
+
+  it('una zona sin pizarra no existe, y van máx 3 por pizarra', () => {
+    const zone = (label: string) => ({ type: 'zone', label, cols: 0, rows: 0 });
+    const [none, , more] = marks([
+      { say: 'sin pizarra', marks: [zone('A')] },
+      { say: 'abro', marks: [{ type: 'board', title: 't' }] },
+      {
+        say: 'zonas',
+        marks: [zone('A'), zone('B'), zone('C'), zone('D')],
+      },
+    ]);
+    expect(none).toEqual([]);
+    expect(pick(more)).toEqual(['A', 'B', 'C']);
+    function pick(ms: unknown[]) {
+      return ms.map((m) => (m as { label: string }).label);
+    }
+  });
+
+  it('mitre: solo IDs que existen en la copia local de ATT&CK, con su nombre oficial', () => {
+    const [, boxes] = marks([
+      { say: 'abro', marks: [{ type: 'board', title: 't', cols: 3, rows: 2 }] },
+      {
+        say: 'cajas',
+        marks: [
+          {
+            type: 'node',
+            id: 'a',
+            text: 'Repo',
+            col: 0,
+            row: 0,
+            mitre: 't1552.001',
+          },
+          {
+            type: 'node',
+            id: 'b',
+            text: 'Vault',
+            col: 1,
+            row: 0,
+            mitre: 'M1027',
+          },
+          {
+            type: 'node',
+            id: 'c',
+            text: 'Nada',
+            col: 2,
+            row: 0,
+            mitre: 'T9999',
+          },
+          {
+            type: 'node',
+            id: 'd',
+            text: 'Raro',
+            col: 0,
+            row: 1,
+            mitre: 'DROP TABLE',
+          },
+        ],
+      },
+    ]);
+    expect(
+      boxes.map((m) => [
+        (m as { mitre?: string }).mitre,
+        (m as { mitreName?: string }).mitreName,
+      ]),
+    ).toEqual([
+      ['T1552.001', 'Credentials In Files'],
+      ['M1027', 'Password Policies'],
+      [undefined, undefined],
+      [undefined, undefined],
+    ]);
+  });
 });
 
 describe('anchorWord', () => {

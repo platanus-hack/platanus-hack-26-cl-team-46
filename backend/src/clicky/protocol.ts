@@ -1,5 +1,32 @@
 // Vendorizado de clicky-kit/server/protocol.mjs. Contrato modelo ↔ motor de dibujo: el prompt
 // se genera desde MARKS y cada respuesta se valida contra él, así el modelo nunca manda código.
+import { attackRef } from './attack/attack-kb.js';
+
+/** Las piezas de la pizarra: se validan en orden contra lo ya dibujado (cleanFlowPiece). */
+const FLOW = new Set(['board', 'node', 'edge', 'zone']);
+
+/** Componentes con ícono en la pizarra (frontend kit/icons.js › NODE_ICONS). */
+export const NODE_ICONS = new Set([
+  'user',
+  'attacker',
+  'browser',
+  'server',
+  'api',
+  'db',
+  'key',
+  'secret',
+  'token',
+  'lock',
+  'shield',
+  'log',
+  'alert',
+  'cloud',
+  'code',
+  'repo',
+  'mail',
+  'internet',
+]);
+
 export const MARKS: Record<string, { use: string; shape: string }> = {
   point: {
     use: 'Hinty vuela hasta ahí y lo señala con una etiqueta al lado: para "esto de acá", "este botón". Con "text" señala esas palabras exactas dentro del elemento',
@@ -81,19 +108,24 @@ export const MARKS: Record<string, { use: string; shape: string }> = {
       '{"type":"chart","title":"Ventas Q3 por región","subtitle":"opcional","bars":[{"label":"Norte","value":131}],"highlight":"Sur","note":"+32 %"}',
   },
   board: {
-    use: 'abre una pizarra en blanco para explicar un proceso o una causa dibujándolo de a poco; define su grilla de cols × rows celdas (máx 4 × 3; cols = pasos de la cadena más larga, rows = ramas)',
+    use: 'abre una pizarra en blanco para explicar un proceso, una causa o una arquitectura dibujándolo de a poco; define su grilla de cols × rows celdas (máx 4 × 3; cols = pasos de la cadena más larga, rows = ramas o capas)',
     shape:
       '{"type":"board","title":"Cómo funciona un token","subtitle":"opcional","cols":3,"rows":2}',
   },
   node: {
-    use: 'una caja en la pizarra, en la celda col,row (desde 0); se dibuja cuando la nombras. tone (opcional) le da su color: "attack" lo del atacante o lo que sale mal, "defense" la defensa o lo que está bien, "key" la idea central (una sola por pizarra); sin tone es un paso neutro',
+    use: `una caja en la pizarra, en la celda col,row (desde 0); se dibuja cuando la nombras. tone (opcional) le da su color: "attack" lo del atacante o lo que sale mal, "defense" la defensa o lo que está bien, "key" la idea central (una sola por pizarra); sin tone es un paso neutro. icon (opcional) dice qué componente es: ${[...NODE_ICONS].join(', ')}. mitre (opcional): el ID de ATT&CK de esa caja (técnica T… en una caja de ataque, mitigación M… en una de defensa), solo uno que esté en la referencia ATT&CK que te paso`,
     shape:
-      '{"type":"node","id":"login","text":"máx 4 palabras","col":0,"row":0,"tone":"opcional"}',
+      '{"type":"node","id":"api","text":"máx 4 palabras","col":0,"row":0,"tone":"opcional","icon":"opcional","mitre":"opcional"}',
   },
   edge: {
-    use: 'una flecha entre dos cajas que ya están en la pizarra, con un verbo corto (máx 12 letras). tone "attack" si es el camino del atacante',
+    use: 'una flecha entre dos cajas que ya están en la pizarra, con un verbo o protocolo corto (máx 12 letras: "entrega", "HTTPS", "JWT robado"). tone "attack" si es el camino del atacante; n (1 a 9) numera los pasos de la ruta del ataque o de un proceso',
     shape:
-      '{"type":"edge","from":"login","to":"token","label":"entrega","tone":"opcional"}',
+      '{"type":"edge","from":"login","to":"token","label":"entrega","tone":"opcional","n":"opcional"}',
+  },
+  zone: {
+    use: 'una zona de la arquitectura que agrupa celdas vecinas (Internet, tu app, la base de datos, la red interna): un recuadro punteado con su nombre en el borde, detrás de las cajas. cols y rows son rangos [desde, hasta]. tone "attack" para lo que controla el atacante. Máx 3 por pizarra; dibújalas antes de sus cajas',
+    shape:
+      '{"type":"zone","label":"Tu app · Render","cols":[1,2],"rows":[0,1],"tone":"opcional"}',
   },
   example: {
     use: 'un ejemplo de la vida diaria que aterriza la idea (una analogía), en un papelito pegado en la pizarra o al costado. Empieza con "Es como"',
@@ -164,8 +196,7 @@ const ACTS = new Set(['click', 'type', 'step']);
 
 function cleanMark(m: any, ids: ScreenIds): Mark | null {
   if (!m || !MARKS[m.type]) return null;
-  if (m.type === 'board' || m.type === 'node' || m.type === 'edge')
-    return { type: m.type };
+  if (FLOW.has(m.type)) return { type: m.type };
   const needsTarget = [
     'point',
     'spotlight',
@@ -260,6 +291,7 @@ type Flow = {
   nodes: Set<string>;
   cells: Set<string>;
   edges: Set<string>;
+  zones: number;
 };
 
 /** Límites de una respuesta completa: se cuentan beat a beat, mientras llegan. */
@@ -307,6 +339,7 @@ function cleanFlowPiece(m: any, budget: Budget): Mark | null {
       nodes: new Set(),
       cells: new Set(),
       edges: new Set(),
+      zones: 0,
     };
     return {
       type: 'board',
@@ -321,7 +354,7 @@ function cleanFlowPiece(m: any, budget: Budget): Mark | null {
   if (m.type === 'node') {
     const id = str(m.id, 24),
       text = str(m.text, 40);
-    if (!id || !text || f.nodes.has(id) || f.nodes.size >= 8) return null;
+    if (!id || !text || f.nodes.has(id) || f.nodes.size >= 9) return null;
     let col = int(m.col, 0, f.cols - 1, 0),
       row = int(m.row, 0, f.rows - 1, 0);
     if (f.cells.has(`${col},${row}`)) {
@@ -341,7 +374,19 @@ function cleanFlowPiece(m: any, budget: Budget): Mark | null {
       : m.hot === true
         ? 'key'
         : undefined;
-    return { type: 'node', id, text, col, row, tone };
+    const icon = NODE_ICONS.has(m.icon) ? m.icon : undefined;
+    const ref = attackRef(m.mitre);
+    return {
+      type: 'node',
+      id,
+      text,
+      col,
+      row,
+      tone,
+      icon,
+      mitre: ref?.id,
+      mitreName: ref?.name,
+    };
   }
   if (m.type === 'edge') {
     const from = str(m.from, 24),
@@ -352,16 +397,37 @@ function cleanFlowPiece(m: any, budget: Budget): Mark | null {
       !f.nodes.has(to) ||
       from === to ||
       f.edges.has(key) ||
-      f.edges.size >= 10
+      f.edges.size >= 12
     )
       return null;
     f.edges.add(key);
+    const n = num(m.n);
     return {
       type: 'edge',
       from,
       to,
       label: m.label ? str(m.label, 18) : undefined,
       tone: m.tone === 'attack' || m.tone === 'problem' ? 'attack' : undefined,
+      n: n !== null && n >= 1 && n <= 9 ? Math.round(n) : undefined,
+    };
+  }
+  if (m.type === 'zone') {
+    const label = str(m.label, 32);
+    if (!label || f.zones >= 3) return null;
+    // un rango [desde, hasta] dentro de la grilla (un número suelto es un rango de una celda)
+    const span = (v: unknown, max: number): [number, number] => {
+      const [a, b] = Array.isArray(v) ? v : [v, v];
+      const lo = int(a, 0, max, 0),
+        hi = int(b ?? a, 0, max, lo);
+      return [Math.min(lo, hi), Math.max(lo, hi)];
+    };
+    f.zones++;
+    return {
+      type: 'zone',
+      label,
+      cols: span(m.cols ?? m.col, f.cols - 1),
+      rows: span(m.rows ?? m.row, f.rows - 1),
+      tone: m.tone === 'attack' || m.tone === 'defense' ? m.tone : undefined,
     };
   }
   return null;
@@ -419,10 +485,7 @@ export function cleanBeat(b: any, ids: ScreenIds, budget: Budget): Beat | null {
       const base = cleanMark(m, ids);
       return {
         m,
-        clean:
-          base && ['board', 'node', 'edge'].includes(base.type)
-            ? cleanFlowPiece(m, budget)
-            : base,
+        clean: base && FLOW.has(base.type) ? cleanFlowPiece(m, budget) : base,
       };
     })
     .filter((x): x is { m: any; clean: Mark } => !!x.clean)

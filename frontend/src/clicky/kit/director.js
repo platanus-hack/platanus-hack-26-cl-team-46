@@ -9,7 +9,7 @@ const COST = {
   point: 0.9, step: 0.8, click: 0.9, scroll: 0.5, type: m => 0.5 + Math.min(1.2, 0.03 * (m.value?.length || 0)),
   card: m => 0.5 + 0.6 * (m.items?.length || 0),
   chart: m => 1 + 0.55 * (m.bars?.length || 0) + (m.note ? 0.6 : 0),
-  board: 0.5, node: 0.9, edge: m => (m.label ? 0.8 : 0.6), example: 0.8,
+  board: 0.5, zone: 0.7, node: 0.9, edge: m => (m.label ? 0.8 : 0.6), example: 0.8,
 };
 const cost = m => (typeof COST[m.type] === 'function' ? COST[m.type](m) : COST[m.type] || 0.5);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
