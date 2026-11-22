@@ -567,3 +567,26 @@ describe('prompts de Conductor: reglas pedagógicas', () => {
     expect(p('generator')).toContain('Nunca expliques la causa ni el arreglo');
   });
 });
+
+describe('coherencia del incidente (sim-a53b6f4f)', () => {
+  it('el generador no inventa monitores a la medida de la vuln', async () => {
+    const { GENERATOR_SYSTEM } = await import('./prompts.js');
+    expect(GENERATOR_SYSTEM).toContain(
+      'Nunca inventes un monitor hecho a la medida de la vulnerabilidad',
+    );
+    expect(GENERATOR_SYSTEM).toContain(
+      'analítica de producto, no de seguridad',
+    );
+  });
+
+  it('el coder trata el incidente como real y parte por lo que pasó', () => {
+    const p = buildSimPrompt({
+      simId: 'sim-1',
+      repoUrl: 'https://github.com/x/y',
+      role: 'coder',
+    });
+    expect(p).toContain('es su app en producción y un incidente de verdad');
+    expect(p).toContain('cuéntale primero qué pasó en su app');
+    expect(p).toContain('que algo no aparezca no prueba que no pasó');
+  });
+});
