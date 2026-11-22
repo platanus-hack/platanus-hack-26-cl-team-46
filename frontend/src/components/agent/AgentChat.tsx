@@ -18,20 +18,28 @@ export function AgentChat({
   events,
   onSend,
   disabled,
+  live = true,
 }: {
   /** Título de la conversación (p. ej. el nombre del proyecto). */
   title: string;
   events: TimelineEvent[];
   onSend: (text: string) => void;
   disabled?: boolean;
+  /** Si la simulación está corriendo. Si no, nadie va a responder y no se muestra "pensando". */
+  live?: boolean;
 }) {
   const end = useRef<HTMLDivElement>(null);
+
+  // El agente está respondiendo si el último mensaje del usuario no tiene respuesta después.
+  const lastAsk = events.findLastIndex((e) => e.type === "user.message" || e.type === "user.action");
+  const lastReply = events.findLastIndex((e) => e.type === "coder.reply");
+  const pendingSince = live && lastAsk > lastReply ? events[lastAsk].t : null;
 
   // Con llaves a propósito: scrollIntoView devuelve una Promise en Chrome reciente, y si el efecto
   // la retorna React la trata como cleanup ("destroy is not a function") y bota la página.
   useEffect(() => {
     end.current?.scrollIntoView({ behavior: "smooth" });
-  }, [events.length]);
+  }, [events.length, pendingSince]);
 
   return (
     <section className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg bg-sim-100 font-sans text-sim-ink shadow-[var(--shadow-window)]">
@@ -41,6 +49,7 @@ export function AgentChat({
         {events.map((e) => (
           <ChatItem key={e.seq} e={e} />
         ))}
+        {pendingSince && <Thinking since={pendingSince} />}
         <div ref={end} />
       </div>
       <Composer onSend={onSend} disabled={disabled} />
@@ -233,6 +242,51 @@ function ClaudeMark({ className }: { className: string }) {
   // eslint-disable-next-line @next/next/no-img-element -- ícono de app de 24–32px desde public/
   return <img src={SIM_ICONS.claude} alt="" className={`shrink-0 object-contain ${className}`} />;
 }
+
+// Spinner del CLI: un glifo que crece y vuelve (· ✢ ✳ ✶ ✻ ✽), y un verbo que va cambiando.
+const SPINNER = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"];
+const VERBS = ["Pensando", "Revisando logs", "Leyendo el código", "Investigando", "Atando cabos", "Analizando", "Rastreando"];
+
+/** Indicador de que el agente está respondiendo, como el de Claude Code mientras piensa. */
+function Thinking({ since }: { since: string }) {
+  const [tick, setTick] = useState(0);
+  // El reloj parte en null y se llena en el intervalo: leer Date.now() al renderizar rompe el prerender.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    const t = setInterval(() => {
+      setTick((n) => n + 1);
+      setNow(Date.now());
+    }, 120);
+    return () => clearInterval(t);
+  }, []);
+  const start = Date.parse(since);
+  const secs = now !== null && Number.isFinite(start) ? Math.max(0, Math.floor((now - start) / 1000)) : null;
+  // El verbo cambia cada ~3 s.
+  const verb = VERBS[Math.floor(tick / 25) % VERBS.length];
+
+  return (
+    <div className="flex items-center gap-2 text-[14px] leading-[22px]" role="status" aria-live="polite">
+      <style>{THINKING_CSS}</style>
+      <span aria-hidden className="w-4 flex-none text-center font-mono text-[15px] text-[#D97757]">
+        {SPINNER[tick % SPINNER.length]}
+      </span>
+      <span className="agent-thinking__text">{verb}…</span>
+      {secs !== null && <span className="text-[12px] text-sim-ink-faint">({secs}s)</span>}
+    </div>
+  );
+}
+
+// Brillo que recorre el texto de izquierda a derecha, como en el CLI.
+const THINKING_CSS = `
+.agent-thinking__text {
+  background: linear-gradient(90deg, #D97757 0%, #D97757 40%, #F5C3AE 50%, #D97757 60%, #D97757 100%);
+  background-size: 250% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: agent-thinking-shimmer 2s linear infinite;
+}
+@keyframes agent-thinking-shimmer { from { background-position: 100% 0; } to { background-position: -150% 0; } }
+@media (prefers-reduced-motion: reduce) { .agent-thinking__text { animation: none; } }
+`;
 
 function ChatItem({ e }: { e: TimelineEvent }) {
   if (e.type === "user.message" || e.type === "user.action") {
