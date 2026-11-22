@@ -2,7 +2,7 @@
 
 > Contexto completo del proyecto para el equipo y para los agentes que trabajen en el repo.
 > Reúne el brief original, lo que se decidió y construyó en los workspaces de Conductor de la org y el estado actual.
-> **Foto al sábado 21-nov-2026, ~16:30 (hora de Santiago).** Si lees esto más tarde, revisa `git log` y la sección [Pendientes](#11-pendientes-y-decisiones-abiertas).
+> **Foto al sábado 21-nov-2026, ~16:30 (hora de Santiago).** Las secciones de estado (§2, §9, §11) son históricas: el estado actual del código está en [`docs/architecture.md`](docs/architecture.md), el README y `git log`.
 >
 > El README es la guía de uso (cómo correr, API, despliegue). Este archivo explica el **qué**, el **porqué** y **en qué estado está cada pieza**.
 
@@ -189,7 +189,7 @@ Código: `backend/src/simulations/`. CLI de los threads: `backend/agent-cli/sim.
 |---|---|---|
 | infra | Una llamada al quedar arriba el deploy: `context.ready` **sin análisis de seguridad** (el contexto viejo le listaba las vulns al coder en `notes`). Los `infra.request` reciben una respuesta fija: el coder lo hace con su CLI. | Haiku 5.5 |
 | generator | Se dispara al aparecer el evento; 0–3 `notify` con canal y severidad validados por esquema. | Sonnet 5.5, effort low (2–7 s) |
-| observer | **Director en código** (`brain/facts.ts`: verify después de cada deploy, next con tiempos, cierre a los `SIM_MAX_INCIDENTS`) + `state.update` por LLM con los hechos del hacker por encima + debrief. | Sonnet 5.5 medium; debrief Opus 5.5 high |
+| observer | **Director en código** (`brain/facts.ts`: verify después de cada deploy, ataques continuos cada `SIM_ATTACK_GAP_SECONDS` y consecuencias cada `SIM_PULSE_SECONDS`) + `state.update` por LLM con los hechos del hacker por encima + debrief. | Sonnet 5.5 medium; debrief Opus 5.5 high |
 | hacker, coder | Siguen en Conductor (necesitan leer el repo, editar, hacer push). El coder ahora se despierta al tiro con cada mensaje. | — |
 
 Los modelos salieron de un replay de `sim-ed22258c` con los tres modelos (`pnpm replay`, ver `docs/simulation.md`). Son configurables por env (`SIM_MODEL_*`, `SIM_EFFORT_*`, `SIM_API_ROLES`).
@@ -325,14 +325,14 @@ Pregunta abierta del ADR 0007 (PR #2): los eventos `attack.*` del timeline son `
 
 **Producto / integración**
 
-4. **UI de producto conectada a la simulación:** la página `/projects/[id]/simulation` está vacía a propósito. Tiene que consumir `GET /simulations/:id/stream?view=user`, `POST /messages` y `POST /actions` (hoy solo lo hace la consola `/simulate`).
+4. ~~**UI de producto conectada a la simulación**~~ **Hecho:** el flujo es `/start` → `/simulate` → `/result`. (Nota original: la página `/projects/[id]/simulation` estaba vacía a propósito.) Tiene que consumir `GET /simulations/:id/stream?view=user`, `POST /messages` y `POST /actions` (hoy solo lo hace la consola `/simulate`).
 5. **Enchufar el motor real** del equipo motor por `hacker: "external"` (§7.3).
 6. **Modo replay** para el demo: el timeline ya se persiste; falta grabar una corrida buena y reproducirla.
 7. **Mantener caliente el demo:** el plan free duerme los servicios a los 15 min (~1 min en despertar). Abrir frontend, backend y sandbox antes del demo, o pasar a `starter` con los créditos. Tener un workspace de simulación ya levantado, porque crear la VM toma tiempo.
 
 **Decisiones abiertas**
 
-8. **Director con tiempos fijos:** escalar 3 min después de que el developer actúe, u 8 min si no hace nada; cerrar al jugar 3 vulns (`SIM_MAX_INCIDENTS`). Ajustar después de ensayar el demo (`DEFAULT_DIRECTOR` en `brain/facts.ts`).
+8. ~~**Director con tiempos fijos**~~ **Reemplazado:** la simulación es continua (un ataque cada `SIM_ATTACK_GAP_SECONDS` de tiempo activo y una consecuencia cada `SIM_PULSE_SECONDS` con el atacante adentro); termina cuando el developer aprieta Terminar. Ver `docs/simulation.md`.
 8b. **¿Qué tan proactivo es el coder en seguridad?** En la prueba advirtió "esto no cierra la sesión del atacante", que es lo que haría un Claude Code real pero le quita la lección al usuario. **Ajustado (21-nov):** no adelanta la contención, no nombra vulns que el developer no vio, responde en ≤120 palabras con una sola propuesta, no ve las contraseñas del seed y sabe que los logs del sandbox pueden traer tráfico de otras simulaciones. Clicky sigue la misma regla mientras la simulación corre (guía con preguntas; explica todo al terminar).
 9. **Ajustes de briefs sin re-probar en corrida completa:** el observer pasaba a la siguiente vuln apenas terminaba cada ataque, y el coder arregló la SQLi sin que se lo pidieran.
 10. ~~**Canales vs herramientas reales**~~ **Resuelto (21-nov):** los canales salen solo de las herramientas detectadas en el código por el backend (`backend/src/simulations/tools-detector.ts`); se sacó el parámetro `tools`. Apuntes trae Sentry y PostHog configurados (sin DSN/key no envían nada), así que su simulación tiene esos dos canales.
@@ -345,7 +345,6 @@ Pregunta abierta del ADR 0007 (PR #2): los eventos `attack.*` del timeline son `
 - **Next.js 16 y NestJS 12 son más nuevos que lo que conocen los modelos.** Leer `frontend/AGENTS.md` (doc en `node_modules/next/dist/docs/`) y `backend/AGENTS.md` (skills de Nest en `backend/.claude/skills`).
 - **Backend ESM:** imports relativos terminan en `.js`, no hay `__dirname` (`import.meta.dirname`), tests con Vitest (`vi.fn()`).
 - **Next 16 con `cacheComponents`:** no hacer `await params` en el cuerpo de la página (rompe el build); pasar la Promise y resolverla dentro de `<Suspense>`.
-- **shadcn:** no volver a correr `shadcn init` (rompe `src/lib/utils.ts` e instala un paquete `cn` falso).
 - **En las VMs de Conductor el puerto 3000 lo ocupa Conductor:** levantar el frontend en 3100.
 - **Los agentes tienen que alcanzar al backend por una URL pública:** local, `cloudflared tunnel --url http://localhost:3001` y `PUBLIC_BACKEND_URL=<túnel>`.
 - **Conductor crea las VMs desde una rama existente** (`CONDUCTOR_PROJECT_BRANCH`); si no existe, la VM nunca arranca.

@@ -92,7 +92,9 @@ export class AgentController {
   @UseGuards(AgentTokenGuard)
   async source(@Param('id') id: string) {
     const s = this.sandboxes.get(id);
-    if (!s.mirror_repo) throw new Error('El sandbox no tiene mirror');
+    this.agents.requireRunning(s);
+    if (!s.mirror_repo)
+      throw new ConflictException('El sandbox no tiene mirror');
     const tgz = await this.sandboxes.archiveSource(id);
     return new Response(new Uint8Array(tgz), {
       headers: {
@@ -109,6 +111,8 @@ export class AgentController {
     @Param('id') id: string,
     @Body({ schema: agentChangesSchema }) body: AgentChangesBody,
   ) {
+    // Como plan/report: con la corrida terminada, el token ya no escribe.
+    this.agents.requireRunning(this.sandboxes.get(id));
     const result = await this.sandboxes.commitChanges(id, body);
     this.agents.note(
       this.sandboxes.get(id),
@@ -156,6 +160,7 @@ export class AgentController {
   @Get('sandboxes/:id/db')
   @UseGuards(AgentTokenGuard)
   db(@Param('id') id: string) {
+    this.agents.requireRunning(this.sandboxes.get(id));
     return this.sandboxes.inspectDatabase(id);
   }
 
@@ -168,6 +173,7 @@ export class AgentController {
     @Body({ schema: agentUsersSchema }) body: AgentUsersBody,
   ) {
     const s = this.sandboxes.get(id);
+    this.agents.requireRunning(s);
     if (!s.manifest) {
       throw new ConflictException(
         'Primero despliega un plan: los usuarios se guardan junto al manifest',
@@ -189,7 +195,9 @@ export class AgentController {
     @Param('id') id: string,
     @Body({ schema: agentNoteSchema }) body: AgentNoteBody,
   ) {
-    this.agents.note(this.sandboxes.get(id), body.title, body.body);
+    const s = this.sandboxes.get(id);
+    this.agents.requireRunning(s);
+    this.agents.note(s, body.title, body.body);
     return { ok: true };
   }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { API_URL } from "@/lib/api";
+import { request } from "@/lib/http";
 
 /**
  * Pestaña web del navegador simulado: un iframe con la página real. Sirve para
@@ -214,9 +214,12 @@ function Frame({
   useEffect(() => {
     if (mixed) return;
     const ac = new AbortController();
-    fetch(`${API_URL}/preview/frame-check?url=${encodeURIComponent(openUrl)}`, { signal: ac.signal })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((v: { embeddable?: boolean; reason?: BlockReason; page?: boolean; status?: number } | null) => {
+    request<{ embeddable?: boolean; reason?: BlockReason; page?: boolean; status?: number } | undefined>(
+      `/preview/frame-check?url=${encodeURIComponent(openUrl)}`,
+      // Es público: no necesita la cookie de sesión.
+      { signal: ac.signal, credentials: "omit" },
+    )
+      .then((v) => {
         if (!v) return;
         if (v.embeddable === false) {
           if (check) setChecked(v.reason ?? "blocked");
@@ -257,11 +260,15 @@ function Frame({
           <div className="h-full w-1/3 animate-[md-load_1.1s_ease-in-out_infinite] bg-sim-ink-muted motion-reduce:animate-none" />
         </div>
       )}
+      {/* La app del developer no es de confianza: sandbox sin allow-top-navigation, para que no pueda
+          sacar a Mayday de la pestaña. allow-same-origin deja sus cookies (su origen es el del proxy,
+          no el nuestro) y allow-scripts el puente de postMessage (mayday:nav / back / forward / reload). */}
       <iframe
         ref={ref}
         src={src}
         title={hostOf(src)}
         className="size-full border-0"
+        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-modals allow-downloads"
         onLoad={() => setLoading(false)}
       />
     </div>

@@ -1,14 +1,22 @@
 import { z } from 'zod';
+import { parseGitHubRepoUrl } from '../git/github-url.js';
 
 const envKey = z
   .string()
   .regex(/^[A-Za-z_][A-Za-z0-9_]*$/, 'nombre de variable inválido');
 
 export const createSandboxSchema = z.object({
+  /** Solo repos de GitHub: `https://github.com/dueño/repo` (se guarda en forma canónica). */
   repo_url: z
-    .url()
-    .refine((u) => u.startsWith('https://'), 'repo_url debe ser https')
-    .transform((u) => u.replace(/\/+$/, '').replace(/\.git$/, '')),
+    .string()
+    .refine(
+      (u) => parseGitHubRepoUrl(u) !== null,
+      'debe ser https://github.com/dueño/repo',
+    )
+    .transform((u) => {
+      const { owner, repo } = parseGitHubRepoUrl(u)!;
+      return `https://github.com/${owner}/${repo}`;
+    }),
   ref: z.string().min(1).optional(),
   env: z.record(envKey, z.string()).optional(),
   /**

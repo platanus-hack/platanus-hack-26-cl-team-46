@@ -19,12 +19,21 @@ export function leavesSimulation(el) {
   const a = el.closest('a[href], area[href]');
   if (!a) return false;
   if ((a.target && a.target !== '_self') || a.hasAttribute('download')) return true;
+  return leavesTo(a.getAttribute('href'));
+}
+// Ir de `from` (por defecto, aquí) a esta dirección saca de la simulación: otro sitio, otra página u
+// otra búsqueda (#… no).
+export function leavesTo(href, from = location.href) {
   try {
-    const u = new URL(a.getAttribute('href'), location.href);
+    const here = new URL(from), u = new URL(href, here);
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
-    return u.origin !== location.origin || u.pathname !== location.pathname || u.search !== location.search;
+    return u.origin !== here.origin || u.pathname !== here.pathname || u.search !== here.search;
   } catch { return true; }
 }
+
+// Campos de clave o secretos: Hinty nunca escribe ahí y su valor no sale de la página.
+const SECRET = /(pass|secret|token|api[-_ ]?key|clave|contrase|credencial|private)/i;
+export const isSecretField = el => !!el && (el.type === 'password' || SECRET.test([el.name, el.id, el.autocomplete, el.placeholder, el.getAttribute?.('aria-label')].join(' ')));
 
 // Lo que se ve de verdad: la caja recortada por cada panel con scroll u overflow oculto que la
 // contiene (un mensaje que quedó arriba en un chat con scroll no se ve, aunque esté en la ventana).
@@ -67,7 +76,7 @@ const ownText = el => {
 function label(el) {
   if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
     const lab = el.labels?.[0]?.innerText || el.getAttribute('aria-label') || el.placeholder || el.name || '';
-    const val = el.type === 'password' ? (el.value ? '••••' : '') : el.value;
+    const val = isSecretField(el) ? (el.value ? '••••' : '') : el.value; // un secreto no va al modelo
     return clean([lab, val && `valor: ${val}`].filter(Boolean).join(' · '));
   }
   if (el.tagName === 'SELECT') return clean((el.getAttribute('aria-label') || '') + ' ' + (el.selectedOptions?.[0]?.text || ''));
@@ -87,7 +96,9 @@ export function harvestScreen({ skip = () => false } = {}) {
   for (const el of all) {
     if (el.closest('.clicky-root') || skip(el)) continue;
     const tag = el.tagName;
-    if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'SVG' || tag === 'PATH' || tag === 'NOSCRIPT') continue;
+    // localName: en SVG el tagName va en minúsculas ("svg", "path"), así que no se compara con tagName
+    const name = el.localName;
+    if (name === 'script' || name === 'style' || name === 'svg' || name === 'path' || name === 'noscript') continue;
     const tagged = el.hasAttribute('data-clicky') && !el.hasAttribute('data-clicky-auto');
     const interactive = el.matches(INTERACTIVE);
     const heading = /^H[1-6]$/.test(tag);

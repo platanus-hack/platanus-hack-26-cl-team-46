@@ -35,9 +35,11 @@ export interface ClickyRequest extends Request {
 }
 
 /**
- * Acceso a Clicky: solo con una simulación en curso o terminada (`x-sim-id`) y con un límite
- * de preguntas por minuto por IP. Con el login encendido (src/auth), además la simulación
- * tiene que ser del usuario de la sesión. El tope por simulación vive en ClickyService.
+ * Acceso a Clicky: solo con una simulación en curso o terminada (`x-sim-id`). Con el login
+ * encendido (src/auth), además la simulación tiene que ser del usuario de la sesión. Pasado
+ * eso, un límite de peticiones por minuto por simulación (preguntas, sesiones de dictado y
+ * transcripciones, todas juntas): así una IP compartida no frena a otros y cambiar de IP no
+ * lo salta. Los topes por simulación viven en ClickyService.
  */
 @Injectable()
 export class ClickyAccessGuard implements CanActivate {
@@ -51,7 +53,6 @@ export class ClickyAccessGuard implements CanActivate {
 
   canActivate(ctx: ExecutionContext): boolean {
     const req = ctx.switchToHttp().getRequest<ClickyRequest>();
-    this.rateLimit(req.ip ?? 'unknown');
     const simId = String(req.headers['x-sim-id'] ?? '');
     if (!/^sim-[a-f0-9]{8}$/.test(simId))
       throw new HttpException(
@@ -67,24 +68,26 @@ export class ClickyAccessGuard implements CanActivate {
       throw new ConflictException(
         `La simulación está ${sim.status}: Clicky solo responde con una simulación en curso o terminada`,
       );
+    this.rateLimit(simId || `ip:${req.ip ?? 'unknown'}`);
     req.clickySimId = simId;
     req.clickySimStatus = sim.status;
     req.clickySim = sim;
     return true;
   }
 
-  private rateLimit(ip: string) {
+  /** Ventana de un minuto por `key` (la simulación; la IP si no hubiera). */
+  private rateLimit(key: string) {
     const max = this.config.get('CLICKY_RATE_LIMIT', { infer: true });
     const now = Date.now();
-    const recent = (this.hits.get(ip) ?? []).filter((t) => now - t < 60_000);
+    const recent = (this.hits.get(key) ?? []).filter((t) => now - t < 60_000);
     recent.push(now);
-    this.hits.set(ip, recent);
+    this.hits.set(key, recent);
     if (this.hits.size > 5000)
       for (const [k, v] of this.hits)
         if (now - (v.at(-1) ?? 0) > 60_000) this.hits.delete(k);
     if (recent.length > max)
       throw new HttpException(
-        'Demasiadas preguntas seguidas, espera un momento',
+        'Demasiadas peticiones seguidas a Hinty, espera un momento',
         HttpStatus.TOO_MANY_REQUESTS,
       );
   }

@@ -1,7 +1,12 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { loadManifest, ManifestError } from './manifest.js';
+import {
+  healthcheckUrl,
+  loadManifest,
+  ManifestError,
+  manifestSchema,
+} from './manifest.js';
 
 describe('loadManifest', () => {
   let dir: string;
@@ -67,5 +72,40 @@ describe('loadManifest', () => {
 
   it('falla si no sabe cómo desplegar', async () => {
     await expect(loadManifest(dir)).rejects.toThrow(/No se pudo inferir/);
+  });
+});
+
+describe('healthcheck_path (sin SSRF)', () => {
+  const parse = (healthcheck_path: string) =>
+    manifestSchema.safeParse({ healthcheck_path }).success;
+
+  it('acepta rutas de la app', () => {
+    for (const ok of ['/', '/health', '/api/health?full=1'])
+      expect(parse(ok), ok).toBe(true);
+  });
+
+  it('rechaza URLs absolutas, protocol-relative y trucos del parser de URL', () => {
+    for (const bad of [
+      'http://169.254.169.254/latest/meta-data',
+      '//evil.com/x',
+      '/\\evil.com',
+      '/\t/evil.com',
+      'health',
+      '',
+    ])
+      expect(parse(bad), JSON.stringify(bad)).toBe(false);
+  });
+
+  it('healthcheckUrl queda en el origen de la app (o null)', () => {
+    const app = 'https://sbx-1.onrender.com/algo';
+    expect(healthcheckUrl(app, '/health')).toBe(
+      'https://sbx-1.onrender.com/health',
+    );
+    expect(healthcheckUrl(app, undefined)).toBe('https://sbx-1.onrender.com/');
+    expect(healthcheckUrl(app, '')).toBe('https://sbx-1.onrender.com/');
+    // Manifests guardados antes de la validación.
+    expect(healthcheckUrl(app, '//evil.com/x')).toBeNull();
+    expect(healthcheckUrl(app, 'http://evil.com/')).toBeNull();
+    expect(healthcheckUrl(app, '/\\evil.com')).toBeNull();
   });
 });

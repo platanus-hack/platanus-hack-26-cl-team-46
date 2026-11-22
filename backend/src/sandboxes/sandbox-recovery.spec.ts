@@ -23,6 +23,15 @@ function sbx(patch: Partial<SandboxRecord>): SandboxRecord {
   };
 }
 
+const agent = {
+  workspace_id: 'ws',
+  session_id: 'se',
+  deep_link: '',
+  reason: '',
+  started_at: ago(10_000),
+  plans_submitted: 0,
+};
+
 describe('decideRecovery', () => {
   it('no toca un sandbox que otra instancia viva sigue procesando (deploy sin downtime)', () => {
     const s = sbx({ lease: { owner: 'vieja', heartbeat_at: ago(5_000) } });
@@ -88,9 +97,44 @@ describe('decideRecovery', () => {
     expect(decideRecovery(sbx({ status: 'ready' }), 'nueva', now)).toEqual({
       kind: 'skip',
     });
+    expect(
+      decideRecovery(sbx({ status: 'analyzing', agent }), 'nueva', now),
+    ).toEqual({ kind: 'skip' });
+  });
+
+  it('analyzing sin agente (reinicio mientras se creaba la VM) se cierra', () => {
+    expect(
+      decideRecovery(
+        sbx({ status: 'analyzing', agent_launching_at: ago(60_000) }),
+        'nueva',
+        now,
+      ),
+    ).toEqual({ kind: 'launch_interrupted' });
+    // Registros que quedaron así antes del marcador.
     expect(decideRecovery(sbx({ status: 'analyzing' }), 'nueva', now)).toEqual({
-      kind: 'skip',
+      kind: 'launch_interrupted',
     });
+    // Con un agente viejo terminado y uno nuevo lanzándose, manda el marcador.
+    expect(
+      decideRecovery(
+        sbx({
+          status: 'analyzing',
+          agent: { ...agent, finished_at: ago(1_000) },
+          agent_launching_at: ago(5_000),
+        }),
+        'nueva',
+        now,
+      ),
+    ).toEqual({ kind: 'launch_interrupted' });
+  });
+
+  it('no cierra un lanzamiento que otra instancia viva sigue haciendo', () => {
+    const s = sbx({
+      status: 'analyzing',
+      agent_launching_at: ago(5_000),
+      lease: { owner: 'vieja', heartbeat_at: ago(2_000) },
+    });
+    expect(decideRecovery(s, 'nueva', now)).toEqual({ kind: 'skip' });
   });
 
   it('su propio lease no cuenta como de otra instancia', () => {

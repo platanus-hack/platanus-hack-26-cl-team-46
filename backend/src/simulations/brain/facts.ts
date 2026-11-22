@@ -29,6 +29,8 @@ export interface VulnFacts {
   };
   /** Último control.verify pedido para esta vuln. */
   verify_requested_seq?: number;
+  /** El atacante no pudo jugarla (attack.done con skipped): no cuenta como atacada ni se vuelve a pedir. */
+  skipped?: boolean;
   status: VulnStatus;
 }
 
@@ -148,6 +150,17 @@ export function computeFacts(
         break;
       case 'attack.done':
         facts.last_done_seq = e.seq;
+        // No se pudo jugar: destraba al director, pero la vuln no quedó atacada.
+        if (e.raw.skipped === true) {
+          if (id) {
+            const v = vuln(id);
+            if (!v.done_seq && !v.succeeded) {
+              v.skipped = true;
+              delete v.attacked_seq;
+            }
+          }
+          break;
+        }
         facts.last_done_t = e.t;
         if (id) {
           const v = vuln(id);
@@ -343,7 +356,10 @@ export function direct(
 
   const attacked = attackedVulns(f);
   const active = activeVulns(f);
-  const nextId = f.order.find((id) => f.vulns[id].status === 'pending');
+  // Solo vulns del plan (las únicas que se pueden pedir con control.next) y no saltadas.
+  const nextId = planOrder(s.attack_plan).find(
+    (id) => f.vulns[id]?.status === 'pending' && !f.vulns[id].skipped,
+  );
   // El atacante no tiene nada más que hacer: robó la base o probó todo lo que encontró.
   const hackerDone = !nextId || f.db_exfiltrated;
 

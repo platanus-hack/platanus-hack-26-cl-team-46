@@ -1,0 +1,63 @@
+# CI: lo mismo que `pnpm run check` en local, en cada push a main y en cada PR (un job por paquete, en paralelo).
+# Backend (NestJS): lint con tipos, tests unitarios y e2e, y build. Frontend (Next.js): lint y build.
+# Motor (engine/, fuera del workspace de pnpm, sin dependencias): sus tests con node --test.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# En un PR, un push nuevo cancela la corrida anterior; en main corren todas.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter backend...
+      - run: pnpm --filter backend lint
+      - run: pnpm --filter backend exec tsc --noEmit -p tsconfig.json
+      - run: pnpm --filter backend test
+      - run: pnpm --filter backend test:e2e
+      - run: pnpm --filter backend build
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile --filter frontend...
+      - run: pnpm --filter frontend lint
+      - run: pnpm --filter frontend build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+          NEXT_TELEMETRY_DISABLED: '1'
+
+  engine:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - run: node --test test/*.test.ts
+        working-directory: engine

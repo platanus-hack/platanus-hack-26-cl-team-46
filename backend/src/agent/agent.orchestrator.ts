@@ -34,6 +34,8 @@ const AGENT_TIMEOUT_MS = 60 * 60_000;
 export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(AgentOrchestrator.name);
   private timer?: NodeJS.Timeout;
+  /** Una vuelta del monitor a la vez (cada una hace varias llamadas a Conductor). */
+  private monitoring = false;
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -103,44 +105,57 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
       .replace(/\/+$/, '');
 
     // Si lo eliminaron mientras se preparaba (límite por usuario), no se lanza el agente.
-    if (s.status === 'deleted') return;
-    this.store.update(id, { status: 'analyzing' });
+    if (isDeleting(s)) return;
+    // Marcador antes de crear la VM: si el backend se reinicia en medio, la
+    // recuperación ve "analyzing sin agente" y lo cierra (ver decideRecovery).
+    this.store.update(id, {
+      status: 'analyzing',
+      agent_launching_at: new Date().toISOString(),
+    });
     this.events.emit(id, 'info', 'Lanzando agente de IA', reason, {}, 'agent');
 
-    const ws = await this.conductor.createWorkspace({
-      name: `deploy ${id}`,
-      sessionName: `Deploy ${s.repo_url.replace('https://github.com/', '')}`,
-      message: buildAgentPrompt({
-        sandboxId: id,
-        repoUrl: s.repo_url,
-        reason,
-        knownManifest: known,
-        maxPlans: this.maxPlans,
-      }),
-      env: {
-        SANDBOX_ID: id,
-        DEPLOYER_URL: publicUrl,
-        DEPLOYER_TOKEN: signAgentToken(secret, id),
-      },
-    });
-    if (this.store.get(id)?.status === 'deleted') {
+    const ws = await this.conductor
+      .createWorkspace({
+        name: `deploy ${id}`,
+        sessionName: `Deploy ${s.repo_url.replace('https://github.com/', '')}`,
+        message: buildAgentPrompt({
+          sandboxId: id,
+          repoUrl: s.repo_url,
+          reason,
+          knownManifest: known,
+          maxPlans: this.maxPlans,
+        }),
+        env: {
+          SANDBOX_ID: id,
+          DEPLOYER_URL: publicUrl,
+          DEPLOYER_TOKEN: signAgentToken(secret, id),
+        },
+      })
+      .catch((err: unknown) => {
+        this.clearLaunching(id);
+        throw err;
+      });
+    const current = this.store.get(id);
+    if (!current || isDeleting(current)) {
       // Eliminado mientras se creaba la VM: se archiva y no se reabre el sandbox.
+      this.clearLaunching(id);
       await this.conductor
         .archiveWorkspace(ws.workspaceId)
         .catch(() => undefined);
       return;
     }
 
-    this.store.update(id, {
-      status: 'analyzing',
-      agent: {
+    this.store.update(id, (r) => {
+      r.status = 'analyzing';
+      r.agent = {
         workspace_id: ws.workspaceId,
         session_id: ws.sessionId,
         deep_link: ws.deepLink,
         reason,
         started_at: new Date().toISOString(),
         plans_submitted: 0,
-      },
+      };
+      delete r.agent_launching_at;
     });
     this.events.emit(
       id,
@@ -271,7 +286,23 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
       );
   }
 
+  /**
+   * Escrituras y lecturas sensibles del agente (cambios, notas, usuarios, base,
+   * código): solo mientras su corrida sigue activa. Con la VM recién creada,
+   * puede adelantarse a que se guarde `agent`: el marcador de lanzamiento cuenta.
+   */
+  requireRunning(s: SandboxRecord) {
+    if (isDeleting(s)) throw new ConflictException('El sandbox fue eliminado');
+    if (s.agent_launching_at) return;
+    this.requireActive(s);
+  }
+
   // ------------------------------------------------------------ internos
+
+  private clearLaunching(id: string) {
+    if (this.store.get(id)?.agent_launching_at)
+      this.store.update(id, (r) => void delete r.agent_launching_at);
+  }
 
   private requireActive(s: SandboxRecord) {
     if (!s.agent || s.agent.finished_at)
@@ -338,6 +369,16 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
 
   /** Vigila las sesiones activas: si el agente se queda quieto sin reportar, insiste una vez y después se rinde. */
   private async monitor() {
+    if (this.monitoring) return;
+    this.monitoring = true;
+    try {
+      await this.monitorOnce();
+    } finally {
+      this.monitoring = false;
+    }
+  }
+
+  private async monitorOnce() {
     for (const s of this.store.list()) {
       const agent = s.agent;
       if (!agent || agent.finished_at || s.status === 'deleted') continue;
@@ -434,6 +475,11 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
       }
     }
   }
+}
+
+/** Eliminado o con remove() en curso: no se lanza ni se reabre nada. */
+function isDeleting(s: SandboxRecord): boolean {
+  return s.status === 'deleted' || Boolean(s.deleting_at);
 }
 
 /** Mensaje para el usuario cuando su app no se puede desplegar hoy. */

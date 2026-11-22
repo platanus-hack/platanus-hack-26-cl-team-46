@@ -80,12 +80,30 @@ const SEEN = new Set([
 ]);
 const ATTACK = /^attack\.(step|success|blocked|done|verify)$/;
 
-function clip(s: unknown, n: number): string {
-  const t = (typeof s === 'string' ? s : s == null ? '' : JSON.stringify(s))
+/** Las etiquetas con que van los datos de afuera en el mensaje al modelo (ver SYSTEM_PROMPT). */
+const DATA_TAGS =
+  /<\s*\/?\s*(pantalla|pregunta|marcas|historial|registro)\b[^>]*>/gi;
+
+/**
+ * Texto que viene de afuera (la pantalla, el usuario, los agentes o el atacante) listo para ir
+ * dentro de sus etiquetas: en una sola línea, así no abre una sección propia, y sin nuestras
+ * etiquetas, así no cierra la suya.
+ */
+export function asData(s: unknown): string {
+  return (typeof s === 'string' ? s : s == null ? '' : JSON.stringify(s))
+    .replace(DATA_TAGS, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function clip(s: unknown, n: number): string {
+  const t = asData(s);
   return t.length > n ? `${t.slice(0, n)}…` : t;
 }
+
+/** Lo que sale de los registros del simulacro (mensajes, código, logs, agentes, atacante): datos. */
+const record = (lines: string[]) =>
+  ['<registro>', ...lines, '</registro>'].join('\n');
 
 function mmss(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
@@ -144,7 +162,9 @@ function appBlock(s: BriefSim): string {
 
 function findingLines(f: Finding | undefined, full: boolean): string[] {
   if (!f) return [];
-  const where = f.file ? `${f.file}${f.line ? `:${f.line}` : ''}` : '';
+  const where = f.file
+    ? `${clip(f.file, 160)}${f.line ? `:${clip(f.line, 8)}` : ''}`
+    : '';
   return [
     where || f.evidence
       ? `  - Dónde está la falla: ${[where, clip(f.evidence, 300)].filter(Boolean).join(' — ')}`
@@ -155,7 +175,7 @@ function findingLines(f: Finding | undefined, full: boolean): string[] {
     full && f.symptoms
       ? `  - Señales que puede ver el developer: ${clip(f.symptoms, 300)}`
       : '',
-    f.severity ? `  - Severidad: ${f.severity}` : '',
+    f.severity ? `  - Severidad: ${clip(f.severity, 20)}` : '',
     full && f.real_case
       ? `  - Caso real parecido: ${clip(f.real_case, 200)}`
       : '',
@@ -186,7 +206,8 @@ function eventLine(e: TimelineEvent, started?: string): string {
   const at = rel(e.t, started);
   switch (e.type) {
     case 'notify': {
-      const from = typeof e.raw?.from === 'string' ? ` de ${e.raw.from}` : '';
+      const from =
+        typeof e.raw?.from === 'string' ? ` de ${clip(e.raw.from, 60)}` : '';
       return `${at} · aviso por ${e.source}${from} (${e.severity}): ${clip(e.title, 120)} — ${clip(e.body, 220)}`;
     }
     case 'user.message':
@@ -214,9 +235,11 @@ function assessmentsBlock(s: BriefSim, n: number): string {
   if (!list.length) return '';
   return [
     `## Cómo se evaluó cada acción del developer (observador)`,
-    ...list.map(
-      (a) =>
-        `- ${clip(a.action, 140)} → ${clip(a.verdict, 40)}: ${clip(a.why, 220)}`,
+    record(
+      list.map(
+        (a) =>
+          `- ${clip(a.action, 140)} → ${clip(a.verdict, 40)}: ${clip(a.why, 220)}`,
+      ),
     ),
   ].join('\n');
 }
@@ -227,23 +250,24 @@ function debriefBlock(debrief: Record<string, unknown>): string {
     : [];
   return [
     `## Debrief (lo que ve en el historial al terminar)`,
-    `- Resultado: ${clip(debrief.outcome, 40)} · puntaje ${clip(debrief.score, 6)}`,
-    debrief.summary ? `- Resumen: ${clip(debrief.summary, 600)}` : '',
-    ...per.map(
-      (v) =>
-        `- ${clip(v.vuln_id, 60)} (${clip(v.verdict, 20)}): qué pasó: ${clip(v.what_happened, 240)} · dónde: ${clip(v.where, 120)} · qué hizo: ${clip(v.what_you_did, 240)} · lo correcto: ${clip(v.correct_fix, 300)} · caso real: ${clip(v.real_case, 160)}`,
+    record(
+      [
+        `- Resultado: ${clip(debrief.outcome, 40)} · puntaje ${clip(debrief.score, 6)}`,
+        debrief.summary ? `- Resumen: ${clip(debrief.summary, 600)}` : '',
+        ...per.map(
+          (v) =>
+            `- ${clip(v.vuln_id, 60)} (${clip(v.verdict, 20)}): qué pasó: ${clip(v.what_happened, 240)} · dónde: ${clip(v.where, 120)} · qué hizo: ${clip(v.what_you_did, 240)} · lo correcto: ${clip(v.correct_fix, 300)} · caso real: ${clip(v.real_case, 160)}`,
+        ),
+      ].filter(Boolean),
     ),
-  ]
-    .filter(Boolean)
-    .join('\n');
+  ].join('\n');
 }
 
 function reportBlock(report: BriefSim['report']): string {
   const r = report?.result;
   if (!r) return '';
-  return [
-    `## Reporte final (pantalla "Ver reporte")`,
-    `- Veredicto: ${r.verdict} · rango ${r.rank}${r.diagnosis ? ` · ${clip(r.diagnosis, 400)}` : ''}`,
+  const lines = [
+    `- Veredicto: ${clip(r.verdict, 40)} · rango ${clip(r.rank, 20)}${r.diagnosis ? ` · ${clip(r.diagnosis, 400)}` : ''}`,
     r.recommendations?.summary
       ? `- Cierre del coach: ${clip(r.recommendations.summary, 300)}`
       : '',
@@ -255,11 +279,12 @@ function reportBlock(report: BriefSim['report']): string {
     ),
     ...(r.fixes ?? []).map(
       (f) =>
-        `- Arreglo pendiente en su repo real${f.done ? ' (ya hecho en la simulación)' : ''}: ${clip(f.title, 120)}${f.file ? ` en ${f.file}` : ''} — ${clip(f.steps?.join(' / '), 300)}`,
+        `- Arreglo pendiente en su repo real${f.done ? ' (ya hecho en la simulación)' : ''}: ${clip(f.title, 120)}${f.file ? ` en ${clip(f.file, 160)}` : ''} — ${clip(f.steps?.join(' / '), 300)}`,
     ),
-  ]
-    .filter(Boolean)
-    .join('\n');
+  ].filter(Boolean);
+  return [`## Reporte final (pantalla "Ver reporte")`, record(lines)].join(
+    '\n',
+  );
 }
 
 /**
@@ -317,7 +342,7 @@ export function simBrief(s: BriefSim, now = Date.now()): string {
       attacked.length
         ? [
             `## Lo que pasó con cada incidente`,
-            ...attacked.map((id) => vulnBlock(id, facts, findings, true)),
+            record(attacked.map((id) => vulnBlock(id, facts, findings, true))),
           ].join('\n')
         : '- El ataque nunca partió: el developer cerró antes.',
       s.debrief ? debriefBlock(s.debrief) : '',
@@ -326,13 +351,13 @@ export function simBrief(s: BriefSim, now = Date.now()): string {
       attacks.length
         ? [
             `## Lo que hizo el atacante`,
-            ...attacks.slice(-14).map((e) => attackLine(e, started)),
+            record(attacks.slice(-14).map((e) => attackLine(e, started))),
           ].join('\n')
         : '',
       seen.length
         ? [
             `## Lo que vio e hizo el developer (en orden)`,
-            ...recentSeen(seen, 14, 20).map((e) => eventLine(e, started)),
+            record(recentSeen(seen, 14, 20).map((e) => eventLine(e, started))),
           ].join('\n')
         : '',
     ]
@@ -346,7 +371,7 @@ export function simBrief(s: BriefSim, now = Date.now()): string {
     ? [
         `## Tu clave de profesor (SECRETA: el developer no la ve; úsala para graduar tus pistas, nunca la recites)`,
         `Incidentes ya atacados, el más reciente primero:`,
-        ...inPlay.map((id, i) => vulnBlock(id, facts, findings, i === 0)),
+        record(inPlay.map((id, i) => vulnBlock(id, facts, findings, i === 0))),
         pending.length
           ? `Quedan ${pending.length} incidente(s) por partir: no los menciones ni los anticipes.`
           : 'No quedan incidentes por partir.',
@@ -366,14 +391,14 @@ export function simBrief(s: BriefSim, now = Date.now()): string {
     attacks.length
       ? [
           `## Lo que hizo el atacante (SECRETO: el developer solo ve sus efectos)`,
-          ...attacks.slice(-10).map((e) => attackLine(e, started)),
+          record(attacks.slice(-10).map((e) => attackLine(e, started))),
         ].join('\n')
       : '',
     assessmentsBlock(s, 5),
     seen.length
       ? [
           `## Lo que el developer ha visto y hecho (lo mismo que tiene en pantalla, en orden)`,
-          ...recentSeen(seen, 12, 16).map((e) => eventLine(e, started)),
+          record(recentSeen(seen, 12, 16).map((e) => eventLine(e, started))),
         ].join('\n')
       : `## Lo que el developer ha visto y hecho\n- Todavía nada.`,
   ]

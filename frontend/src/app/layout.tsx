@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-import { Suspense } from "react";
+import { Suspense, type ReactNode } from "react";
 import { ClickyDock } from "@/clicky/ClickyDock";
 import { AppFrame } from "@/components/app/AppSidebar";
 import { ConfirmProvider } from "@/components/mayday/ConfirmDialog";
@@ -21,7 +21,9 @@ export const metadata: Metadata = {
   description: "El simulador de vuelo para responder a un hackeo.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+// Tipo explícito y no LayoutProps<"/">: ese helper solo existe después de la generación de tipos de Next
+// (.next/types), y la raíz no tiene params ni slots que ganar con él.
+export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html
       lang="es"

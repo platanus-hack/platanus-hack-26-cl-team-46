@@ -34,14 +34,16 @@ import { SimulationBrain } from './brain/simulation.brain.js';
 import { SimulationsService } from './simulations.service.js';
 import { EngineHacker } from './engine/engine.hacker.js';
 import { TimelineService } from './timeline.service.js';
-import { EVENT_TYPES } from './simulation.types.js';
+import { EVENT_TYPES, type SimulationRecord } from './simulation.types.js';
 
 /**
  * API de simulaciones para el producto (UI del simulador).
  *
  * - Panel izquierdo: GET /simulations/:id/stream (SSE, view=user) → notify, coder.reply, change.*, sim.status…
  * - Panel derecho: POST /simulations/:id/messages (chat con el agente de código) y /actions (botones).
- * - view=all muestra además lo interno (ataque, estado, control): útil para debug y para el debrief.
+ * - view=all muestra además lo interno (ataque, estado, control): para el debrief y el replay, solo
+ *   con la simulación cerrada (o SIM_DEBUG_VIEW). Mientras el incidente sigue vivo, el jugador no
+ *   ve la hoja de respuestas: ni con view=all ni en GET /simulations(/:id).
  *
  * Con el login encendido (src/auth), cada usuario ve y opera solo las simulaciones de sus
  * sandboxes; las ajenas responden 404. Los admins ven todo.
@@ -63,7 +65,7 @@ export class SimulationsController {
     return this.sims
       .records()
       .filter((s) => this.auth.canAccess(user, this.sims.ownerOf(s)))
-      .map((s) => this.sims.toView(s));
+      .map((s) => this.sims.playerView(s));
   }
 
   /** Catálogo de tipos de evento (quién publica, a quién despierta). */
@@ -100,7 +102,7 @@ export class SimulationsController {
 
   @Get(':id')
   get(@Param('id') id: string, @CurrentUser() user: AuthUser | null) {
-    return this.sims.toView(this.owned(id, user));
+    return this.sims.playerView(this.owned(id, user));
   }
 
   @Get(':id/timeline')
@@ -109,8 +111,8 @@ export class SimulationsController {
     @Query({ schema: timelineQuerySchema }) q: TimelineQuery,
     @CurrentUser() user: AuthUser | null,
   ) {
-    this.owned(id, user);
-    return this.timeline.list(id, q);
+    const s = this.owned(id, user);
+    return this.timeline.list(id, { ...q, view: this.view(s, q.view) });
   }
 
   @Get(':id/stream')
@@ -123,14 +125,14 @@ export class SimulationsController {
     @CurrentUser() user: AuthUser | null,
     @Headers('last-event-id') lastEventId?: string,
   ) {
-    this.owned(id, user);
+    const s = this.owned(id, user);
     // Al reconectar, EventSource manda el último id recibido: se sigue desde ahí en vez de repetir el historial.
     const resumeFrom = Number(lastEventId);
     const since =
       Number.isFinite(resumeFrom) && resumeFrom > 0
         ? Math.max(q.since ?? 0, resumeFrom)
         : q.since;
-    return this.timeline.sseStream(id, q.view, since);
+    return this.timeline.sseStream(id, this.view(s, q.view), since);
   }
 
   @Post(':id/start')
@@ -140,9 +142,10 @@ export class SimulationsController {
     @CurrentUser() user: AuthUser | null,
     @Body({ schema: startSchema }) body: StartBody,
   ) {
-    this.owned(id, user);
+    const s = this.owned(id, user);
     // Con el motor real, el developer elige los incidentes (en orden) desde el informe.
-    if (body?.vulns?.length) {
+    // Solo con la simulación lista: si no, start() responde el 409 sin tocar el plan.
+    if (body?.vulns?.length && s.status === 'ready') {
       this.engine.select(id, body.vulns);
       // Si cambió el primero, las alertas de apertura eran de otro ataque.
       await this.brain.ensureOpeningForFirst(id);
@@ -192,6 +195,11 @@ export class SimulationsController {
   ) {
     this.owned(id, user);
     return this.sims.stop(id, body);
+  }
+
+  /** view=all solo con la simulación cerrada (o SIM_DEBUG_VIEW); si no, la vista del jugador. */
+  private view(s: SimulationRecord, wanted: 'user' | 'all') {
+    return wanted === 'all' && this.sims.canSeeInternals(s) ? 'all' : 'user';
   }
 
   /** La simulación si el usuario puede verla; si no, 404. */

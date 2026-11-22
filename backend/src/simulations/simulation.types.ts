@@ -37,6 +37,31 @@ export type SimStatus =
   | 'failed'
   | 'stopped';
 
+/** Estados de cierre: no se sale de ellos. */
+export const CLOSED_STATUSES: readonly SimStatus[] = [
+  'finished',
+  'failed',
+  'stopped',
+];
+
+/**
+ * Transiciones legítimas (las de setStatus): preparar → partir → pausar/reanudar →
+ * cerrar. Cualquier estado vivo puede fallar o detenerse; los cerrados no cambian.
+ */
+export const TRANSITIONS: Record<SimStatus, readonly SimStatus[]> = {
+  starting: ['ready', 'failed', 'stopped'],
+  ready: ['running', 'failed', 'stopped'],
+  running: ['paused', 'finished', 'failed', 'stopped'],
+  paused: ['running', 'finished', 'failed', 'stopped'],
+  finished: [],
+  failed: [],
+  stopped: [],
+};
+
+export function canTransition(from: SimStatus, to: SimStatus): boolean {
+  return TRANSITIONS[from]?.includes(to) ?? false;
+}
+
 /** Canales simulados por los que llegan notificaciones al developer. */
 export const NOTIFY_CHANNELS = [
   'email', // correos de clientes/usuarios
@@ -408,6 +433,8 @@ export interface SimulationRecord {
 
   workspace_id?: string;
   workspace_link?: string;
+  /** Cuándo se archivó el workspace al cerrar (para no archivarlo dos veces). */
+  workspace_archived_at?: string;
   threads: SimThread[];
 
   context?: SimContext;

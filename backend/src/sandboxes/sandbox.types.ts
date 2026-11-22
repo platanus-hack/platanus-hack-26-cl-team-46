@@ -66,6 +66,16 @@ export type SandboxFailureKind = 'unsupported' | 'capacity' | 'error';
 export interface SandboxRecord {
   /** Instancia del backend con una operación en curso (ver SandboxLease). */
   lease?: SandboxLease;
+  /**
+   * remove() en curso: desde aquí nada en vuelo crea recursos nuevos
+   * (assertNotDeleted). No es un status para no cambiar el contrato público.
+   */
+  deleting_at?: string;
+  /**
+   * Se está creando la VM del agente (antes de que exista `agent`). Si el
+   * backend se reinicia en ese momento, la recuperación lo marca como fallido.
+   */
+  agent_launching_at?: string;
   /** Última acción del usuario sobre el sandbox (crear, redeploy, env...). Lo usa la limpieza. */
   last_activity_at?: string;
   /**

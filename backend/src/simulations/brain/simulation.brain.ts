@@ -9,6 +9,7 @@ import type { Env } from '../../config/env.js';
 import { SandboxesService } from '../../sandboxes/sandboxes.service.js';
 import { SimulationStore } from '../simulation.store.js';
 import {
+  CLOSED_STATUSES,
   EVENT_TYPES,
   type EngineReplayEvent,
   type IncidentState,
@@ -60,6 +61,8 @@ const OPENING_INSTRUCTION =
   'Es la apertura del incidente: devuelve 2 o 3 notificaciones que se lean en orden y escalen (por ejemplo, un contador que sube o un segundo canal que nota lo mismo). La primera sale apenas parte el simulacro y las otras unos 20 y 40 segundos después. Respeta las reglas: solo síntomas observables y alertas que cruzan un umbral.';
 /** Una pausa por Hinty no puede dejar la simulación congelada: se reanuda sola pasado esto. */
 const MAX_HINTY_PAUSE_MS = 10 * 60_000;
+/** Estados en los que el incidente sigue en curso (y se puede cerrar con un debrief). */
+const LIVE = ['running', 'paused'];
 
 /**
  * Los roles que corren dentro del backend con la API de Claude (mode=api):
@@ -165,6 +168,13 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
   private onEvent(e: TimelineEvent) {
     const s = this.store.get(e.sim_id);
     if (!s) return;
+    if (
+      e.type === 'sim.status' &&
+      CLOSED_STATUSES.includes(e.raw?.status as SimulationRecord['status'])
+    ) {
+      this.forget(e.sim_id);
+      return;
+    }
     if (['attack.plan', 'context.ready', 'deploy.ready'].includes(e.type))
       void this.prepareOpening(e.sim_id);
     if (e.type === 'control.start') this.publishOpening(e.sim_id);
@@ -179,6 +189,19 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
     return s.threads.some((t) => t.role === role && t.mode === 'api');
   }
 
+  /** Simulación cerrada: se sueltan sus timers y reintentos pendientes. */
+  private forget(simId: string) {
+    const prefix = `${simId}:`;
+    for (const [k, t] of this.timers) {
+      if (!k.startsWith(prefix)) continue;
+      clearTimeout(t);
+      this.timers.delete(k);
+    }
+    for (const k of this.rerun) if (k.startsWith(prefix)) this.rerun.delete(k);
+    for (const k of this.failures.keys())
+      if (k.startsWith(prefix)) this.failures.delete(k);
+  }
+
   private schedule(simId: string, role: SimRole) {
     const k = key(simId, role);
     if (this.running.has(k)) {
@@ -186,12 +209,19 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
       return;
     }
     if (this.timers.has(k)) return;
+    // Tras un fallo se respeta el backoff: el timer corre recién cuando termina
+    // (y tick() vuelve a agendar si hiciera falta).
+    const f = this.failures.get(k);
+    const backoff = f ? Math.max(0, f.nextAt - Date.now()) : 0;
     this.timers.set(
       k,
-      setTimeout(() => {
-        this.timers.delete(k);
-        void this.run(simId, role);
-      }, DEBOUNCE_MS[role] ?? 1_000),
+      setTimeout(
+        () => {
+          this.timers.delete(k);
+          void this.run(simId, role);
+        },
+        Math.max(DEBOUNCE_MS[role] ?? 1_000, backoff),
+      ),
     );
   }
 
@@ -342,6 +372,8 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
       pending,
     );
     this.record(s.sim_id, 'generator', res);
+    // Si mientras escribía la simulación se cerró, no se publican avisos sueltos.
+    if (!LIVE.includes(this.store.get(s.sim_id)?.status ?? '')) return;
     for (const n of res.data.notifications) {
       if (!channels.includes(n.channel)) continue;
       this.sims.postFromAgent(s.sim_id, 'generator', {
@@ -387,8 +419,8 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
       pending,
     );
     this.record(s.sim_id, 'observer', res);
-    // Si mientras pensaba la simulación terminó, no pisar el cierre.
-    if (this.store.get(s.sim_id)?.status === 'finished') return;
+    // Si mientras pensaba la simulación se cerró (terminó o la detuvieron), no pisar el cierre.
+    if (!LIVE.includes(this.store.get(s.sim_id)?.status ?? '')) return;
     this.postState(s.sim_id, res.data);
   }
 
@@ -599,7 +631,7 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
   async finish(simId: string, reason: string) {
     if (!this.llm || this.finishing.has(simId)) return;
     const s0 = this.store.get(simId);
-    if (!s0 || !['running', 'paused'].includes(s0.status)) return;
+    if (!s0 || !LIVE.includes(s0.status)) return;
     this.finishing.add(simId);
     try {
       this.sims.postFromAgent(simId, 'observer', {
@@ -613,11 +645,13 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
         { ...this.models.observer, maxTokens: 16_000 },
       ];
       for (const [i, model] of attempts.entries()) {
-        const s = this.store.get(simId)!;
-        if (s.status === 'finished') return;
+        const s = this.store.get(simId);
+        // Un Stop (o un cierre por otra vía) durante el debrief manda: no se pisa con finished.
+        if (!s || !LIVE.includes(s.status)) return;
         try {
           const res = await runDebrief(this.llm, model, s, this.app(s));
           this.record(simId, 'observer', res);
+          if (!LIVE.includes(this.store.get(simId)?.status ?? '')) return;
           this.sims.postFromAgent(simId, 'observer', {
             type: 'sim.finished',
             title: 'Simulación terminada',
@@ -631,6 +665,7 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
           );
         }
       }
+      if (!LIVE.includes(this.store.get(simId)?.status ?? '')) return;
       this.postFallbackDebrief(simId);
     } finally {
       this.finishing.delete(simId);

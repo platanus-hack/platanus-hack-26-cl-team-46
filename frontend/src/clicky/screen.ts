@@ -26,7 +26,15 @@ export async function startTabCapture(onEnded: () => void): Promise<TabCapture |
     return null; // el usuario canceló o el navegador no deja
   }
 
+  // Solo una pestaña: si eligió una ventana o la pantalla entera, Hinty vería (y mandaría al modelo)
+  // más de lo que debe. Se suelta y sigue solo con el texto de la página. Un navegador que no
+  // informa la superficie (displaySurface vacío) se acepta: el usuario eligió qué compartir.
   const [track] = stream.getVideoTracks();
+  const surface = track?.getSettings().displaySurface;
+  if (!track || (surface && surface !== "browser")) {
+    stream.getTracks().forEach((t) => t.stop());
+    return null;
+  }
   const video = document.createElement("video");
   video.muted = true;
   video.playsInline = true;

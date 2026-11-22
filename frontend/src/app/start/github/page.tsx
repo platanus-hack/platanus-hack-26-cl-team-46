@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { Button, GitHubIcon, TypedLog } from "@/components/mayday";
 import { OnboardingShell, StepHeading } from "@/components/onboarding/OnboardingShell";
 import { SkipIfLoggedIn } from "@/components/onboarding/SkipIfLoggedIn";
-import { loginUrl, useSession } from "@/lib/onboarding";
+import { loginUrl, safeNext, useSession } from "@/lib/onboarding";
 
 /**
  * Paso 2 · Entra con GitHub (GitHub App: GitHub pide autorizar y el usuario elige qué repos
@@ -46,14 +46,10 @@ const ERRORS: Record<string, string> = {
   not_configured: "El login con GitHub todavía no está configurado en este entorno.",
 };
 
-/** Solo rutas internas (el backend vuelve a validarlo). */
-function safeNext(next: string | null) {
-  return next && /^\/(?![/\\])/.test(next) ? next : "/start/repos";
-}
-
 function Connect() {
   const router = useRouter();
   const params = useSearchParams();
+  // Solo rutas internas (ver safeNext): se usa para el router y para el login del backend.
   const next = safeNext(params.get("next"));
   const error = params.get("error");
   const { user, enabled } = useSession();

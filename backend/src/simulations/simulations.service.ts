@@ -13,18 +13,26 @@ import { previewUrl } from '../preview/preview-proxy.js';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { agentConfigProblems, type Env } from '../config/env.js';
-import { ConductorClient } from '../conductor/conductor.client.js';
+import {
+  ConductorClient,
+  isWorkspaceGone,
+} from '../conductor/conductor.client.js';
 import { DatabaseProvisioner } from '../sandboxes/database.provisioner.js';
 import { SandboxEventsService } from '../sandboxes/sandbox-events.service.js';
 import { SandboxesService } from '../sandboxes/sandboxes.service.js';
 import { sandboxDisplayName } from '../sandboxes/sandbox.types.js';
-import { nextBlockedReason } from './brain/facts.js';
+import { computeFacts, nextBlockedReason, planOrder } from './brain/facts.js';
+import { playerSafeView } from './player-view.js';
+import { redactDeep, secretValues } from './redact-secrets.js';
+import { RetryBudget } from './retry-budget.js';
 import { buildSimPrompt } from './sim-prompts.js';
 import { signSimToken } from './sim-token.js';
 import { detectTools } from './tools-detector.js';
 import { SimulationStore } from './simulation.store.js';
 import {
   BASE_CHANNELS,
+  canTransition,
+  CLOSED_STATUSES,
   NOTIFY_CHANNELS,
   SIM_ROLES,
   type IncidentState,
@@ -64,6 +72,12 @@ const ACTIVE: SimStatus[] = ['starting', 'ready', 'running', 'paused'];
 const OPERATORS: SimRole[] = ['coder', 'infra'];
 /** Espera máxima por el agente de código y las alertas de apertura antes de dejar partir igual. */
 const READY_WAIT_MS = 3 * 60_000;
+/** Preparar los agentes (workspace y threads): backoff de 4 s a 60 s y 8 intentos como tope. */
+const PREPARE_RETRY = { baseMs: 4_000, maxMs: 60_000, maxAttempts: 8 };
+/** Una simulación que lleva esto en `starting` (con la app ya arriba) quedó colgada. */
+const STARTING_MAX_MS = 20 * 60_000;
+/** Mientras el sandbox sigue desplegando, el deploy tiene sus propios plazos. */
+const SANDBOX_DEPLOYING = ['provisioning', 'analyzing', 'deploying'];
 
 /**
  * Orquestación de una simulación: un sandbox + un workspace de Conductor con
@@ -75,6 +89,10 @@ export class SimulationsService implements OnModuleInit {
   private readonly logger = new Logger(SimulationsService.name);
   private readonly bridged = new Map<string, () => void>();
   private readonly launching = new Set<string>();
+  private readonly prepareRetry = new RetryBudget(PREPARE_RETRY);
+  /** Cierres en curso (archivar el workspace, soltar el puente): uno por simulación. */
+  private readonly releasing = new Map<string, Promise<void>>();
+  private secrets?: string[];
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -135,7 +153,31 @@ export class SimulationsService implements OnModuleInit {
   // ------------------------------------------------------------ consultas
 
   list() {
-    return this.store.list().map((s) => this.toView(s));
+    return this.store.list().map((s) => this.playerView(s));
+  }
+
+  isActive(s: SimulationRecord) {
+    return ACTIVE.includes(s.status);
+  }
+
+  isClosed(s: SimulationRecord) {
+    return CLOSED_STATUSES.includes(s.status);
+  }
+
+  /**
+   * Lo interno (view=all, la hoja de respuestas) se muestra con la simulación cerrada
+   * o con SIM_DEBUG_VIEW. Mientras el incidente sigue vivo, el jugador no lo ve.
+   */
+  canSeeInternals(s: SimulationRecord) {
+    return (
+      this.isClosed(s) || this.config.get('SIM_DEBUG_VIEW', { infer: true })
+    );
+  }
+
+  /** La vista para el jugador (UI): sin la hoja de respuestas mientras el incidente sigue vivo. */
+  playerView(s: SimulationRecord) {
+    const view = this.toView(s);
+    return this.canSeeInternals(s) ? view : playerSafeView(view);
   }
 
   /** Dueño de la simulación = dueño de su sandbox (undefined si no tiene). */
@@ -273,10 +315,16 @@ export class SimulationsService implements OnModuleInit {
 
     let sandboxId = input.sandbox_id;
     let repoUrl = input.repo_url;
+    // Un sandbox sirve a una sola simulación viva: dos a la vez se pisarían el deploy y la base.
+    const busy = new Set(this.active().map((x) => x.sandbox_id));
     if (sandboxId) {
       const sbx = this.sandboxes.get(sandboxId);
       if (sbx.status === 'deleted')
         throw new ConflictException(`El sandbox ${sandboxId} fue eliminado`);
+      if (busy.has(sandboxId))
+        throw new ConflictException(
+          `El sandbox ${sandboxId} ya tiene una simulación en curso`,
+        );
       repoUrl = sbx.repo_url;
     } else if (repoUrl) {
       // Reusar un sandbox ya "ready" del mismo repo (y dueño) evita re-desplegar
@@ -287,6 +335,7 @@ export class SimulationsService implements OnModuleInit {
         : this.sandboxes.findReusable({
             repo_url: repoUrl,
             owner: input.owner,
+            busy,
           });
       if (reusable) {
         sandboxId = reusable.sandbox_id;
@@ -351,7 +400,7 @@ export class SimulationsService implements OnModuleInit {
     this.bridgeSandbox(sim);
     void this.launch(sim.sim_id);
     return {
-      ...this.toView(sim),
+      ...this.playerView(sim),
       // Para un motor de hacking externo (rol hacker vía HTTP). Solo si se pidió
       // explícitamente: el token sirve para cualquier rol (x-sim-role es declarado).
       ...(hackerMode === 'external' && !engineDriven
@@ -360,12 +409,17 @@ export class SimulationsService implements OnModuleInit {
     };
   }
 
-  /** Crea el workspace (con el thread infra) y luego el resto de los threads. */
+  /**
+   * Crea el workspace (con el thread infra) y luego el resto de los threads. Si falla,
+   * el dispatcher lo reintenta con backoff y, agotados los intentos, la simulación falla.
+   */
   async launch(simId: string) {
     if (this.launching.has(simId)) return;
+    if (!this.prepareRetry.canTry(`launch:${simId}`)) return;
     this.launching.add(simId);
     try {
       const s = this.get(simId);
+      if (!ACTIVE.includes(s.status)) return;
       // La VM nace con la primera sesión de Conductor (infra, o hacker si infra corre en la API).
       const first = s.threads.find((t) => t.mode === 'conductor');
       if (!s.workspace_id && first) {
@@ -387,24 +441,41 @@ export class SimulationsService implements OnModuleInit {
           t.session_id = ws.sessionId;
           t.deep_link = ws.deepLink;
         });
+        this.prepareRetry.succeed(`launch:${simId}`);
+        // Se cerró mientras se creaba la VM: se archiva lo creado y no se sigue.
+        if (!ACTIVE.includes(this.get(simId).status)) {
+          await this.release(simId);
+          return;
+        }
         this.system(simId, 'agent.note', 'Agentes listos', '', {});
       }
       await this.createMissingThreads(simId);
     } catch (err) {
       this.logger.error(`[${simId}] launch: ${(err as Error).message}`);
+      const exhausted = this.prepareRetry.fail(`launch:${simId}`);
       this.store.update(simId, {
         error: 'No se pudieron preparar los agentes de la simulación',
       });
+      if (exhausted)
+        this.fail(
+          simId,
+          `No se pudieron preparar los agentes de la simulación después de ${PREPARE_RETRY.maxAttempts} intentos`,
+        );
     } finally {
       this.launching.delete(simId);
     }
   }
 
   async createMissingThreads(simId: string) {
+    const key = `threads:${simId}`;
+    if (!this.prepareRetry.canTry(key)) return;
     const s = this.get(simId);
-    if (!s.workspace_id) return;
+    if (!s.workspace_id || !ACTIVE.includes(s.status)) return;
+    let failed = false;
     for (const t of s.threads) {
       if (t.mode !== 'conductor' || t.session_id) continue;
+      // Cerrada a mitad de camino: el cierre ya archiva el workspace.
+      if (!ACTIVE.includes(this.get(simId).status)) return;
       try {
         const session = await this.conductor.createSession({
           workspaceId: s.workspace_id,
@@ -418,6 +489,9 @@ export class SimulationsService implements OnModuleInit {
           delete x.create_error;
         });
       } catch (err) {
+        if (isWorkspaceGone(err))
+          return this.fail(simId, 'El entorno de los agentes se detuvo');
+        failed = true;
         this.store.update(simId, (r) => {
           r.threads.find((y) => y.role === t.role)!.create_error = (
             err as Error
@@ -425,6 +499,12 @@ export class SimulationsService implements OnModuleInit {
         });
       }
     }
+    if (!failed) return this.prepareRetry.succeed(key);
+    if (this.prepareRetry.fail(key))
+      this.fail(
+        simId,
+        `No se pudieron preparar los agentes de la simulación después de ${PREPARE_RETRY.maxAttempts} intentos`,
+      );
   }
 
   /** Roles que corren en el backend con la API de Claude (solo si hay ANTHROPIC_API_KEY). */
@@ -469,7 +549,7 @@ export class SimulationsService implements OnModuleInit {
       type: 'control.start',
       title: 'El developer partió la simulación',
     });
-    return this.toView(this.get(id));
+    return this.playerView(this.get(id));
   }
 
   control(
@@ -486,7 +566,8 @@ export class SimulationsService implements OnModuleInit {
       (action === 'pause' && s.status === 'paused') ||
       (action === 'resume' && s.status === 'running')
     )
-      return this.toView(s);
+      return this.playerView(s);
+    if (vulnId) this.assertKnownVuln(s, `control.${action}`, vulnId);
     if (action === 'next') {
       const blocked = nextBlockedReason(s);
       if (blocked) throw new ConflictException(blocked);
@@ -505,7 +586,26 @@ export class SimulationsService implements OnModuleInit {
         ...(reason ? { reason } : {}),
       },
     });
-    return this.toView(this.get(id));
+    return this.playerView(this.get(id));
+  }
+
+  /**
+   * Un next o verify con una vuln que no está en el plan deja al atacante esperando
+   * algo que no puede jugar (attack_in_progress para siempre): se rechaza. verify
+   * acepta además las vulns que el hacker atacó fuera del plan.
+   */
+  private assertKnownVuln(s: SimulationRecord, type: string, vulnId: string) {
+    if (!s.attack_plan) return;
+    const known =
+      type === 'control.next'
+        ? planOrder(s.attack_plan)
+        : type === 'control.verify'
+          ? computeFacts(s.timeline, s.attack_plan).order
+          : null;
+    if (known && !known.includes(vulnId))
+      throw new BadRequestException(
+        `La vuln ${vulnId} no está en el plan del atacante`,
+      );
   }
 
   message(id: string, text: string) {
@@ -604,22 +704,44 @@ export class SimulationsService implements OnModuleInit {
 
   async stop(id: string, opts: { delete_sandbox?: boolean } = {}) {
     const s = this.get(id);
-    if (s.workspace_id) {
-      await this.conductor
-        .archiveWorkspace(s.workspace_id)
-        .catch((e: Error) =>
-          this.logger.warn(
-            `No se pudo archivar ${s.workspace_id}: ${e.message}`,
-          ),
-        );
-    }
+    // Al cerrarse, setStatus suelta los recursos; si ya estaba cerrada, se reintenta lo que falló.
+    if (ACTIVE.includes(s.status))
+      this.setStatus(id, 'stopped', 'Simulación detenida');
+    await this.release(id);
     if (opts.delete_sandbox)
       await this.sandboxes.remove(s.sandbox_id).catch(() => undefined);
+    return this.playerView(this.get(id));
+  }
+
+  /**
+   * Hook de cierre (finished, failed o stopped): archiva el workspace de Conductor
+   * (best effort) y suelta el puente con el sandbox. Los timers del cerebro y del
+   * motor se limpian solos con el sim.status de cierre. Idempotente.
+   */
+  private release(id: string): Promise<void> {
+    const inFlight = this.releasing.get(id);
+    if (inFlight) return inFlight;
+    const p = this.doRelease(id).finally(() => this.releasing.delete(id));
+    this.releasing.set(id, p);
+    return p;
+  }
+
+  private async doRelease(id: string) {
     this.bridged.get(id)?.();
     this.bridged.delete(id);
-    if (s.status !== 'finished')
-      this.setStatus(id, 'stopped', 'Simulación detenida');
-    return this.toView(this.get(id));
+    const s = this.store.get(id);
+    if (!s?.workspace_id || s.workspace_archived_at) return;
+    try {
+      await this.conductor.archiveWorkspace(s.workspace_id);
+      this.store.update(id, {
+        workspace_archived_at: new Date().toISOString(),
+      });
+      this.logger.log(`[${id}] workspace ${s.workspace_id} archivado`);
+    } catch (e) {
+      this.logger.warn(
+        `[${id}] no se pudo archivar ${s.workspace_id}: ${(e as Error).message}`,
+      );
+    }
   }
 
   // --------------------------------------------- operaciones de los agentes
@@ -685,8 +807,30 @@ export class SimulationsService implements OnModuleInit {
   }
 
   postFromAgent(id: string, role: SimRole, input: AppendInput) {
-    this.get(id);
-    return this.post(id, role, input);
+    const s = this.get(id);
+    if (input.type === 'sim.finished' && !canTransition(s.status, 'finished'))
+      throw new ConflictException(`La simulación está ${s.status}`);
+    const vuln =
+      input.vuln_id ??
+      (typeof input.raw?.vuln_id === 'string' ? input.raw.vuln_id : undefined);
+    if (vuln) this.assertKnownVuln(s, input.type, vuln);
+    // Lo que escribe un agente nunca guarda el valor de una credencial del backend.
+    return this.post(id, role, this.redact(input));
+  }
+
+  private redact(input: AppendInput): AppendInput {
+    this.secrets ??= secretValues((k) =>
+      this.config.get(k as keyof Env, { infer: true }),
+    );
+    if (!this.secrets.length) return input;
+    return {
+      ...input,
+      title: redactDeep(input.title, this.secrets),
+      ...(input.body !== undefined
+        ? { body: redactDeep(input.body, this.secrets) }
+        : {}),
+      ...(input.raw ? { raw: redactDeep(input.raw, this.secrets) } : {}),
+    };
   }
 
   sourceArchive(id: string) {
@@ -697,11 +841,12 @@ export class SimulationsService implements OnModuleInit {
     return this.sandboxes.recentLogsText(this.get(id).sandbox_id, type, limit);
   }
 
-  async deployStatus(id: string, waitSeconds: number) {
+  async deployStatus(id: string, waitSeconds: number, role?: SimRole) {
     const s = this.get(id);
     if (waitSeconds > 0)
       await this.sandboxes.waitIdle(s.sandbox_id, waitSeconds * 1000);
     const sbx = this.sandboxes.get(s.sandbox_id);
+    const seedUsers = sbx.manifest?.seed_users ?? [];
     return {
       status: sbx.status,
       busy: this.sandboxes.isBusy(s.sandbox_id),
@@ -709,7 +854,11 @@ export class SimulationsService implements OnModuleInit {
       commit_sha: sbx.commit_sha ?? null,
       error: sbx.error ?? null,
       current_deploy: sbx.current_deploy ?? null,
-      seed_users: sbx.manifest?.seed_users ?? [],
+      // Igual que en agentContext: el coder no ve las contraseñas de los usuarios.
+      seed_users:
+        role === 'coder'
+          ? seedUsers.map(({ password: _omit, ...u }) => u)
+          : seedUsers,
     };
   }
 
@@ -907,10 +1056,11 @@ export class SimulationsService implements OnModuleInit {
     raw: Record<string, unknown> = {},
     severity: TimelineEvent['severity'] = 'info',
   ) {
+    // También pasa por acá texto de los agentes (mensaje del commit, SQL del coder).
     return this.timeline.append(
       id,
       'system',
-      { type, title, body, raw, severity },
+      this.redact({ type, title, body, raw, severity }),
       { trusted: true },
     );
   }
@@ -928,6 +1078,8 @@ export class SimulationsService implements OnModuleInit {
         this.store.update(id, { state: e.raw as IncidentState });
         break;
       case 'sim.finished':
+        // Un debrief que llega con la simulación ya cerrada (p. ej. tras un Stop) no la reabre.
+        if (!canTransition(this.get(id).status, 'finished')) break;
         this.store.update(id, { debrief: e.raw });
         this.setStatus(id, 'finished', 'Simulación terminada');
         break;
@@ -1035,9 +1187,44 @@ export class SimulationsService implements OnModuleInit {
     ].filter((x): x is string => Boolean(x));
   }
 
-  private setStatus(id: string, status: SimStatus, title: string) {
+  /**
+   * Única puerta para cambiar el estado. Una transición fuera de TRANSITIONS se ignora
+   * (con log): p. ej. un debrief que llega después de un Stop no la reabre como finished.
+   */
+  private setStatus(id: string, status: SimStatus, title: string): boolean {
+    const from = this.store.get(id)?.status;
+    if (!from) return false;
+    if (!canTransition(from, status)) {
+      this.logger.warn(`[${id}] transición ignorada: ${from} → ${status}`);
+      return false;
+    }
     this.store.update(id, { status });
     this.system(id, 'sim.status', title, '', { status });
+    if (CLOSED_STATUSES.includes(status)) void this.release(id);
+    return true;
+  }
+
+  /** Watchdog: una simulación que no queda lista en STARTING_MAX_MS falla con un error claro. */
+  checkStartingTimeout(id: string, now = Date.now()) {
+    const s = this.store.get(id);
+    if (!s || s.status !== 'starting') return;
+    if (!s.deploy_ready_at) {
+      let sandboxStatus: string | undefined;
+      try {
+        sandboxStatus = this.sandboxes.get(s.sandbox_id).status;
+      } catch {
+        sandboxStatus = undefined;
+      }
+      if (sandboxStatus && SANDBOX_DEPLOYING.includes(sandboxStatus)) return;
+    }
+    const since = Date.parse(s.deploy_ready_at ?? s.created_at);
+    if (!Number.isFinite(since) || now - since <= STARTING_MAX_MS) return;
+    const missing = this.readyMissing(s);
+    this.fail(
+      id,
+      `La simulación no quedó lista en ${STARTING_MAX_MS / 60_000} minutos` +
+        (missing.length ? ` (faltó: ${missing.join(', ')})` : ''),
+    );
   }
 
   private changeEnv(
@@ -1100,13 +1287,13 @@ export class SimulationsService implements OnModuleInit {
       this.timeline.append(
         s.sim_id,
         'system',
-        {
+        this.redact({
           type: 'deploy.progress',
           title: e.title,
           body: e.body,
           severity: e.severity,
           raw: { source: e.source },
-        },
+        }),
         { trusted: true },
       );
     });

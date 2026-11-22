@@ -1,6 +1,6 @@
 /** Cliente de /simulations (orquestación multi-agente). Tipos alineados con backend/src/simulations. */
 import type { Benchmark, ResultRank, ResultVerdict, SimulationResult } from "@/components/result/types";
-import { API_URL, authedEventSource, goToLogin } from "./api";
+import { API_URL, apiRequest, subscribeStream } from "./api";
 
 export type SimStatus = "starting" | "ready" | "running" | "paused" | "finished" | "failed" | "stopped";
 export type SimRole = "infra" | "hacker" | "observer" | "generator" | "coder";
@@ -133,19 +133,7 @@ export interface ReportView {
   result: SimulationResult | null;
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    credentials: "include",
-    headers: { "content-type": "application/json", ...init?.headers },
-  });
-  if (res.status === 401) goToLogin();
-  const text = await res.text();
-  const body = text ? JSON.parse(text) : undefined;
-  if (!res.ok) throw new Error(body?.message ?? `${res.status}`);
-  return body as T;
-}
-
+const request = apiRequest;
 const post = <T>(path: string, body: unknown = {}) => request<T>(path, { method: "POST", body: JSON.stringify(body) });
 
 export const simApi = {
@@ -173,17 +161,36 @@ export const simApi = {
     ),
   /** SSE del timeline. view=user: lo que ve el developer. view=all: también lo interno. */
   subscribe(id: string, view: "user" | "all", onEvent: (e: TimelineEvent) => void): () => void {
-    const es = authedEventSource(`${API_URL}/simulations/${id}/stream?view=${view}`);
+    // Al reconectar solo, EventSource manda Last-Event-ID y el backend sigue desde ahí. Si hay que
+    // reabrirlo (se cerró por un no-200), se pide desde el último seq recibido con `since`.
+    let last = 0;
+    const url = () => `${API_URL}/simulations/${id}/stream?view=${view}${last > 0 ? `&since=${last}` : ""}`;
     // Cada evento llega con `event: <tipo>`, así que hay que escuchar tipo por tipo.
-    const types = [
-      "sim.status", "deploy.progress", "deploy.ready", "deploy.failed", "control.start", "control.next", "control.pause",
-      "control.resume", "control.verify", "control.finish", "attack.plan", "attack.step", "attack.success",
-      "attack.blocked", "attack.verify", "attack.done", "state.update", "sim.finished", "notify", "user.message",
-      "user.action", "coder.reply", "change.commit", "change.env", "change.restart", "change.db", "change.deployed",
-      "change.deploy_failed", "context.ready", "infra.request", "infra.reply", "agent.note",
-    ];
-    const handler = (m: MessageEvent) => onEvent(JSON.parse(m.data));
-    for (const t of types) es.addEventListener(t, handler);
-    return () => es.close();
+    return subscribeStream(url, STREAM_EVENT_TYPES, (m) => {
+      const e = JSON.parse(m.data) as TimelineEvent;
+      if (e.seq > last) last = e.seq;
+      onEvent(e);
+    });
   },
 };
+
+/**
+ * Todos los tipos de evento del timeline. Fuente de verdad: EVENT_TYPES en
+ * backend/src/simulations/simulation.types.ts. Un tipo que falte acá no llega nunca (el SSE manda `event: <tipo>`).
+ */
+const STREAM_EVENT_TYPES = [
+  // sistema
+  "sim.status", "deploy.progress", "deploy.ready", "deploy.failed",
+  // control
+  "control.start", "control.next", "control.pause", "control.resume", "control.finish", "control.verify",
+  // atacante y observador
+  "attack.plan", "attack.step", "attack.success", "attack.blocked", "attack.verify", "attack.done",
+  "state.update", "incident.pulse", "sim.finished",
+  // generador, usuario y coder
+  "notify", "user.message", "user.action", "coder.reply",
+  "change.commit", "change.env", "change.restart", "change.db", "change.deployed", "change.deploy_failed",
+  // Hinty
+  "hinty.question",
+  // infra
+  "context.ready", "infra.request", "infra.reply", "agent.note",
+];

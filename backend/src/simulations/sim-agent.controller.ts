@@ -139,9 +139,10 @@ export class SimAgentController {
   @UseGuards(SimTokenGuard)
   deploy(
     @Param('id') id: string,
+    @Req() req: SimAgentRequest,
     @Query({ schema: agentDeployQuerySchema }) q: AgentDeployQuery,
   ) {
-    return this.sims.deployStatus(id, q.wait);
+    return this.sims.deployStatus(id, q.wait, req.simRole);
   }
 
   @Post(':id/changes')

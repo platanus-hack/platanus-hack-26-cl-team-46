@@ -4,7 +4,10 @@ import {
   OnModuleDestroy,
   OnModuleInit,
 } from '@nestjs/common';
-import { ConductorClient } from '../conductor/conductor.client.js';
+import {
+  ConductorClient,
+  isWorkspaceGone,
+} from '../conductor/conductor.client.js';
 import { SimulationStore } from './simulation.store.js';
 import {
   EVENT_TYPES,
@@ -77,40 +80,44 @@ export class SimulationDispatcher implements OnModuleInit, OnModuleDestroy {
   private async wakeNow(simId: string, role: SimRole) {
     const s = this.store.get(simId);
     const t = s?.threads.find((x) => x.role === role);
-    if (!s || !t) return;
-    await this.maybeWake(s, t).catch((err: Error) =>
-      this.logger.warn(`[${simId}] despertar ${role}: ${err.message}`),
-    );
+    if (!s || !t || !this.sims.isActive(s)) return;
+    await this.maybeWake(s, t).catch(async (err: Error) => {
+      this.logger.warn(`[${simId}] despertar ${role}: ${err.message}`);
+      if (isWorkspaceGone(err)) await this.failFromWorkspace(s);
+    });
   }
 
   async tick() {
     if (this.ticking) return;
     this.ticking = true;
     try {
-      for (const s of this.sims.active()) {
-        try {
-          this.sims.syncSandbox(s.sim_id);
-          this.sims.checkReady(s.sim_id);
-          if (s.threads.some((t) => t.mode === 'api'))
-            this.brain.tick(s.sim_id);
-          if (!this.sims.launchingIds.has(s.sim_id)) {
-            if (!s.workspace_id) void this.sims.launch(s.sim_id);
-            else if (
-              s.threads.some((t) => t.mode === 'conductor' && !t.session_id)
-            )
-              await this.sims.createMissingThreads(s.sim_id);
-          }
-          for (const t of s.threads)
-            await this.maybeWake(this.store.get(s.sim_id)!, t);
-        } catch (err) {
-          const msg = (err as Error).message;
-          this.logger.warn(`[${s.sim_id}] ${msg}`);
-          if (/Workspace is (deleted|archived)/i.test(msg))
-            await this.failFromWorkspace(s);
-        }
-      }
+      // Cada simulación por su lado: una llamada lenta o un error no frena a las demás.
+      await Promise.allSettled(this.sims.active().map((s) => this.tickOne(s)));
     } finally {
       this.ticking = false;
+    }
+  }
+
+  private async tickOne(s: SimulationRecord) {
+    try {
+      this.sims.syncSandbox(s.sim_id);
+      this.sims.checkReady(s.sim_id);
+      this.sims.checkStartingTimeout(s.sim_id);
+      if (s.threads.some((t) => t.mode === 'api')) this.brain.tick(s.sim_id);
+      if (!this.sims.launchingIds.has(s.sim_id)) {
+        // launch y createMissingThreads respetan su propio backoff entre intentos.
+        if (!s.workspace_id) void this.sims.launch(s.sim_id);
+        else if (s.threads.some((t) => t.mode === 'conductor' && !t.session_id))
+          await this.sims.createMissingThreads(s.sim_id);
+      }
+      for (const t of s.threads) {
+        const cur = this.store.get(s.sim_id);
+        if (!cur || !this.sims.isActive(cur)) return;
+        await this.maybeWake(cur, t);
+      }
+    } catch (err) {
+      this.logger.warn(`[${s.sim_id}] ${(err as Error).message}`);
+      if (isWorkspaceGone(err)) await this.failFromWorkspace(s);
     }
   }
 

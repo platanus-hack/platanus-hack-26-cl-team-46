@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 /**
  * Proxy de previsualización: sirve la app desplegada de un sandbox bajo un
@@ -112,12 +113,26 @@ const SKIP_RESPONSE = new Set([
   'content-security-policy',
 ]);
 
+/**
+ * Cuánto se espera a que la app responda los headers. Holgado: un servicio free
+ * de Render dormido tarda cerca de un minuto en despertar. El body no tiene tope
+ * (descargas, SSE de la app).
+ */
+const UPSTREAM_HEADERS_TIMEOUT_MS = 90_000;
+/** HTML más grande que esto no se reescribe: se sirve tal cual, en streaming. */
+export const MAX_REWRITE_HTML_BYTES = 5 * 1024 * 1024;
+
+const UNAVAILABLE_HTML =
+  '<body style="font:15px system-ui;padding:40px;color:#444">No se pudo conectar con la app. Puede estar redesplegándose: recarga en unos segundos.</body>';
+
 export interface PreviewProxyOptions {
   /** `https://{sandbox}.preview.mayday.rip` */
   template: string;
   /** URL pública de la app del sandbox, o null si no existe o no está desplegada. */
   resolve: (sandboxId: string) => string | null;
   log?: (msg: string) => void;
+  /** Espera máxima por los headers de la app (default UPSTREAM_HEADERS_TIMEOUT_MS). */
+  headersTimeoutMs?: number;
 }
 
 export function createPreviewProxy(opts: PreviewProxyOptions) {
@@ -167,6 +182,13 @@ export function createPreviewProxy(opts: PreviewProxyOptions) {
     headers.set('x-forwarded-host', new URL(previewOrigin).host);
 
     const hasBody = !['GET', 'HEAD'].includes(method);
+    // Se aborta si la app no responde a tiempo o si el navegador se va.
+    const abort = new AbortController();
+    const headersTimer = setTimeout(
+      () => abort.abort(new Error('la app no respondió a tiempo')),
+      opts.headersTimeoutMs ?? UPSTREAM_HEADERS_TIMEOUT_MS,
+    );
+    res.on('close', () => abort.abort());
     let upstream: globalThis.Response;
     try {
       upstream = await fetch(appOrigin + url, {
@@ -176,14 +198,16 @@ export function createPreviewProxy(opts: PreviewProxyOptions) {
         // @ts-expect-error: duplex es obligatorio en Node para mandar un stream como body.
         duplex: hasBody ? 'half' : undefined,
         redirect: 'manual',
+        signal: abort.signal,
       });
     } catch (e) {
+      if (res.writableEnded || res.destroyed) return; // el navegador se fue
       opts.log?.(`preview ${sandboxId}: ${(e as Error).message}`);
       res.statusCode = 502;
       res.setHeader('content-type', 'text/html; charset=utf-8');
-      return res.end(
-        '<body style="font:15px system-ui;padding:40px;color:#444">No se pudo conectar con la app. Puede estar redesplegándose: recarga en unos segundos.</body>',
-      );
+      return res.end(UNAVAILABLE_HTML);
+    } finally {
+      clearTimeout(headersTimer);
     }
 
     res.statusCode = upstream.status;
@@ -200,11 +224,63 @@ export function createPreviewProxy(opts: PreviewProxyOptions) {
       res.setHeader('set-cookie', cookies.map(rewriteSetCookie));
 
     if (!upstream.body || method === 'HEAD') return res.end();
-    if ((upstream.headers.get('content-type') ?? '').includes('text/html')) {
-      return res.end(
-        rewriteHtml(await upstream.text(), appOrigin, previewOrigin),
-      );
+    // Si la app corta la conexión a mitad de camino, se responde 502 (o se cierra
+    // la respuesta) en vez de dejar un error sin manejar que bota el proceso.
+    try {
+      if ((upstream.headers.get('content-type') ?? '').includes('text/html')) {
+        await sendHtml(upstream.body, res, (html) =>
+          rewriteHtml(html, appOrigin, previewOrigin),
+        );
+        return;
+      }
+      await pipeline(Readable.fromWeb(upstream.body as never), res);
+    } catch (e) {
+      const code = (e as NodeJS.ErrnoException).code;
+      // El navegador se fue (navegó a otra página): no es un error de la app.
+      if (code !== 'ERR_STREAM_PREMATURE_CLOSE' && !abort.signal.aborted)
+        opts.log?.(`preview ${sandboxId}: ${(e as Error).message}`);
+      if (!res.headersSent) {
+        res.statusCode = 502;
+        res.setHeader('content-type', 'text/html; charset=utf-8');
+        res.removeHeader('content-security-policy');
+        res.end(UNAVAILABLE_HTML);
+      } else {
+        res.destroy();
+      }
     }
-    Readable.fromWeb(upstream.body as never).pipe(res);
   };
+}
+
+/**
+ * Lee el HTML hasta MAX_REWRITE_HTML_BYTES y lo manda reescrito. Si es más
+ * grande, lo manda tal cual en streaming (sin el puente) para no cargar en
+ * memoria una respuesta arbitraria de la app.
+ */
+async function sendHtml(
+  body: ReadableStream<Uint8Array>,
+  res: ServerResponse,
+  rewrite: (html: string) => string,
+): Promise<void> {
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let size = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      res.end(rewrite(Buffer.concat(chunks).toString('utf8')));
+      return;
+    }
+    chunks.push(value);
+    size += value.byteLength;
+    if (size > MAX_REWRITE_HTML_BYTES) break;
+  }
+  async function* rest() {
+    yield* chunks;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  }
+  await pipeline(Readable.from(rest()), res);
 }

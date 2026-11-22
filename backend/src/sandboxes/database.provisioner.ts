@@ -155,7 +155,7 @@ export class DatabaseProvisioner {
       const info = await this.render.getPostgresConnectionInfo(db.postgres_id);
       await this.withClient(info.externalConnectionString, async (client) => {
         await client.query(
-          `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()`,
+          `SELECT pg_catalog.pg_terminate_backend(pid) FROM pg_catalog.pg_stat_activity WHERE datname = $1 AND pid <> pg_catalog.pg_backend_pid()`,
           [db.database_name],
         );
         await client.query(
@@ -188,9 +188,9 @@ export class DatabaseProvisioner {
     }
     await this.withClient(url, async (admin) => {
       const { rows } = await admin.query<{ datname: string }>(
-        `SELECT datname FROM pg_database
+        `SELECT datname FROM pg_catalog.pg_database
           WHERE NOT datistemplate AND datname <> 'postgres'
-            AND pg_has_role(current_user, datdba, 'MEMBER')`,
+            AND pg_catalog.pg_has_role(current_user, datdba, 'MEMBER')`,
       );
       for (const { datname } of rows) {
         await this.closeDatabase(admin, datname).catch((err: Error) =>
@@ -227,7 +227,7 @@ export class DatabaseProvisioner {
     await this.withClient(info.externalConnectionString, async (admin) => {
       await this.ensureRole(admin, role);
       const exists = await admin.query(
-        'SELECT 1 FROM pg_database WHERE datname = $1',
+        'SELECT 1 FROM pg_catalog.pg_database WHERE datname = $1',
         [databaseName],
       );
       if (exists.rowCount === 0) {
@@ -260,7 +260,7 @@ export class DatabaseProvisioner {
   private async ensureRole(admin: pg.Client, role: string) {
     const password = quoteLiteral(this.passwordFor(role));
     const exists = await admin.query(
-      'SELECT 1 FROM pg_roles WHERE rolname = $1',
+      'SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = $1',
       [role],
     );
     if (exists.rowCount === 0) {
@@ -300,7 +300,7 @@ export class DatabaseProvisioner {
       );
     }
     const { rows } = await admin.query<{ rolname: string }>(
-      'SELECT rolname FROM pg_roles WHERE rolname = ANY($1)',
+      'SELECT rolname FROM pg_catalog.pg_roles WHERE rolname = ANY($1)',
       [RENDER_INTERNAL_ROLES],
     );
     for (const { rolname } of rows) {
@@ -382,14 +382,12 @@ export class DatabaseProvisioner {
     return current;
   }
 
+  /** Conexión de administrador (ver adminClientConfig). */
   private async withClient<T>(
     url: string,
     fn: (c: pg.Client) => Promise<T>,
   ): Promise<T> {
-    const client = new pg.Client({
-      connectionString: url,
-      ssl: { rejectUnauthorized: false },
-    });
+    const client = new pg.Client(adminClientConfig(url));
     await client.connect();
     try {
       return await fn(client);
@@ -397,6 +395,20 @@ export class DatabaseProvisioner {
       await client.end().catch(() => undefined);
     }
   }
+}
+
+/**
+ * Config de las sesiones de administrador. Varias corren dentro de bases cuyo
+ * dueño es el rol del sandbox (código del usuario), que puede crear funciones
+ * u operadores con nombres del catálogo en sus esquemas: con search_path fijo
+ * en pg_catalog (y pg_temp al final) siempre se resuelve lo del sistema.
+ */
+export function adminClientConfig(url: string): pg.ClientConfig {
+  return {
+    connectionString: url,
+    ssl: { rejectUnauthorized: false },
+    options: '-c search_path=pg_catalog,pg_temp',
+  };
 }
 
 /** El rol de un sandbox se llama igual que su base (`sbx_xxxxxxxx`). */
@@ -419,59 +431,61 @@ export function deriveDbPassword(secret: string, role: string): string {
  */
 export function transferOwnershipSql(role: string): string {
   const target = quoteLiteral(role);
+  // Todo calificado con pg_catalog (además del search_path fijo de la sesión):
+  // la base es del usuario y podría tener objetos con los mismos nombres.
   return `DO $mayday$
 DECLARE
   r record;
-  target_oid oid := (SELECT oid FROM pg_roles WHERE rolname = ${target});
+  target_oid oid := (SELECT oid FROM pg_catalog.pg_roles WHERE rolname = ${target});
 BEGIN
   FOR r IN
-    SELECT n.nspname FROM pg_namespace n
+    SELECT n.nspname FROM pg_catalog.pg_namespace n
      WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
        AND n.nspowner <> target_oid
-       AND pg_get_userbyid(n.nspowner) <> 'pg_database_owner'
-       AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = n.oid AND d.deptype = 'e')
+       AND pg_catalog.pg_get_userbyid(n.nspowner) <> 'pg_database_owner'
+       AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.objid = n.oid AND d.deptype = 'e')
   LOOP
-    EXECUTE format('ALTER SCHEMA %I OWNER TO %I', r.nspname, ${target});
+    EXECUTE pg_catalog.format('ALTER SCHEMA %I OWNER TO %I', r.nspname, ${target});
   END LOOP;
 
   FOR r IN
-    SELECT n.nspname, c.relname, c.relkind FROM pg_class c
-      JOIN pg_namespace n ON n.oid = c.relnamespace
+    SELECT n.nspname, c.relname, c.relkind FROM pg_catalog.pg_class c
+      JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
      WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
        AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f')
        AND c.relowner <> target_oid
-       AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = c.oid AND d.deptype = 'e')
+       AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.objid = c.oid AND d.deptype = 'e')
        AND NOT (c.relkind = 'S' AND EXISTS (
-         SELECT 1 FROM pg_depend d WHERE d.objid = c.oid AND d.deptype IN ('a', 'i')))
+         SELECT 1 FROM pg_catalog.pg_depend d WHERE d.objid = c.oid AND d.deptype IN ('a', 'i')))
   LOOP
-    EXECUTE format('ALTER %s %I.%I OWNER TO %I',
+    EXECUTE pg_catalog.format('ALTER %s %I.%I OWNER TO %I',
       CASE r.relkind WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW'
         WHEN 'S' THEN 'SEQUENCE' WHEN 'f' THEN 'FOREIGN TABLE' ELSE 'TABLE' END,
       r.nspname, r.relname, ${target});
   END LOOP;
 
   FOR r IN
-    SELECT n.nspname, t.typname, t.typtype FROM pg_type t
-      JOIN pg_namespace n ON n.oid = t.typnamespace
+    SELECT n.nspname, t.typname, t.typtype FROM pg_catalog.pg_type t
+      JOIN pg_catalog.pg_namespace n ON n.oid = t.typnamespace
      WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
        AND t.typtype IN ('e', 'd', 'r', 'c')
-       AND (t.typtype <> 'c' OR (SELECT relkind FROM pg_class WHERE oid = t.typrelid) = 'c')
+       AND (t.typtype <> 'c' OR (SELECT relkind FROM pg_catalog.pg_class WHERE oid = t.typrelid) = 'c')
        AND t.typowner <> target_oid
-       AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = t.oid AND d.deptype = 'e')
+       AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.objid = t.oid AND d.deptype = 'e')
   LOOP
-    EXECUTE format('ALTER %s %I.%I OWNER TO %I',
+    EXECUTE pg_catalog.format('ALTER %s %I.%I OWNER TO %I',
       CASE r.typtype WHEN 'd' THEN 'DOMAIN' ELSE 'TYPE' END,
       r.nspname, r.typname, ${target});
   END LOOP;
 
   FOR r IN
-    SELECT p.oid::regprocedure AS sig, p.prokind FROM pg_proc p
-      JOIN pg_namespace n ON n.oid = p.pronamespace
+    SELECT p.oid::pg_catalog.regprocedure AS sig, p.prokind FROM pg_catalog.pg_proc p
+      JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace
      WHERE n.nspname !~ '^pg_' AND n.nspname <> 'information_schema'
        AND p.proowner <> target_oid
-       AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')
+       AND NOT EXISTS (SELECT 1 FROM pg_catalog.pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')
   LOOP
-    EXECUTE format('ALTER %s %s OWNER TO %I',
+    EXECUTE pg_catalog.format('ALTER %s %s OWNER TO %I',
       CASE r.prokind WHEN 'p' THEN 'PROCEDURE' WHEN 'a' THEN 'AGGREGATE' ELSE 'FUNCTION' END,
       r.sig, ${target});
   END LOOP;

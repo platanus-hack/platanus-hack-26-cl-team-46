@@ -288,7 +288,8 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
   playNext(simId: string, vulnId?: string, startSeq?: number) {
     const s = this.sims.get(simId);
     const e = s.engine;
-    if (!e || e.status !== 'done' || !e.replay) return;
+    if (!e || e.status !== 'done' || !e.replay)
+      return this.skip(simId, vulnId, 'el motor no tiene pasos para repetir');
     const order = e.selected?.length
       ? e.selected
       : (e.findings ?? [])
@@ -296,8 +297,11 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
           .sort((a, b) => a.order - b.order)
           .map((f) => f.vuln_id);
     const vuln = vulnId ?? order.find((v) => !e.played.includes(v));
-    if (!vuln || !e.replay[vuln]?.length) return;
-    if (e.selected?.length && !e.selected.includes(vuln)) return;
+    if (!vuln) return this.skip(simId, vulnId, 'no quedan ataques por jugar');
+    if (!e.replay[vuln]?.length)
+      return this.skip(simId, vuln, 'el motor no tiene pasos de esta vuln');
+    if (e.selected?.length && !e.selected.includes(vuln))
+      return this.skip(simId, vuln, 'no es uno de los incidentes elegidos');
     const opening = e.played.length === 0;
     this.store.update(simId, (r) => {
       if (!r.engine!.played.includes(vuln)) r.engine!.played.push(vuln);
@@ -307,6 +311,29 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       r.engine!.holding = null;
     });
     this.enqueue(simId, vuln, e.replay[vuln], opening);
+  }
+
+  /**
+   * El comando pedía algo que el motor no puede jugar: se cierra igual con un
+   * attack.done (skipped) para que el director no espere un ataque que no va a llegar.
+   */
+  private skip(simId: string, vuln: string | undefined, why: string) {
+    this.logger.warn(
+      `[${simId}] no se puede jugar ${vuln ?? '(siguiente)'}: ${why}`,
+    );
+    this.sims.postFromAgent(simId, 'hacker', {
+      type: 'attack.done',
+      vuln_id: vuln ?? null,
+      severity: 'info',
+      title: `Sin ataque: ${vuln ?? 'no quedan vulns'}`,
+      body: why,
+      raw: {
+        ...(vuln ? { vuln_id: vuln } : {}),
+        attacker_active: false,
+        skipped: true,
+        reason: why,
+      },
+    });
   }
 
   private enqueue(

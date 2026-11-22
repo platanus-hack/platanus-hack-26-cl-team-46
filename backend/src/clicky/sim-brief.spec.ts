@@ -169,13 +169,8 @@ describe('lo que Hinty sabe del simulacro', () => {
       role: string;
       content: unknown;
     }>;
-    // la respuesta vacía no se manda
-    expect(msgs.map((m) => m.role)).toEqual([
-      'system',
-      'user',
-      'assistant',
-      'user',
-    ]);
+    // el historial viene del navegador: va como dato en el mensaje, no como turnos del asistente
+    expect(msgs.map((m) => m.role)).toEqual(['system', 'user']);
     expect(msgs[0].content).toBe(SYSTEM_PROMPT);
     const content = msgs.at(-1)!.content as Array<{
       type: string;
@@ -183,7 +178,14 @@ describe('lo que Hinty sabe del simulacro', () => {
       image_url?: { url: string };
     }>;
     expect(content[0].text).toContain('# El simulacro que está mirando');
-    expect(content[0].text).toContain('Pregunta: ¿ya está?');
+    expect(content[0].text).toContain(
+      '<historial>\n1. Preguntó: "hola" · Le respondiste: "Hola, te ayudo."\n</historial>',
+    );
+    // la respuesta vacía no se manda
+    expect(content[0].text).not.toContain('y esto');
+    expect(content[0].text).toContain(
+      'Pregunta: <pregunta>¿ya está?</pregunta>',
+    );
     expect(content[1]).toMatchObject({
       type: 'image_url',
       image_url: { url: 'data:image/jpeg;base64,AAAA' },

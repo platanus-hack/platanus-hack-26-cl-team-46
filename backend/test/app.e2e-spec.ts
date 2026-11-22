@@ -6,9 +6,20 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 
-process.env.RENDER_API_KEY ??= 'test-key';
-process.env.DATA_DIR = '.data-test';
-process.env.AGENT_API_SECRET = 'secreto-de-prueba-suficientemente-largo';
+// Aislado de cualquier backend/.env local: las variables del proceso ganan sobre el archivo, así
+// la prueba nunca usa la base de datos ni las keys reales (Render, Conductor, GitHub, LLMs).
+Object.assign(process.env, {
+  RENDER_API_KEY: 'test-key',
+  DATA_DIR: '.data-test',
+  AGENT_API_SECRET: 'secreto-de-prueba-suficientemente-largo',
+  DATABASE_URL: '',
+  CONDUCTOR_API_KEY: '',
+  GITHUB_TOKEN: '',
+  GITHUB_HACK26_ORG_TOKEN: '',
+  ANTHROPIC_API_KEY: '',
+  OPENAI_API_KEY: '',
+  ELEVENLABS_API_KEY: '',
+});
 
 const { AppModule } = await import('./../src/app.module.js');
 const { signAgentToken } = await import('./../src/agent/agent-token.js');
@@ -94,7 +105,9 @@ describe('API (e2e)', () => {
   });
 
   it('GET /simulations/:id/report de una simulación que no existe es 404', () => {
-    return request(app.getHttpServer()).get('/simulations/sim-00000000/report').expect(404);
+    return request(app.getHttpServer())
+      .get('/simulations/sim-00000000/report')
+      .expect(404);
   });
 
   it('POST /simulations valida el body', () => {

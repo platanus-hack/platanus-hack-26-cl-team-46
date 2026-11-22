@@ -9,6 +9,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { IncomingMessage } from 'node:http';
 import type { Env } from '../config/env.js';
+import { GITHUB_URL_HINT, parseGitHubRepoUrl } from '../git/github-url.js';
 import {
   decryptToken,
   encryptToken,
@@ -59,12 +60,48 @@ interface TokenResponse {
 }
 
 const GITHUB_API = 'https://api.github.com';
+/** Llamadas a GitHub desde una request del usuario: cortas. */
+const GITHUB_TIMEOUT_MS = 15_000;
+
+/**
+ * Por qué el login no puede arrancar así (o null si está bien):
+ * - a medio configurar (alguna de las tres variables, no todas): siempre es un error;
+ * - apagado en producción: solo con AUTH_DISABLED=true explícito.
+ * Sin login la API queda abierta, así que en producción tiene que ser una decisión.
+ */
+export function authConfigProblem(opts: {
+  clientId?: string;
+  clientSecret?: string;
+  sessionSecret?: string;
+  production: boolean;
+  disabled: boolean;
+}): string | null {
+  const vars = {
+    GITHUB_APP_CLIENT_ID: opts.clientId,
+    GITHUB_APP_CLIENT_SECRET: opts.clientSecret,
+    SESSION_SECRET: opts.sessionSecret,
+  };
+  const missing = Object.entries(vars)
+    .filter(([, v]) => !v)
+    .map(([k]) => k);
+  if (missing.length > 0 && missing.length < 3)
+    return `Login con GitHub a medio configurar: falta ${missing.join(', ')}. Define las tres variables o ninguna.`;
+  if (missing.length === 3 && opts.production && !opts.disabled)
+    return 'Login con GitHub apagado en producción: la API quedaría abierta. Define GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET y SESSION_SECRET, o AUTH_DISABLED=true para apagarlo a propósito.';
+  return null;
+}
+
+/** En Render (RENDER=true) o con NODE_ENV=production. */
+export function isProductionEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  return Boolean(env.RENDER) || env.NODE_ENV === 'production';
+}
 
 /**
  * Login con GitHub (GitHub App) y reglas de acceso.
  *
- * - Apagado (sin GITHUB_APP_CLIENT_ID/SECRET o SESSION_SECRET): la API queda abierta como
- *   antes y nadie es dueño de nada. Sirve para desarrollo y mientras no exista la app.
+ * - Apagado (sin GITHUB_APP_CLIENT_ID/SECRET ni SESSION_SECRET): la API queda abierta como
+ *   antes y nadie es dueño de nada. Solo para desarrollo: en producción el backend no
+ *   arranca así salvo con AUTH_DISABLED=true (ver authConfigProblem).
  * - Encendido: /sandboxes y /simulations exigen sesión; cada uno ve y toca solo lo suyo.
  *   Los logins de ADMIN_GITHUB_LOGINS (el equipo) ven todo.
  */
@@ -104,6 +141,15 @@ export class AuthService {
       config.get('AUTH_CALLBACK_URL', { infer: true }) ??
       `${backend.replace(/\/+$/, '')}/auth/github/callback`;
     this.secureCookies = this.callbackUrl.startsWith('https://');
+    const problem = authConfigProblem({
+      clientId: this.clientId,
+      clientSecret: this.clientSecret,
+      sessionSecret: this.secret,
+      production: isProductionEnv(),
+      disabled: config.get('AUTH_DISABLED', { infer: true }) ?? false,
+    });
+    // Falla cerrado: mejor no arrancar que dejar la API abierta sin querer.
+    if (problem) throw new Error(problem);
     if (!this.enabled)
       this.logger.warn(
         'Login con GitHub apagado (faltan GITHUB_APP_CLIENT_ID, GITHUB_APP_CLIENT_SECRET o SESSION_SECRET): la API queda abierta',
@@ -268,7 +314,10 @@ export class AuthService {
     const mine = await this.gh(token, path);
     if (mine.ok)
       return { private: ((await mine.json()) as { private: boolean }).private };
-    const pub = await fetch(`${GITHUB_API}${path}`, { headers: ghHeaders() });
+    const pub = await fetch(`${GITHUB_API}${path}`, {
+      headers: ghHeaders(),
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
+    });
     if (pub.ok) return { private: false };
     throw new ForbiddenException(
       `No tienes acceso a ${owner}/${repo}, o no lo compartiste con Mayday`,
@@ -285,15 +334,13 @@ export class AuthService {
     repoUrl: string,
     kind: string,
   ): Promise<boolean> {
+    // Forma exacta antes que nada: una URL rara (p. ej. con %) no se clasifica ni se revisa.
+    const parsed = parseGitHubRepoUrl(repoUrl);
+    if (!parsed) throw new BadRequestException(GITHUB_URL_HINT);
     if (!user || kind !== 'external') return false;
-    const [owner, repo] = new URL(repoUrl).pathname
-      .replace(/^\/+/, '')
-      .split('/');
-    if (!owner || !repo)
-      throw new BadRequestException(
-        'repo_url debe ser https://github.com/dueño/repo',
-      );
-    return (await this.checkRepoAccess(user.github_id, owner, repo)).private;
+    return (
+      await this.checkRepoAccess(user.github_id, parsed.owner, parsed.repo)
+    ).private;
   }
 
   // ------------------------------------------------------------------ helpers
@@ -328,6 +375,7 @@ export class AuthService {
         client_secret: this.clientSecret,
         ...params,
       }),
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
     });
     const body = (await res.json().catch(() => ({}))) as TokenResponse;
     if (!body.access_token)
@@ -340,6 +388,7 @@ export class AuthService {
   private gh(token: string, path: string) {
     return fetch(`${GITHUB_API}${path}`, {
       headers: { ...ghHeaders(), Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(GITHUB_TIMEOUT_MS),
     });
   }
 

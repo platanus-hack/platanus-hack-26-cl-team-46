@@ -1,8 +1,12 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { safeNext } from './auth.controller.js';
-import { AuthService } from './auth.service.js';
+import {
+  authConfigProblem,
+  AuthService,
+  isProductionEnv,
+} from './auth.service.js';
 import { rejectForeignOrigins } from './origin-check.js';
 import {
   decryptToken,
@@ -126,6 +130,91 @@ describe('rejectForeignOrigins (CSRF desde el preview)', () => {
     expect(
       run('POST', '/agent/sandboxes/sbx-1/plan', 'https://evil.com').passed,
     ).toBe(true);
+    expect(run('POST', '/sim/sim-1/events', 'https://evil.com').passed).toBe(
+      true,
+    );
+  });
+
+  it('no se salta con mayúsculas (Express no distingue) ni en rutas nuevas', () => {
+    const evil = 'https://evil.com';
+    for (const url of [
+      '/SANDBOXES/sbx-1/restart',
+      '/Sandboxes/sbx-1',
+      '/Clicky/lesson',
+      '/simulations/sim-1/stop',
+      '/SIMULATIONS',
+      '/reports',
+      '/cualquier-ruta-nueva',
+      '//sandboxes/sbx-1',
+    ])
+      expect(run('POST', url, evil).passed, url).toBe(false);
+    // /simulations no es /sim.
+    expect(run('POST', '/simulation', evil).passed).toBe(false);
+    // Las de agentes sí, también en mayúsculas (el router las atiende igual).
+    expect(run('POST', '/AGENT/sandboxes/sbx-1/plan', evil).passed).toBe(true);
+  });
+
+  it('el origen permitido se compara sin / final ni mayúsculas', () => {
+    const mw = rejectForeignOrigins(['https://Mayday.rip/']);
+    const next = vi.fn();
+    mw(
+      {
+        method: 'post',
+        url: '/sandboxes',
+        headers: { origin: 'https://mayday.rip' },
+      } as IncomingMessage,
+      { setHeader: vi.fn(), end: vi.fn() } as unknown as ServerResponse,
+      next,
+    );
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('arranque del login (falla cerrado)', () => {
+  const all = {
+    clientId: 'Iv1.x',
+    clientSecret: 's',
+    sessionSecret: SECRET,
+  };
+
+  it('a medio configurar es un error siempre, también en desarrollo', () => {
+    expect(
+      authConfigProblem({
+        clientId: 'Iv1.x',
+        production: false,
+        disabled: false,
+      }),
+    ).toMatch(/GITHUB_APP_CLIENT_SECRET, SESSION_SECRET/);
+    expect(
+      authConfigProblem({
+        ...all,
+        sessionSecret: undefined,
+        production: true,
+        disabled: true,
+      }),
+    ).toMatch(/SESSION_SECRET/);
+  });
+
+  it('apagado en producción solo con AUTH_DISABLED', () => {
+    expect(authConfigProblem({ production: true, disabled: false })).toMatch(
+      /AUTH_DISABLED/,
+    );
+    expect(authConfigProblem({ production: true, disabled: true })).toBeNull();
+  });
+
+  it('apagado en desarrollo y encendido completo arrancan', () => {
+    expect(
+      authConfigProblem({ production: false, disabled: false }),
+    ).toBeNull();
+    expect(
+      authConfigProblem({ ...all, production: true, disabled: false }),
+    ).toBeNull();
+  });
+
+  it('producción = RENDER o NODE_ENV=production', () => {
+    expect(isProductionEnv({ RENDER: 'true' })).toBe(true);
+    expect(isProductionEnv({ NODE_ENV: 'production' })).toBe(true);
+    expect(isProductionEnv({ NODE_ENV: 'test' })).toBe(false);
   });
 });
 
@@ -149,6 +238,39 @@ describe('AuthService › reglas de acceso', () => {
       GITHUB_APP_CLIENT_SECRET: 's',
       SESSION_SECRET: SECRET,
     });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('no arranca con el login a medio configurar', () => {
+    expect(() => service({ GITHUB_APP_CLIENT_ID: 'Iv1.x' })).toThrow(
+      /medio configurar/,
+    );
+  });
+
+  it('en Render no arranca con el login apagado, salvo AUTH_DISABLED', () => {
+    vi.stubEnv('RENDER', 'true');
+    expect(() => service({})).toThrow(/AUTH_DISABLED/);
+    expect(service({ AUTH_DISABLED: true }).enabled).toBe(false);
+    expect(on().enabled).toBe(true);
+  });
+
+  it('repoAccessFor rechaza URLs que no son https://github.com/dueño/repo exacto', async () => {
+    const auth = on();
+    for (const bad of [
+      'https://github.com/hack26-sandboxes/%73bx-1a2b3c4d',
+      'https://github.com/a/b/c',
+      'https://gitlab.com/a/b',
+    ]) {
+      await expect(
+        auth.repoAccessFor(duena, bad, 'external'),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      await expect(auth.repoAccessFor(null, bad, 'org')).rejects.toBeInstanceOf(
+        BadRequestException,
+      );
+    }
+  });
 
   const duena = { github_id: 1, login: 'duena', admin: false };
   const otro = { github_id: 2, login: 'otro', admin: false };

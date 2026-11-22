@@ -1,4 +1,5 @@
 import {
+  adminClientConfig,
   deriveDbPassword,
   sandboxRoleName,
   transferOwnershipSql,
@@ -32,6 +33,33 @@ describe('aislamiento de bases de sandboxes', () => {
     expect(sql).toContain("'DOMAIN' ELSE 'TYPE'");
     expect(sql).toContain("'PROCEDURE'");
     expect(sql).toContain("d.deptype = 'e'");
+  });
+
+  it('las sesiones de administrador fijan search_path en pg_catalog', () => {
+    expect(adminClientConfig('postgres://u:p@h/db').options).toBe(
+      '-c search_path=pg_catalog,pg_temp',
+    );
+  });
+
+  it('el SQL de traspaso califica el catálogo (la base es del usuario)', () => {
+    const sql = transferOwnershipSql('sbx_a');
+    for (const name of [
+      'pg_catalog.pg_roles',
+      'pg_catalog.pg_namespace',
+      'pg_catalog.pg_class',
+      'pg_catalog.pg_type',
+      'pg_catalog.pg_proc',
+      'pg_catalog.pg_depend',
+      'pg_catalog.pg_get_userbyid(',
+      'pg_catalog.format(',
+      'pg_catalog.regprocedure',
+    ])
+      expect(sql, name).toContain(name);
+    // Ninguna referencia al catálogo sin calificar.
+    expect(sql).not.toMatch(
+      /(?<!pg_catalog\.)\b(pg_roles|pg_class|pg_proc|pg_type|pg_namespace|pg_depend|pg_get_userbyid)\b/,
+    );
+    expect(sql).not.toMatch(/(?<!pg_catalog\.)\bformat\(/);
   });
 
   it('escapa comillas en el nombre del rol', () => {

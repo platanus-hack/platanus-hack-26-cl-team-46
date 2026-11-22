@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
-import { API_URL } from "./api";
 import type { GitHubRepo } from "./github";
+import { API_URL, HttpError, request as http } from "./http";
 
 /**
  * Sesión de GitHub del usuario. El login es del backend (GitHub App, backend/src/auth):
@@ -28,20 +28,54 @@ export interface SessionState {
 type Me = { enabled: boolean; user: SessionUser | null; install_url: string | null };
 
 const EVENT = "mayday:session";
+const LOGGED_OUT: Me = { enabled: true, user: null, install_url: null };
 let me: Me | undefined;
 let request: Promise<void> | null = null;
+let retry: ReturnType<typeof setTimeout> | null = null;
+let retryDelay = 1_000;
 
 function load(force = false) {
   if (request && !force) return request;
-  request = fetch(`${API_URL}/auth/me`, { credentials: "include", cache: "no-store" })
-    .then((r) => (r.ok ? (r.json() as Promise<Me>) : null))
-    .catch(() => null)
-    // Si el backend no responde, lo tratamos como "sin sesión" (con login encendido).
+  const current: Promise<void> = http<Me>("/auth/me", { cache: "no-store" })
+    // Solo un 401 es "sin sesión". Un 5xx o un corte de red no dicen nada de la sesión.
+    .catch((e: unknown) => {
+      if (e instanceof HttpError && e.status === 401) return LOGGED_OUT;
+      throw e;
+    })
     .then((m) => {
-      me = m ?? { enabled: true, user: null, install_url: null };
+      me = m;
+      retryDelay = 1_000;
       window.dispatchEvent(new Event(EVENT));
+    })
+    .catch(() => {
+      // El fallo no se guarda: la próxima llamada vuelve a preguntar, y mientras tanto se reintenta
+      // con espera creciente (hasta 30 s) para que la página se recupere sola cuando vuelva el backend.
+      if (request === current) request = null;
+      if (!retry) {
+        retry = setTimeout(() => {
+          retry = null;
+          void load();
+        }, retryDelay);
+        retryDelay = Math.min(retryDelay * 2, 30_000);
+      }
     });
+  request = current;
   return request;
+}
+
+/**
+ * Solo rutas internas: `next` viene de la URL y después se navega a él (el backend vuelve a validarlo).
+ * Se resuelve con URL y se compara el origen: un regex no ve trucos como "/\t/evil.com" (el parser
+ * de URL se come tabs y saltos de línea y queda "//evil.com").
+ */
+export function safeNext(next: string | null | undefined, fallback = "/start/repos"): string {
+  if (!next || typeof window === "undefined") return fallback;
+  try {
+    const u = new URL(next, window.location.origin);
+    return u.origin === window.location.origin ? u.pathname + u.search + u.hash : fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 const LOADING: SessionState = { user: undefined, enabled: undefined, installUrl: null };
@@ -73,14 +107,11 @@ export function loginUrl(next = "/start/repos") {
 }
 
 export async function logout() {
-  await fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" }).catch(() => {});
+  await http("/auth/logout", { method: "POST" }).catch(() => {});
   await load(true);
 }
 
 /** Repos que el usuario compartió con la GitHub App (públicos y privados). */
-export async function listRepos(): Promise<GitHubRepo[]> {
-  const res = await fetch(`${API_URL}/auth/repos`, { credentials: "include", cache: "no-store" });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.message ?? `HTTP ${res.status}`);
-  return body as GitHubRepo[];
+export function listRepos(): Promise<GitHubRepo[]> {
+  return http<GitHubRepo[]>("/auth/repos", { cache: "no-store" });
 }

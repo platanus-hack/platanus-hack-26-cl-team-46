@@ -460,14 +460,36 @@ export function anchorWord(say: string, at: unknown): number {
   );
 }
 
+/** Una explicación completa, como las de HeyClicky, no un resumen de 3 frases. */
+export const MAX_BEATS = 10;
+/** Marcas que se miran por beat (las que manda el modelo) y las que se dibujan como mucho. */
+const MAX_RAW_MARKS = 6;
+const MAX_MARKS = 4;
+
+/** Topes por respuesta (botones, chart, card, example, acciones). Solo cuenta si se queda. */
+function withinBudget(clean: Mark, budget: Budget): boolean {
+  if (clean.type === 'button') return budget.buttons < 2;
+  if (clean.type === 'chart') return !budget.flow && budget.boards < 1;
+  if (clean.type === 'card') return budget.cards < 1;
+  if (clean.type === 'example') return budget.examples < 1;
+  if (ACTIONS.has(clean.type)) return budget.actions < MAX_ACTIONS;
+  return true;
+}
+function spend(clean: Mark, budget: Budget) {
+  if (clean.type === 'button') budget.buttons++;
+  else if (clean.type === 'chart') budget.boards++;
+  else if (clean.type === 'card') budget.cards++;
+  else if (clean.type === 'example') budget.examples++;
+  else if (ACTIONS.has(clean.type)) budget.actions++;
+}
+
 /**
  * Valida un beat (lo que dice y lo que dibuja) y fija en qué palabra aparece cada marca
  * (`word`): la que nombró el modelo en `at` o, si no, repartidas a lo largo de la frase,
  * como HeyClicky reparte los trazos sobre la línea que se está diciendo.
+ * Las marcas se miran en orden y se para al llegar a 4 o a un step: así lo que cuenta en la
+ * respuesta (la pizarra abierta, sus cajas, los topes) es solo lo que de verdad se dibuja.
  */
-/** Una explicación completa, como las de HeyClicky, no un resumen de 3 frases. */
-export const MAX_BEATS = 10;
-
 export function cleanBeat(b: any, ids: ScreenIds, budget: Budget): Beat | null {
   if (
     typeof b?.say !== 'string' ||
@@ -479,31 +501,24 @@ export function cleanBeat(b: any, ids: ScreenIds, budget: Budget): Beat | null {
   const say = str(b.say, 220);
   const total = say.split(/\s+/).length;
   const raw: any[] = Array.isArray(b.marks) ? b.marks : [];
-  const marks = raw
-    .slice(0, 6)
-    .map((m) => {
-      const base = cleanMark(m, ids);
-      return {
-        m,
-        clean: base && FLOW.has(base.type) ? cleanFlowPiece(m, budget) : base,
-      };
-    })
-    .filter((x): x is { m: any; clean: Mark } => !!x.clean)
-    .filter(({ clean }) => {
-      if (clean.type === 'button') return ++budget.buttons <= 2;
-      if (clean.type === 'chart') return !budget.flow && ++budget.boards <= 1;
-      if (clean.type === 'card') return ++budget.cards <= 1;
-      if (clean.type === 'example') return ++budget.examples <= 1;
-      if (ACTIONS.has(clean.type)) return ++budget.actions <= MAX_ACTIONS;
-      return true;
-    })
-    .slice(0, 4);
-  // Un paso de guía cierra la respuesta: lo que venga después se dibujaría antes de que el
-  // usuario lo haga. Se corta ahí y no salen más beats.
-  const stepAt = marks.findIndex(({ clean }) => clean.type === 'step');
-  if (stepAt >= 0) {
-    marks.splice(stepAt + 1);
-    budget.closed = true;
+  const marks: { m: any; clean: Mark }[] = [];
+  for (const m of raw.slice(0, MAX_RAW_MARKS)) {
+    if (marks.length >= MAX_MARKS) break;
+    // 1. lo que no depende de la respuesta (sin tocar el presupuesto)
+    const base = cleanMark(m, ids);
+    if (!base) continue;
+    if (!FLOW.has(base.type) && !withinBudget(base, budget)) continue;
+    // 2. se queda: recién ahora cuenta (una pieza de pizarra se valida y se dibuja aquí)
+    const clean = FLOW.has(base.type) ? cleanFlowPiece(m, budget) : base;
+    if (!clean) continue;
+    spend(clean, budget);
+    marks.push({ m, clean });
+    // Un paso de guía cierra la respuesta: lo que venga después se dibujaría antes de que el
+    // usuario lo haga. Se corta ahí y no salen más beats.
+    if (clean.type === 'step') {
+      budget.closed = true;
+      break;
+    }
   }
   budget.beats++;
   const nodeWord: Record<string, number> = {};

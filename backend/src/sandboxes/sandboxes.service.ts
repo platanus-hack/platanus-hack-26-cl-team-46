@@ -21,6 +21,7 @@ import {
   GitService,
   type FileChange,
 } from '../git/git.service.js';
+import { canonicalGitHubUrl } from '../git/github-url.js';
 import { RenderApiError, RenderClient } from '../render/render.client.js';
 import {
   DEPLOY_FAILED_STATUSES,
@@ -30,6 +31,7 @@ import {
 } from '../render/render.types.js';
 import { DatabaseProvisioner } from './database.provisioner.js';
 import {
+  healthcheckUrl,
   loadManifest,
   ManifestError,
   type SandboxManifest,
@@ -130,6 +132,10 @@ export class SandboxesService
   private usageProvider?: SandboxUsageProvider;
   private gcTimer?: NodeJS.Timeout;
   private gcRunning?: Promise<string[]>;
+  /** Creaciones en curso por usuario: el chequeo de cupo y el insert van en serie. */
+  private readonly creating = new Map<string, Promise<void>>();
+  /** Eliminaciones en curso: dos llamadas a la vez (usuario y limpieza) comparten la misma. */
+  private readonly removing = new Map<string, Promise<SandboxRecord>>();
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -247,6 +253,9 @@ export class SandboxesService
             break;
           case 'interrupted':
             this.markInterrupted(id);
+            break;
+          case 'launch_interrupted':
+            this.markLaunchInterrupted(id);
             break;
         }
       }
@@ -513,7 +522,8 @@ export class SandboxesService
           r.agent.plans_submitted -= 1;
       });
     } else {
-      const stillServing = s.deploys.some((d) => d.status === 'live');
+      const stillServing =
+        Boolean(s.render) && s.deploys.some((d) => d.status === 'live');
       this.store.update(id, {
         status: stillServing ? 'ready' : 'failed',
         error: message,
@@ -521,6 +531,23 @@ export class SandboxesService
       });
     }
     this.events.emit(id, 'warning', 'Operación interrumpida', message);
+  }
+
+  /**
+   * El backend murió mientras creaba la VM del agente: no hay agente que siga
+   * ni id para retomarlo. Se marca como fallido (relanzar podría duplicar la VM).
+   */
+  private markLaunchInterrupted(id: string) {
+    const message =
+      'El backend se reinició mientras lanzaba el agente de IA. Vuelve a intentarlo.';
+    this.store.update(id, (r) => {
+      r.status = 'failed';
+      r.failure_kind = 'error';
+      r.error = message;
+      delete r.lease;
+      delete r.agent_launching_at;
+    });
+    this.events.emit(id, 'critical', 'Lanzamiento interrumpido', message);
   }
 
   // ------------------------------------------------------------ consultas
@@ -538,12 +565,16 @@ export class SandboxesService
     repo_url: string;
     owner?: { github_id: number };
     ref?: string;
+    /** Sandboxes ocupados (p. ej. con una simulación viva): no se reusan. */
+    busy?: ReadonlySet<string>;
   }): SandboxRecord | undefined {
     return this.store
       .list()
       .filter(
         (s) =>
           s.status === 'ready' &&
+          !s.deleting_at &&
+          !opts.busy?.has(s.sandbox_id) &&
           s.repo_url === opts.repo_url &&
           (opts.ref ? s.ref === opts.ref : true) &&
           (opts.owner ? s.owner?.github_id === opts.owner.github_id : true),
@@ -649,7 +680,9 @@ export class SandboxesService
 
   async create(input: CreateSandboxInput): Promise<SandboxRecord> {
     const mode = input.mode ?? 'agent';
-    if (classifySourceRepo(input.repo_url, this.git.org) === 'mirror') {
+    // Se guarda y se clona la URL canónica (400 si no es https://github.com/dueño/repo).
+    const repoUrl = canonicalGitHubUrl(input.repo_url);
+    if (classifySourceRepo(repoUrl, this.git.org) === 'mirror') {
       throw new BadRequestException(
         'Ese repo es el mirror de otro sandbox: entrega el repo original',
       );
@@ -660,6 +693,17 @@ export class SandboxesService
       );
     }
     if (mode === 'agent') this.agents.assertConfigured();
+    // Chequeo de cupo + insert en serie por usuario: entre los awaits, dos POST
+    // en paralelo veían el mismo conteo y se pasaban del límite.
+    return this.serialPerUser(input.owner, () =>
+      this.reserveAndInsert({ ...input, repo_url: repoUrl, mode }),
+    );
+  }
+
+  private async reserveAndInsert(
+    input: CreateSandboxInput & { mode: SandboxMode },
+  ): Promise<SandboxRecord> {
+    const mode = input.mode;
     // Cupo: primero el del usuario (liberando sus sandboxes sin uso), después el
     // de Render. Así no se lanza un agente que no va a poder crear el servicio.
     await this.makeRoomForUser(input.owner, input.repo_url);
@@ -692,6 +736,25 @@ export class SandboxesService
     );
     this.runExclusive(id, () => this.provision(id));
     return record;
+  }
+
+  /** Corre `fn` detrás de las otras creaciones del mismo usuario (sin login: todas juntas). */
+  private serialPerUser<T>(
+    owner: CreateSandboxInput['owner'],
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const key = owner ? `user:${owner.github_id}` : 'anon';
+    const prev = this.creating.get(key) ?? Promise.resolve();
+    const run = prev.then(fn);
+    const tail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.creating.set(key, tail);
+    void tail.then(() => {
+      if (this.creating.get(key) === tail) this.creating.delete(key);
+    });
+    return run;
   }
 
   private async provision(id: string) {
@@ -917,20 +980,35 @@ export class SandboxesService
       try {
         await this.render.updateWebService(s.render.service_id, details);
       } catch (err) {
-        if (!(err instanceof RenderApiError) || err.status >= 500) throw err;
-        // Render no deja cambiar algunas cosas (p. ej. el runtime): recreamos el servicio.
+        // Solo se recrea si Render no deja cambiar el runtime (o el servicio ya no
+        // existe). Otro 4xx (validación, 429, permisos) no borra el servicio vivo.
+        const currentRuntime =
+          err instanceof RenderApiError && err.status !== 404
+            ? await this.render
+                .getService(s.render.service_id)
+                .then((svc) => svc.serviceDetails?.runtime)
+                .catch(() => undefined)
+            : undefined;
+        if (!shouldRecreateService(err, currentRuntime, details.runtime))
+          throw err;
         this.events.emit(
           id,
           'info',
           'Recreando servicio',
-          `Render rechazó la actualización: ${err.message}`,
+          (err as RenderApiError).status === 404
+            ? 'El servicio ya no existe en Render: se crea uno nuevo.'
+            : `Render no deja cambiar el runtime del servicio: ${(err as Error).message}`,
         );
-        await this.render.deleteService(s.render.service_id);
+        // `s` es el mismo objeto que el store: se guarda la generación antes de soltar `render`.
+        const { service_id: oldServiceId, generation } = s.render;
+        await this.render.deleteService(oldServiceId);
+        // Ya no existe: si crear el nuevo falla, el record no queda apuntando a un servicio borrado.
+        this.store.update(id, (r) => void delete r.render);
         deployId = await this.createService(
           id,
           details,
           envVars,
-          s.render.generation + 1,
+          generation + 1,
         );
       }
       if (!deployId) {
@@ -1017,7 +1095,7 @@ export class SandboxesService
       }
     }
     const { service, deployId } = created;
-    if (this.get(id).status === 'deleted') {
+    if (this.isDeleting(id)) {
       // Lo eliminaron mientras Render creaba el servicio: no dejar uno huérfano.
       await this.render.deleteService(service.id).catch(() => undefined);
       throw new SandboxDeletedError(
@@ -1287,11 +1365,25 @@ export class SandboxesService
     let cursor = opts.since ?? new Date(Date.now() - 60_000).toISOString();
     const seen = new Set<string>();
     let stopped = false;
-    let timer: NodeJS.Timeout;
+    let timer: NodeJS.Timeout | undefined;
+    const stop = () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
 
     return new ReadableStream<string>({
       start: (controller) => {
-        controller.enqueue(': connected\n\n');
+        // Tras cancelar, enqueue lanza: se deja de escribir y nunca se rechaza
+        // una promesa suelta (eso botaba el proceso).
+        const send = (chunk: string) => {
+          if (stopped) return;
+          try {
+            controller.enqueue(chunk);
+          } catch {
+            stop();
+          }
+        };
+        send(': connected\n\n');
         const tick = async () => {
           if (stopped) return;
           try {
@@ -1305,13 +1397,14 @@ export class SandboxesService
                 endTime: new Date().toISOString(),
                 limit: 100,
               });
+              if (stopped) return;
               for (const line of page.logs) {
                 if (seen.has(line.id)) continue;
                 seen.add(line.id);
                 const labels = Object.fromEntries(
                   line.labels.map((l) => [l.name, l.value]),
                 );
-                controller.enqueue(
+                send(
                   `event: log\ndata: ${JSON.stringify({ id: line.id, t: line.timestamp, message: line.message, labels })}\n\n`,
                 );
               }
@@ -1320,25 +1413,34 @@ export class SandboxesService
             } while (page.hasMore && !stopped);
             if (seen.size > 5000) seen.clear();
           } catch (err) {
-            controller.enqueue(
+            send(
               `event: error\ndata: ${JSON.stringify({ message: (err as Error).message })}\n\n`,
             );
           }
-          if (!stopped) timer = setTimeout(tick, 3_000);
+          if (!stopped) timer = setTimeout(() => void tick(), 3_000);
         };
         void tick();
       },
-      cancel: () => {
-        stopped = true;
-        clearTimeout(timer);
-      },
+      cancel: stop,
     });
   }
 
-  async remove(id: string): Promise<SandboxRecord> {
+  remove(id: string): Promise<SandboxRecord> {
     const s = this.get(id);
-    if (s.status === 'deleted') return s;
+    if (s.status === 'deleted') return Promise.resolve(s);
+    const inFlight = this.removing.get(id);
+    if (inFlight) return inFlight;
+    const run = this.removeNow(id).finally(() => this.removing.delete(id));
+    this.removing.set(id, run);
+    return run;
+  }
+
+  private async removeNow(id: string): Promise<SandboxRecord> {
+    // Primero el marcador: lo que esté en vuelo deja de crear recursos (assertNotDeleted).
+    this.store.update(id, { deleting_at: new Date().toISOString() });
     await this.agents.stop(id, 'Sandbox eliminado');
+    // Se lee después de detener al agente: puede haber alcanzado a crear algo.
+    const s = this.get(id);
     const errors: string[] = [];
     if (s.render?.service_id) {
       await this.render
@@ -1358,9 +1460,13 @@ export class SandboxesService
       'Sandbox eliminado',
       errors.join('\n'),
     );
-    return this.store.update(id, {
-      status: 'deleted',
-      error: errors.length ? errors.join('\n') : undefined,
+    return this.store.update(id, (r) => {
+      r.status = 'deleted';
+      r.error = errors.length ? errors.join('\n') : undefined;
+      // Los valores son secretos del usuario: no se guardan una vez borrado el sandbox.
+      r.env = {};
+      r.pending_inputs = [];
+      delete r.deleting_at;
     });
   }
 
@@ -1418,8 +1524,14 @@ export class SandboxesService
     }
   }
 
+  /** Eliminado o con remove() en curso. */
+  private isDeleting(id: string): boolean {
+    const s = this.store.get(id);
+    return Boolean(s && (s.status === 'deleted' || s.deleting_at));
+  }
+
   private assertNotDeleted(id: string) {
-    if (this.store.get(id)?.status === 'deleted') {
+    if (this.isDeleting(id)) {
       throw new SandboxDeletedError(
         `Sandbox ${id} eliminado durante el deploy`,
       );
@@ -1429,7 +1541,7 @@ export class SandboxesService
   private handleFailure(id: string, err: Error) {
     this.logger.error(`[${id}] ${err.message}`, err.stack);
     const s = this.store.get(id);
-    if (!s || s.status === 'deleted') return;
+    if (!s || s.status === 'deleted' || s.deleting_at) return;
     if (err instanceof RenderCapacityError) {
       // No tiene sentido que el agente reintente: falta cupo, no es su repo.
       this.store.update(id, {
@@ -1454,7 +1566,9 @@ export class SandboxesService
     }
     // Si la app ya estaba arriba, un redeploy fallido no la bota: sigue sirviendo la versión anterior.
     const stillServing =
-      s.status === 'deploying' && s.deploys.some((d) => d.status === 'live');
+      s.status === 'deploying' &&
+      Boolean(s.render) &&
+      s.deploys.some((d) => d.status === 'live');
     this.store.update(id, {
       status: stillServing ? 'ready' : 'failed',
       error: err.message,
@@ -1567,7 +1681,17 @@ export class SandboxesService
     const s = this.get(id);
     const url = s.render?.url;
     if (!url) return;
-    const target = new URL(s.manifest?.healthcheck_path ?? '/', url).toString();
+    // Solo dentro del origen de la app: una ruta absoluta o `//host` sería SSRF.
+    const target = healthcheckUrl(url, s.manifest?.healthcheck_path);
+    if (!target) {
+      this.events.emit(
+        id,
+        'warning',
+        'Healthcheck omitido',
+        'La ruta del healthcheck no es una ruta de la app',
+      );
+      return;
+    }
     const started = Date.now();
     while (Date.now() - started < HEALTH_TIMEOUT_MS) {
       try {
@@ -1613,6 +1737,24 @@ export class SandboxesService
     }
     throw new Error(`Render no creó ningún deploy para ${serviceId}`);
   }
+}
+
+/**
+ * ¿Recrear el servicio tras un rechazo de updateWebService? Solo si ya no
+ * existe (404) o si Render rechazó el cambio de runtime, que no se puede
+ * cambiar en un servicio existente. Cualquier otro 4xx (validación, 429 tras
+ * los reintentos, permisos) se informa sin borrar el servicio vivo.
+ */
+export function shouldRecreateService(
+  err: unknown,
+  currentRuntime: string | undefined,
+  desiredRuntime: string,
+): boolean {
+  if (!(err instanceof RenderApiError)) return false;
+  if (err.status === 404) return true;
+  if (![400, 409, 422].includes(err.status)) return false;
+  if (currentRuntime) return currentRuntime !== desiredRuntime;
+  return /runtime/i.test(err.message);
 }
 
 const DEPLOY_LABELS: Record<string, string> = {

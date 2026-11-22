@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 
 const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
@@ -138,7 +139,7 @@ export const envSchema = z.object({
         .filter((k) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(k)),
     ),
   AGENT_MODEL: z.string().default('opus-5-5-1m'),
-  AGENT_EFFORT: z.string().default('medium'),
+  AGENT_EFFORT: effortSchema.default('medium'),
   /** Máximo de planes de deploy que puede intentar un agente. */
   AGENT_MAX_PLANS: z.coerce.number().int().min(1).default(6),
   /** Archivar la VM del agente cuando termina (se puede revisar antes en Conductor). */
@@ -191,7 +192,7 @@ export const envSchema = z.object({
     .enum(['true', 'false', '1', '0'])
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
-  /** Preguntas por minuto por IP. */
+  /** Peticiones por minuto a Hinty (preguntas, voz, transcripción), por simulación o, si no hay, por IP. */
   CLICKY_RATE_LIMIT: z.coerce.number().int().min(1).default(20),
   /** Tope de preguntas por simulación (protege el gasto si alguien abusa). */
   CLICKY_MAX_QUESTIONS_PER_SIM: z.coerce.number().int().min(1).default(80),
@@ -229,6 +230,25 @@ export const envSchema = z.object({
   SIM_ATTACK_GAP_SECONDS: z.coerce.number().min(5).default(45),
   /** Con el atacante adentro y sin ataques nuevos, cada cuánto llega una consecuencia. */
   SIM_PULSE_SECONDS: z.coerce.number().min(15).default(75),
+
+  /**
+   * Apaga el login con GitHub a propósito en producción (RENDER o NODE_ENV=production).
+   * Sin esto, el backend no arranca si faltan las variables del login (src/auth).
+   * Solo "true"/"1" lo activan (z.coerce.boolean() tomaría "false" como true).
+   */
+  AUTH_DISABLED: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
+  /**
+   * Muestra lo interno de una simulación viva (view=all, plan con archivo y línea,
+   * estado del incidente) a la UI. Solo para depurar: regala la respuesta.
+   * Mismo formato que AUTH_DISABLED ("false" no lo enciende).
+   */
+  SIM_DEBUG_VIEW: z
+    .enum(['true', 'false', '1', '0'])
+    .default('false')
+    .transform((v) => v === 'true' || v === '1'),
 });
 
 export type Env = z.infer<typeof envSchema>;
@@ -243,7 +263,40 @@ export function validateEnv(raw: Record<string, unknown>): Env {
   }
   const env = parsed.data;
   env.GITHUB_TOKEN ??= env.GITHUB_HACK26_ORG_TOKEN;
+  const log = new Logger('Config');
+  for (const w of configWarnings(env, raw)) log.warn(w);
   return env;
+}
+
+/**
+ * Configuraciones que arrancan pero probablemente no son lo que se quería: se avisan al
+ * arrancar en vez de fallar callado más tarde. (Lo que sí impide arrancar va en el schema
+ * o, como el login, en su propio servicio.)
+ */
+export function configWarnings(
+  env: Env,
+  raw: Record<string, unknown> = {},
+): string[] {
+  const out: string[] = [];
+  const prod = !!raw.RENDER || raw.NODE_ENV === 'production';
+  if (prod && !env.DATABASE_URL)
+    out.push(
+      'Sin DATABASE_URL en producción: el estado se guarda en disco y se pierde en cada deploy.',
+    );
+  const engine = {
+    ENGINE_URL: env.ENGINE_URL,
+    ENGINE_MODAL_KEY: env.ENGINE_MODAL_KEY,
+    ENGINE_MODAL_SECRET: env.ENGINE_MODAL_SECRET,
+  };
+  const set = Object.entries(engine).filter(([, v]) => v);
+  if (set.length && set.length < 3)
+    out.push(
+      `Motor de hacking a medio configurar (faltan ${Object.entries(engine)
+        .filter(([, v]) => !v)
+        .map(([k]) => k)
+        .join(', ')}): las simulaciones usan el hacker emulado.`,
+    );
+  return out;
 }
 
 /** El fallback agéntico solo se habilita si está todo lo necesario. */

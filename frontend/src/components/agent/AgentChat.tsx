@@ -23,7 +23,9 @@ export function AgentChat({
   /** Título de la conversación (p. ej. el nombre del proyecto). */
   title: string;
   events: TimelineEvent[];
-  onSend: (text: string) => void;
+  /** Si falla (rechaza), el texto se queda en el composer y se muestra el error. */
+  onSend: (text: string) => Promise<unknown>;
+  /** Sin simulación en curso no hay a quién escribirle: el composer queda de solo lectura. */
   disabled?: boolean;
   /** Si la simulación está corriendo. Si no, nadie va a responder y no se muestra "pensando". */
   live?: boolean;
@@ -148,10 +150,12 @@ const MASCOT_CSS = `
 @media (prefers-reduced-motion: reduce) { .agent-mascot * { animation: none !important; } }
 `;
 
-function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabled?: boolean }) {
+function Composer({ onSend, disabled }: { onSend: (text: string) => Promise<unknown>; disabled?: boolean }) {
   const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const ref = useRef<HTMLTextAreaElement>(null);
-  const canSend = !disabled && text.trim().length > 0;
+  const canSend = !disabled && !sending && text.trim().length > 0;
 
   // El textarea crece con el contenido hasta ~8 líneas.
   useEffect(() => {
@@ -161,10 +165,19 @@ function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabl
     el.style.height = `${Math.min(el.scrollHeight, 192)}px`;
   }, [text]);
 
-  const submit = () => {
+  // El texto se borra solo cuando el backend recibió el mensaje: si falla, se queda para reintentar.
+  const submit = async () => {
     if (!canSend) return;
-    onSend(text);
-    setText("");
+    setSending(true);
+    setSendError(null);
+    try {
+      await onSend(text);
+      setText("");
+    } catch (e) {
+      setSendError((e as Error).message || "No se pudo enviar el mensaje.");
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -173,7 +186,7 @@ function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabl
         className="flex items-end gap-1 rounded-2xl border border-sim-line bg-sim-000/40 px-2 py-2 transition-colors focus-within:border-sim-ink-faint"
         onSubmit={(e) => {
           e.preventDefault();
-          submit();
+          void submit();
         }}
       >
         <button
@@ -189,22 +202,29 @@ function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabl
           className="max-h-48 min-h-8 flex-1 resize-none bg-transparent px-1 py-[5px] text-[14px] leading-[22px] text-sim-ink placeholder:text-sim-ink-faint"
           // El :focus-visible global (sin capa) le gana a las utilidades de Tailwind; el foco ya lo marca el borde del composer.
           style={{ outline: "none" }}
-          placeholder="Escríbele a Claude…"
+          placeholder={disabled ? "El simulacro no está en curso: el chat queda de solo lectura." : "Escríbele a Claude…"}
           value={text}
           disabled={disabled}
-          onChange={(e) => setText(e.target.value)}
+          // Mientras se envía, solo lectura (no disabled): así no pierde el foco.
+          readOnly={sending}
+          aria-busy={sending || undefined}
+          onChange={(e) => {
+            setText(e.target.value);
+            setSendError(null);
+          }}
           onKeyDown={(e) => {
             if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
               e.preventDefault();
-              submit();
+              void submit();
             }
           }}
         />
-        {canSend ? (
+        {canSend || sending ? (
           <button
             type="submit"
-            aria-label="Enviar"
-            className="grid size-8 flex-none place-items-center rounded-full bg-sim-ink text-sim-000 hover:bg-white"
+            aria-label={sending ? "Enviando" : "Enviar"}
+            disabled={sending}
+            className="grid size-8 flex-none place-items-center rounded-full bg-sim-ink text-sim-000 hover:bg-white disabled:opacity-50 disabled:hover:bg-sim-ink"
           >
             <ArrowUp className="size-[18px]" strokeWidth={2.25} />
           </button>
@@ -218,6 +238,11 @@ function Composer({ onSend, disabled }: { onSend: (text: string) => void; disabl
           </button>
         )}
       </form>
+      {sendError && (
+        <p role="alert" className="mt-2 px-2 text-[12px] leading-4 text-attack-strong">
+          No se pudo enviar: {sendError}
+        </p>
+      )}
       <div className="mt-2 flex items-center justify-end gap-4 pr-2 text-[12px] leading-4">
         <span className="text-sim-ink">
           Claude <span className="text-sim-ink-faint">Medio</span>

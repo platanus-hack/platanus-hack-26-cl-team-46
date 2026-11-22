@@ -89,7 +89,8 @@ export class ReportsController {
   /**
    * Benchmark: tu reporte contra las demás corridas listas y con análisis (las de todos
    * los usuarios). Solo agregados anónimos: nunca sale un repo, un usuario ni un reporte
-   * ajeno. Se calcula al leer, así que mejora con cada simulación nueva.
+   * ajeno. Se calcula al leer, así que mejora con cada simulación nueva. Quedan fuera las
+   * corridas con hacker externo que recibió hacker_token (ver benchmarkable).
    */
   @Get('simulations/:id/benchmark')
   benchmark(@Param('id') id: string, @CurrentUser() user: AuthUser | null) {
@@ -101,6 +102,7 @@ export class ReportsController {
       .filter(
         (o) =>
           o.sim_id !== s.sim_id &&
+          benchmarkable(o) &&
           o.report?.status === 'ready' &&
           !o.report.degraded &&
           o.report.result,
@@ -132,6 +134,15 @@ export class ReportsController {
     this.auth.assertAccess(user, this.owner(s), `Simulación ${id}`);
     return s;
   }
+}
+
+/**
+ * Una corrida con hacker externo (hacker_mode external sin el motor interno) recibió
+ * hacker_token, que sirve para publicar como cualquier rol: su resultado se puede
+ * fabricar y no entra al benchmark. Las del motor interno (engine_driven) no exponen el token.
+ */
+export function benchmarkable(s: SimulationRecord): boolean {
+  return !(s.hacker_mode === 'external' && !s.engine_driven);
 }
 
 function closed(s: SimulationRecord): string {

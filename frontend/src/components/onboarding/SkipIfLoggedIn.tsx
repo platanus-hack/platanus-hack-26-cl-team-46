@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { useSession } from "@/lib/onboarding";
+import { safeNext, useSession } from "@/lib/onboarding";
 
 /**
  * Con una sesión de GitHub activa, los pasos de bienvenida y login sobran:
@@ -12,7 +12,8 @@ export function SkipIfLoggedIn({ to = "/start/repos" }: { to?: string }) {
   const router = useRouter();
   const { user } = useSession();
   useEffect(() => {
-    if (user) router.replace(to);
+    // `to` puede venir de ?next=: se valida de nuevo justo antes de navegar.
+    if (user) router.replace(safeNext(to));
   }, [user, to, router]);
   return null;
 }

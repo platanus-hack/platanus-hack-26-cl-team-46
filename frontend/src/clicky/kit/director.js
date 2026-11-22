@@ -17,13 +17,15 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 // before its word: the stroke lands as the word is said.
 const LEAD = 0.3;
 
-// Plays an answer as it streams in: start() returns { push(beat), end(), done }. Each beat is
+// Plays an answer as it streams in: start(signal) returns { push(beat), end(), done }. Each beat is
 // one spoken line; each of its marks carries `word`, the word of the line at which it appears.
 // Marks are released when the voice reaches their word (from the audio clock), never before.
+// `signal` is the answer's own: every mark gets it (draw(m, s, signal)), so an action already
+// running (a click about to happen, a word being typed) stops when the answer is cut.
 export function createDirector({ draw, island, voice, onBeat }) {
   let run = 0, wakeCurrent = () => {}, saying = '';
 
-  async function playBeat(beat, id) {
+  async function playBeat(beat, id, signal) {
     onBeat?.(beat);
     saying = beat.say;
     island.caption(beat.say, { dim: true });
@@ -39,7 +41,7 @@ export function createDirector({ draw, island, voice, onBeat }) {
         const room = over ? 0 : (after ? times[after.word] ?? duration : duration) - (times[item.word] ?? 0);
         // el ritmo de HeyClicky: entre 0,8 y 1,4 (apurado se ve nervioso; lento, aburrido)
         const s = over ? 0.45 : clamp(room / cost(item.m), 0.8, 1.4);
-        drawing = drawing.then(() => id === run && draw(item.m, s)).catch(e => console.warn('[clicky] mark skipped', item.m, e));
+        drawing = drawing.then(() => id === run && !signal?.aborted && draw(item.m, s, signal)).catch(e => console.warn('[clicky] mark skipped', item.m, e));
       }
     };
     const speech = speak(beat.say, {
@@ -54,7 +56,7 @@ export function createDirector({ draw, island, voice, onBeat }) {
     await sleep(80);
   }
 
-  function start() {
+  function start(signal) {
     const id = ++run;
     const queue = [];
     let ended = false, wake = () => {};
@@ -67,7 +69,7 @@ export function createDirector({ draw, island, voice, onBeat }) {
       return id === run ? queue.shift() : undefined;
     };
     const done = (async () => {
-      for (let beat = await next(); beat; beat = await next()) await playBeat(beat, id);
+      for (let beat = await next(); beat; beat = await next()) await playBeat(beat, id, signal);
       if (id === run) { saying = ''; island.state('idle'); }
     })();
     return {
