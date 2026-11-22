@@ -206,9 +206,6 @@ export const envSchema = z.object({
   ENGINE_MODAL_SECRET: z.string().optional(),
   /** Segundos entre pasos del atacante al repetir el ataque real en el simulacro. */
   ENGINE_REPLAY_STEP_SECONDS: z.coerce.number().min(1).default(30),
-  /** Plugin del motor (catálogo de ataques). Hoy: apuntes | tasks. */
-  /** auto = plugin propio si el repo es Apuntes/Tasks; si no, el genérico (cualquier app). */
-  ENGINE_PLUGIN: z.string().default('auto'),
   /** Tiempo activo entre un ataque y el siguiente (la simulación es continua). */
   SIM_ATTACK_GAP_SECONDS: z.coerce.number().min(5).default(45),
   /** Con el atacante adentro y sin ataques nuevos, cada cuánto llega una consecuencia. */

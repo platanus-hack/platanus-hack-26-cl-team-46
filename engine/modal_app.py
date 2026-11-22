@@ -6,7 +6,7 @@ HTTP (API privada con Proxy Auth de Modal) y consulta el resultado después,
 porque Modal corta cualquier request HTTP a los 150 s y una corrida puede
 tardar más.
 
-    POST   /runs              { url, plugin?, ... }  → 202 { call_id }
+    POST   /runs              { url, repo?, commit?, ... }  → 202 { call_id }
     GET    /runs/{call_id}    → 202 { status: "running" } | 200 { status: "done", result }
     DELETE /runs/{call_id}    → cancela la corrida
     GET    /health
@@ -109,7 +109,9 @@ def _discovery_cache_key(spec: dict) -> str | None:
 
 # ───────────────────────── validación del pedido ─────────────────────────
 
-PLUGINS = {"auto", "generic", "apuntes", "tasks", "destructive"}
+# Campos que ya no existen: un solo motor (genérico) y siempre en modo agresivo.
+# Se ignoran (no se rechazan) para que un backend anterior siga funcionando.
+LEGACY_FIELDS = ("plugin", "destructive", "read_only")
 PROFILES = {"noisy", "normal", "fast", "stealth"}
 
 
@@ -144,20 +146,11 @@ def validate_spec(spec: dict) -> dict:
     if not any(fnmatch.fnmatchcase(host, pattern) for pattern in allowed):
         raise SpecError(f"host fuera de la lista autorizada: {host}")
 
-    plugin = spec.get("plugin", "auto")
-    if plugin not in PLUGINS:
-        raise SpecError(f"plugin desconocido: {plugin} (usa {', '.join(sorted(PLUGINS))})")
+    for legacy in LEGACY_FIELDS:
+        spec.pop(legacy, None)
     profile = spec.get("profile", "fast")
     if profile not in PROFILES:
         raise SpecError(f"perfil desconocido: {profile}")
-    if spec.get("destructive") and os.environ.get("ENGINE_ALLOW_DESTRUCTIVE") != "1":
-        # El agresivo es el modo por defecto del producto; el daño real solo se
-        # habilita con el flag de ops. Sin él, degradamos a no-destructivo en vez
-        # de abortar la corrida: la simulación corre igual, solo sin DoS/SSRF.
-        # Es el único sentido de degradación (nunca sube la agresividad), así que
-        # es seguro para disponibilidad sin tocar el scope guard de hosts.
-        print("[engine] destructive solicitado sin ENGINE_ALLOW_DESTRUCTIVE=1: se degrada a no-destructivo")
-        spec["destructive"] = False
 
     repo = spec.get("repo")
     if repo is not None:
@@ -182,7 +175,7 @@ def validate_spec(spec: dict) -> dict:
 
 def _cli_args(spec: dict, out_dir: str, repo_dir: str | None, repo_model_path: str | None = None) -> list[str]:
     args = ["node", "src/cli/run.ts", "--url", spec["url"], "--out", out_dir]
-    args += ["--plugin", spec.get("plugin", "auto"), "--profile", spec.get("profile", "fast")]
+    args += ["--profile", spec.get("profile", "fast")]
     if spec.get("seed"):
         args += ["--seed", str(spec["seed"])]
     if spec.get("budget_usd") is not None:
@@ -194,9 +187,8 @@ def _cli_args(spec: dict, out_dir: str, repo_dir: str | None, repo_model_path: s
         args += ["--commit", str(spec["commit"])]
     if spec.get("weak_login"):
         args += ["--weak-email", spec["weak_login"]["email"], "--weak-pass", spec["weak_login"]["password"]]
-    for key, flag in (("read_only", "--read-only"), ("destructive", "--destructive"), ("no_recon", "--no-recon")):
-        if spec.get(key):
-            args.append(flag)
+    if spec.get("no_recon"):
+        args.append("--no-recon")
     # RepoModel precomputado: salta el discovery estático (y, si no se clonó el
     # repo, también el clon). Vive aparte de --repo para poder combinarse con él.
     if repo_model_path:
@@ -404,11 +396,10 @@ def selftest() -> None:
         os.environ["ENGINE_ALLOWED_HOSTS"] = "127.0.0.1"
         spec = {
             "url": url,
-            "plugin": "apuntes",
             "seed": "selftest",
             "weak_login": {"email": "martin.soto@example.com", "password": "qwerty123"},
         }
-        result = _execute(spec, repo_dir=f"{REMOTE_ENGINE}/test/fixtures/repo-node")
+        result = _execute(spec, repo_dir=f"{REMOTE_ENGINE}/test/fixtures/repo-notes")
         print(result["log"][-3000:], flush=True)
         arts = result["artifacts"]
         summary = arts.get("diagnosis", {}).get("summary", {})
@@ -418,7 +409,11 @@ def selftest() -> None:
             flush=True,
         )
         assert result["ok"], result["stderr"]
-        assert summary.get("confirmed") == summary.get("total") == 8, summary
+        confirmed = {f["vuln_id"] for f in arts["attack_plan"]["raw"]["findings"] if f.get("confirmed")}
+        planted = {"weak-password-no-rate-limit", "idor", "admin-endpoint-no-authz", "mass-assignment",
+                   "sql-injection", "verbose-errors", "stored-xss", "jwt-not-invalidated-on-password-change", "dos"}
+        assert planted <= confirmed, f"faltan: {sorted(planted - confirmed)}"
+        assert "MODO AGRESIVO" in result["log"], "la corrida no fue agresiva"
         assert "semgrep" in arts and "attack_plan" in arts and "replay" in arts and arts["scenarios"], "faltan artefactos"
         try:
             validate_spec({"url": "https://example.com"})
@@ -428,7 +423,7 @@ def selftest() -> None:
     finally:
         fixture.kill()
 
-    print("$ plugin genérico: app desconocida (NestJS) sin plugin propio", flush=True)
+    print("$ otra app desconocida (NestJS), mismo motor", flush=True)
     fixture = subprocess.Popen(["node", "test/serve-fixture.ts", "generic"], cwd=REMOTE_ENGINE, stdout=subprocess.PIPE, text=True)
     try:
         url = fixture.stdout.readline().strip()
@@ -437,8 +432,7 @@ def selftest() -> None:
         print(result["log"][-2500:], flush=True)
         summary = result["artifacts"].get("diagnosis", {}).get("summary", {})
         assert result["ok"], result["stderr"]
-        assert "plugin: generic (auto)" in result["log"], "auto no eligió el plugin genérico"
-        assert summary.get("confirmed") == summary.get("total") == 11, summary
+        assert summary.get("confirmed", 0) >= 12, summary
         print("✅ selftest OK", flush=True)
     finally:
         fixture.kill()
@@ -496,18 +490,16 @@ def api():
 @app.local_entrypoint()
 def main(
     url: str,
-    plugin: str = "auto",
     profile: str = "fast",
     seed: str = "",
     repo: str = "",
     commit: str = "",
     weak_email: str = "",
     weak_pass: str = "",
-    read_only: bool = False,
     providers: bool = False,
 ):
     """Corrida a mano: modal run engine/modal_app.py --url https://... [--repo ...]"""
-    spec: dict = {"url": url, "plugin": plugin, "profile": profile, "read_only": read_only, "providers": providers}
+    spec: dict = {"url": url, "profile": profile, "providers": providers}
     if seed:
         spec["seed"] = seed
     if repo:

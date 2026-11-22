@@ -21,19 +21,8 @@ import { recon } from '../core/recon.ts';
 import { renderGuide } from '../core/report.ts';
 import { buildScenarioPack } from '../core/scenario.ts';
 import type { TargetConfig } from '../core/types.ts';
-import { apuntesPlugin } from '../plugins/apuntes/index.ts';
-import { tasksPlugin } from '../plugins/tasks/index.ts';
-import { analyzeCicd, destructivePlugin } from '../plugins/destructive/index.ts';
+import { analyzeCicd } from '../plugins/generic/cicd.ts';
 import { buildGenericPlugin, readRepoSecrets } from '../plugins/generic/index.ts';
-import { detectPlugin } from '../plugins/detect.ts';
-import type { EnginePlugin } from '../core/types.ts';
-
-const PLUGINS: Record<string, typeof apuntesPlugin> = {
-  apuntes: apuntesPlugin,
-  tasks: tasksPlugin,
-  destructive: destructivePlugin,
-};
-
 
 const HELP = `Motor de hacking — diagnóstico real contra una app controlada y autorizada.
 
@@ -44,13 +33,9 @@ Obligatorio:
   --url <url>            Target autorizado. SOLO se ataca este host (scope guard).
 
 Opciones:
-  --plugin <p>          auto | generic | apuntes | tasks | destructive (default: apuntes)
-                        auto = plugin propio si el repo es una víctima conocida; si no, generic (cualquier app)
-  --destructive         Habilita módulos que GENERAN DAÑO (DoS, SSRF, etc.). Solo contenedor desechable.
   --profile <p>         noisy | normal | fast | stealth        (default: fast)
   --seed <s>            Semilla para reproducibilidad            (default: "default")
   --budget <usd>        Tope de costo LLM por corrida             (default: 5)
-  --read-only           Correr solo módulos no mutantes (no crea/modifica estado)
   --only <ids>          CSV de vuln_id a correr (p. ej. idor,sql-injection)
   --weak-email <email>  Credencial conocida para fuerza bruta / sesión de baja privilegia
   --weak-pass <pass>    (ambos juntos; sin default, específico de la app)
@@ -64,7 +49,11 @@ Opciones:
   --out <dir>           Carpeta de salida                        (default: engine/out)
   --help, -h            Mostrar esta ayuda (sin efectos secundarios)
 
-Ejemplo (app víctima Apuntes):
+Siempre es UN solo motor genérico (la superficie sale del repo y de la app en
+vivo) y siempre en modo agresivo: corre también los módulos que GENERAN DAÑO
+(DoS, SSRF, prompt injection, phishing). Solo contra un contenedor desechable.
+
+Ejemplo:
   node src/cli/run.ts --url https://sbx-xxxx.onrender.com \\
     --weak-email martin.soto@example.com --weak-pass qwerty123 --seed demo-1
 `;
@@ -119,9 +108,6 @@ async function main() {
   const profile = (arg('profile', 'fast') ?? 'fast') as 'noisy' | 'normal' | 'fast' | 'stealth';
   const seed = arg('seed', 'default')!;
   const budgetUsd = Number(arg('budget', '5'));
-  const readOnly = flag('read-only');
-  const destructive = flag('destructive');
-  const pluginArg = arg('plugin', 'apuntes')!;
   const outRoot = arg('out', path.resolve(import.meta.dirname, '../../out'))!;
 
   const target: TargetConfig = {
@@ -131,11 +117,9 @@ async function main() {
     weak_login: weakEmail && weakPass ? { email: weakEmail, password: weakPass } : undefined,
   };
 
-  console.log(`\n🎯 Motor de hacking → ${target.url}  (scope: ${parsed.origin}) · plugin ${pluginArg}`);
-  console.log(`   solo se ataca este host autorizado · perfil ${profile} · seed ${seed}${readOnly ? ' · read-only' : ''}`);
-  if (destructive) {
-    console.log('   ⚠️  MODO DESTRUCTIVO: genera daño real. Solo contra un contenedor desechable autorizado (no producción, no infra compartida sin permiso).');
-  }
+  console.log(`\n🎯 Motor de hacking → ${target.url}  (scope: ${parsed.origin})`);
+  console.log(`   solo se ataca este host autorizado · perfil ${profile} · seed ${seed}`);
+  console.log('   ⚠️  MODO AGRESIVO: incluye módulos que generan daño real (DoS, SSRF…). Solo contra un contenedor desechable autorizado.');
   console.log('');
 
   // Fase discovery (A): el repo participa. Correlaciona hallazgos con archivo/línea.
@@ -158,15 +142,10 @@ async function main() {
     console.log(`▶ discovery: ${repoModel.routes.length} rutas, ${repoModel.signals.length} señales, stack ${repoModel.stack.map((s) => s.framework ?? s.language).join('/')}`);
   }
 
-  const pluginName = pluginArg === 'auto' ? detectPlugin(repoModel) : pluginArg;
-  const plugin: EnginePlugin =
-    pluginName === 'generic'
-      ? buildGenericPlugin({ repo: repoModel, repoSecrets: repoPath ? await readRepoSecrets(path.resolve(repoPath)) : [] })
-      : PLUGINS[pluginName] ?? apuntesPlugin;
-  if (pluginArg === 'auto' || pluginName === 'generic') console.log(`▶ plugin: ${plugin.id}${pluginArg === 'auto' ? ' (auto)' : ''}`);
+  const plugin = buildGenericPlugin({ repo: repoModel, repoSecrets: repoPath ? await readRepoSecrets(path.resolve(repoPath)) : [] });
 
   const reconReport = flag('no-recon') ? undefined : await recon(target, plugin.reconCandidates, { seed, log: (m) => console.log(m) });
-  const diag = await diagnose(target, plugin, { only, profile, seed, readOnly, destructive, log: (m) => console.log(m) });
+  const diag = await diagnose(target, plugin, { only, profile, seed, log: (m) => console.log(m) });
 
   // Análisis de deploy/CICD del repo (read-only).
   let cicd;

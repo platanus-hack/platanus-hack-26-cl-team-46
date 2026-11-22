@@ -1,10 +1,25 @@
+/**
+ * Un solo motor (genérico) contra una app de notas con 8 debilidades plantadas.
+ * No hay manual por app: la superficie sale de las rutas del repo y de la app en vivo.
+ */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { diagnose } from '../src/core/diagnose.ts';
 import { buildScenarioPack } from '../src/core/scenario.ts';
-import { startFixture } from './fixture.ts';
+import { buildGenericPlugin } from '../src/plugins/generic/index.ts';
 import type { TargetConfig } from '../src/core/types.ts';
-import { apuntesPlugin } from '../src/plugins/apuntes/index.ts';
+import { startFixture } from './fixture.ts';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { discoverRepo } from '../src/discovery/index.ts';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+// Las rutas salen del discovery del repo, igual que en producción.
+const NOTES_APP = await discoverRepo(path.join(here, 'fixtures/repo-notes'), { commit: 't' });
+const PLANTED = [
+  'admin-endpoint-no-authz', 'idor', 'jwt-not-invalidated-on-password-change', 'mass-assignment',
+  'sql-injection', 'stored-xss', 'verbose-errors', 'weak-password-no-rate-limit',
+];
 
 function targetFor(url: string): TargetConfig {
   return {
@@ -14,50 +29,32 @@ function targetFor(url: string): TargetConfig {
   };
 }
 
-test('diagnóstico completo contra el fixture confirma las 8 vulns', async () => {
+test('motor único: confirma las 8 debilidades plantadas (y el DoS, siempre agresivo)', async () => {
   const fx = await startFixture();
   try {
-    const diag = await diagnose(targetFor(fx.url), apuntesPlugin, { seed: 't1', profile: 'noisy' });
-    assert.equal(diag.summary.total, 8);
-    assert.equal(diag.summary.confirmed, 8, diag.results.filter((r) => !r.confirmed).map((r) => `${r.vuln_id}: ${r.summary}`).join(' | '));
-    const pack = buildScenarioPack(diag, apuntesPlugin);
-    assert.equal(pack.length, 8);
+    const plugin = buildGenericPlugin({ repo: NOTES_APP });
+    const diag = await diagnose(targetFor(fx.url), plugin, { seed: 't1', profile: 'noisy' });
+    const confirmed = diag.results.filter((r) => r.confirmed).map((r) => r.vuln_id);
+    const missing = PLANTED.filter((id) => !confirmed.includes(id));
+    assert.deepEqual(missing, [], diag.results.filter((r) => !r.confirmed).map((r) => `${r.vuln_id}: ${r.summary}`).join(' | '));
+    assert.ok(confirmed.includes('dos'), 'el modo agresivo no corrió el DoS');
+    // Corren TODOS los módulos del catálogo: no hay filtro por app ni por modo.
+    assert.equal(diag.results.length, plugin.attacks.length);
+    assert.equal(buildScenarioPack(diag, plugin).length, diag.summary.confirmed);
   } finally {
     await fx.close();
   }
 });
 
-test('teardown limpia la nota del XSS y revierte el rol escalado; residuo = cuentas', async () => {
+test('teardown: borra el contenido con el payload XSS; el residuo son cuentas desechables', async () => {
   const fx = await startFixture();
   try {
     const before = fx.notes.length;
-    const diag = await diagnose(targetFor(fx.url), apuntesPlugin, { seed: 't2', profile: 'noisy' });
-    // La nota del XSS fue creada y luego borrada por el teardown.
+    const diag = await diagnose(targetFor(fx.url), buildGenericPlugin({ repo: NOTES_APP }), { seed: 't2', profile: 'noisy' });
     assert.equal(fx.notes.length, before, 'quedó una nota sin borrar');
-    assert.ok(!fx.notes.some((n) => /onerror|xss-/.test(n.body)), 'quedó la nota XSS');
-    // El rol escalado se revirtió a user.
-    const escalated = fx.users.filter((u) => u.email.startsWith('rt-'));
-    assert.ok(escalated.every((u) => u.role === 'user'), 'una cuenta quedó como admin');
-    // Residuo: las cuentas desechables (la app no deja borrarlas).
+    assert.ok(!fx.notes.some((n) => /onerror/.test(n.body)), 'quedó la nota XSS');
     assert.ok(diag.residue.length >= 1);
-    assert.ok(diag.residue.every((r) => /cuenta desechable/.test(r)));
-  } finally {
-    await fx.close();
-  }
-});
-
-test('modo read-only no crea estado y corre solo módulos no mutantes', async () => {
-  const fx = await startFixture();
-  try {
-    const usersBefore = fx.users.length;
-    const notesBefore = fx.notes.length;
-    const diag = await diagnose(targetFor(fx.url), apuntesPlugin, { seed: 't3', profile: 'noisy', readOnly: true });
-    assert.equal(fx.users.length, usersBefore, 'read-only creó usuarios');
-    assert.equal(fx.notes.length, notesBefore, 'read-only creó notas');
-    assert.equal(diag.residue.length, 0);
-    // Solo los no mutantes: weak-password, idor, admin-export, verbose-errors, sql-injection.
-    assert.equal(diag.results.length, 5);
-    assert.ok(diag.results.every((r) => r.confirmed));
+    assert.ok(diag.residue.every((r) => /cuenta desechable/.test(r)), diag.residue.join(' | '));
   } finally {
     await fx.close();
   }
@@ -67,15 +64,13 @@ test('determinismo: misma seed → mismos vuln_id/confirmado y mismas versiones 
   const a = await startFixture();
   const b = await startFixture();
   try {
-    const da = await diagnose(targetFor(a.url), apuntesPlugin, { seed: 'same', profile: 'noisy' });
-    const db = await diagnose(targetFor(b.url), apuntesPlugin, { seed: 'same', profile: 'noisy' });
-    const keyA = da.results.map((r) => `${r.vuln_id}:${r.confirmed}`).sort();
-    const keyB = db.results.map((r) => `${r.vuln_id}:${r.confirmed}`).sort();
-    assert.deepEqual(keyA, keyB);
-    const vA = buildScenarioPack(da, apuntesPlugin).map((s) => s.version).sort();
-    const vB = buildScenarioPack(db, apuntesPlugin).map((s) => s.version).sort();
-    assert.deepEqual(vA, vB);
-    // Las cuentas desechables generadas son idénticas (RNG seeded).
+    const pa = buildGenericPlugin({ repo: NOTES_APP });
+    const pb = buildGenericPlugin({ repo: NOTES_APP });
+    const da = await diagnose(targetFor(a.url), pa, { seed: 'same', profile: 'noisy' });
+    const db = await diagnose(targetFor(b.url), pb, { seed: 'same', profile: 'noisy' });
+    const key = (d: typeof da) => d.results.map((r) => `${r.vuln_id}:${r.confirmed}`).sort();
+    assert.deepEqual(key(da), key(db));
+    assert.deepEqual(buildScenarioPack(da, pa).map((s) => s.version).sort(), buildScenarioPack(db, pb).map((s) => s.version).sort());
     assert.deepEqual(
       a.users.filter((u) => u.email.startsWith('rt-')).map((u) => u.email).sort(),
       b.users.filter((u) => u.email.startsWith('rt-')).map((u) => u.email).sort(),

@@ -184,8 +184,11 @@ export class GenericState {
     for (const e of raw) byFile.set(e.ref?.file ?? '(live)', [...(byFile.get(e.ref?.file ?? '(live)') ?? []), e]);
     let budget = 90;
     const endpoints: Endpoint[] = [];
+    // Un 404 con cuerpo propio puede ser un recurso que no existe… o el 404 JSON
+    // genérico de la app (p. ej. {"error":"No encontrado"}). Nunca debe ganarle a
+    // una respuesta 2xx/3xx real: si no, las rutas web quedan con el prefijo de la API.
     const score = (res: RecordedResponse) =>
-      !isReal(res, fallback) ? 0 : isJson(res) || res.status === 401 || res.status === 403 ? 3 : isHtml(res) ? 1 : 2;
+      !isReal(res, fallback) ? 0 : res.status === 404 ? 1 : isJson(res) || res.status === 401 || res.status === 403 ? 3 : 2;
     for (const [file, eps] of byFile) {
       const probe =
         eps.find((e) => e.method === 'GET' && !e.params.length && e.template !== '/') ??
@@ -206,7 +209,10 @@ export class GenericState {
           chosen = pre;
           probe.live = true;
         }
-        if (sc === 3) break;
+        // La ruta tal como la resolvió el discovery (sin prefijo extra) responde de
+        // verdad: es esa. Si no, un router protegido que contesta 401 a todo
+        // (app.use('/api/users', requireAuth)) se "adueña" de rutas que no son suyas.
+        if (sc === 3 || (pre === '' && sc >= 2)) break;
       }
       for (const e of eps) {
         const pre = chosen ?? '';

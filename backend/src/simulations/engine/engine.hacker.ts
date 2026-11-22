@@ -713,13 +713,10 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       url,
       repo: https ? repo : undefined,
       commit: https ? (s.sandbox_commit ?? sbx.commit_sha) : undefined,
-      plugin: this.config.get('ENGINE_PLUGIN', { infer: true }),
+      // Un solo motor (genérico) y siempre en modo agresivo: no hay plugin ni
+      // flag que elegir. Cada corrida es un contenedor desechable en Modal.
       profile: 'fast',
       seed: s.sim_id,
-      // Modo agresivo por defecto: el motor corre también los destructivos. El
-      // único control es el flag de ops del motor en Modal (ENGINE_ALLOW_DESTRUCTIVE=1
-      // + contenedor desechable); sin él, Modal degrada la corrida a no-destructiva.
-      destructive: true,
       ...(weak
         ? { weak_login: { email: weak.email, password: weak.password } }
         : {}),
@@ -729,20 +726,13 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
   /**
    * Hace liviana una verificación reusando lo que ya calculó la primera pasada:
    * pasa su RepoModel (el motor salta el discovery estático) y apaga el SAST.
-   * Para los plugins propios (apuntes/tasks) tampoco hace falta re-clonar: el
-   * ataque de una sola vuln sale del modelo, así que se omite el repo. El plugin
-   * genérico sí lee secretos del código, por eso ahí se mantiene el clon.
+   * El repo se mantiene: el motor lee del código los secretos candidatos.
    * Sin RepoModel guardado (p. ej. primera pasada sin repo) devuelve {} y la
    * verificación corre como antes.
    */
   private liteVerifySpec(engine: EngineRecord): Record<string, unknown> {
     if (!engine.repo_model) return {};
-    const dropRepo = engine.plugin && engine.plugin !== 'generic';
-    return {
-      repo_model: engine.repo_model,
-      semgrep: false,
-      ...(dropRepo ? { repo: undefined, commit: undefined } : {}),
-    };
+    return { repo_model: engine.repo_model, semgrep: false };
   }
 
   private token(simId: string) {
