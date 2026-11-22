@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, type Sandbox, type SimEvent } from "@/lib/api";
 import { simApi, type SimStatus, type Simulation } from "@/lib/sim-api";
 import { AgentPanel } from "@/components/sandbox/AgentPanel";
+import { useConfirm } from "@/components/mayday";
 
 /**
  * Consola de desarrollo del servicio de deploy. No es la UI del simulador:
@@ -28,6 +29,7 @@ function DeployConsole() {
   const [eventLog, setEventLog] = useState<{ id: string | null; list: SimEvent[] }>({ id: null, list: [] });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
 
   const refresh = useCallback(async () => {
     try {
@@ -170,7 +172,17 @@ function DeployConsole() {
                 </Action>
                 <Action
                   disabled={busy}
-                  onClick={() => confirm(`¿Borrar ${current.sandbox_id}?`) && run(() => api.deleteSandbox(current.sandbox_id))}
+                  onClick={async () => {
+                    const id = current.sandbox_id;
+                    const ok = await confirm({
+                      label: "Borrar sandbox",
+                      title: `¿Borrar ${id}?`,
+                      description: "Se apaga el deploy y se borra su base de datos y su mirror. No se puede deshacer.",
+                      confirmLabel: "Borra el sandbox",
+                      destructive: true,
+                    });
+                    if (ok) run(() => api.deleteSandbox(id));
+                  }}
                 >
                   Borrar
                 </Action>

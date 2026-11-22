@@ -13,6 +13,7 @@ import {
 } from "@/components/mayday";
 import { HintyDockStates, HintyPieces, HintyPreview } from "./HintyPreview";
 import { PixelDemo } from "./PixelDemo";
+import { ConfirmDemo } from "./ConfirmDemo";
 
 export const metadata: Metadata = { title: "Mayday · Sistema de diseño" };
 
@@ -80,6 +81,10 @@ export default function DesignPage() {
           <Button variant="primary">Empezar simulacro</Button>
           <Button>Saltar</Button>
         </div>
+      </Section>
+
+      <Section title="ConfirmDialog">
+        <ConfirmDemo />
       </Section>
 
       <Section title="StatusChip">

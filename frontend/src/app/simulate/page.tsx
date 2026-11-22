@@ -8,7 +8,7 @@ import { AgentChat } from "@/components/agent/AgentChat";
 import { setClickySimulation } from "@/clicky/active-sim";
 import { BrowserWindow } from "@/components/workspace/BrowserWindow";
 import { ChannelIcon } from "@/components/workspace/ChannelIcon";
-import { PixelTransition } from "@/components/mayday";
+import { PixelTransition, useConfirm } from "@/components/mayday";
 import { TopBarSlot } from "@/components/app/AppSidebar";
 import { CmdK, RenameInput, repoShortName, SandboxPicker, type SandboxEntry } from "@/components/sandbox/SandboxPicker";
 import { api, type Sandbox } from "@/lib/api";
@@ -432,10 +432,15 @@ function FlowControls({
       </span>
       {live && (
         <Btn
-          onClick={() => {
-            if (window.confirm("¿Terminar el simulacro? El atacante se detiene y se arma tu reporte.")) {
-              run(() => simApi.control(sim.sim_id, "finish"));
-            }
+          onClick={async () => {
+            const ok = await confirm({
+              label: "Terminar simulacro",
+              title: "¿Terminar el simulacro?",
+              description: "El atacante se detiene y se arma tu reporte.",
+              confirmLabel: "Termina el simulacro",
+              cancelLabel: "Sigue jugando",
+            });
+            if (ok) run(() => simApi.control(sim.sim_id, "finish"));
           }}
         >
           Terminar
@@ -460,6 +465,7 @@ function FlowControls({
 /** Solo en vista interna: estado del incidente y de los agentes. */
 function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<unknown>) => void }) {
   const live = sim.status === "running" || sim.status === "paused";
+  const confirm = useConfirm();
   return (
     <div className="flex flex-col gap-2 rounded-md border border-dashed border-line-strong p-2 text-xs text-ink-muted">
       {sim.state && (
