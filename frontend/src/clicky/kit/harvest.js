@@ -9,11 +9,38 @@ const KINDS = { H1: 'título', H2: 'título', H3: 'subtítulo', H4: 'subtítulo'
 export const ATTACK = '.md-evidence, [data-attack], .md-log--attack, .bg-attack-soft, .text-attack, .text-attack-strong, .is-compromised';
 const MAX = 180;
 
+// Lo que se ve de verdad: la caja recortada por cada panel con scroll u overflow oculto que la
+// contiene (un mensaje que quedó arriba en un chat con scroll no se ve, aunque esté en la ventana).
+// `cache` guarda el recorte de cada contenedor durante una cosecha.
+export function visibleBox(el, cache = new Map()) {
+  const r = el.getBoundingClientRect();
+  let x1 = Math.max(0, r.left), y1 = Math.max(0, r.top), x2 = Math.min(innerWidth, r.right), y2 = Math.min(innerHeight, r.bottom);
+  for (let p = el.parentElement; p && p !== document.body && x2 > x1 && y2 > y1; p = p.parentElement) {
+    let clip = cache.get(p);
+    if (clip === undefined) {
+      const cs = getComputedStyle(p);
+      clip = cs.overflowX !== 'visible' || cs.overflowY !== 'visible' ? p.getBoundingClientRect() : null;
+      cache.set(p, clip);
+    }
+    if (clip) { x1 = Math.max(x1, clip.left); y1 = Math.max(y1, clip.top); x2 = Math.min(x2, clip.right); y2 = Math.min(y2, clip.bottom); }
+  }
+  return { r, x: x1, y: y1, w: Math.max(0, x2 - x1), h: Math.max(0, y2 - y1) };
+}
+// Fracción visible de un elemento (0 a 1).
+export function shownFraction(el, cache) {
+  const v = visibleBox(el, cache);
+  return v.r.width * v.r.height > 0 ? (v.w * v.h) / (v.r.width * v.r.height) : 0;
+}
+
 const clean = s => String(s || '').replace(/[ \t]+/g, ' ').replace(/\n{2,}/g, '\n').trim();
+let clips = new Map(); // recortes de la cosecha en curso
 const visible = (el, r) => {
   if (r.width < 3 || r.height < 3 || r.bottom <= 0 || r.right <= 0 || r.top >= innerHeight || r.left >= innerWidth) return false;
   const cs = getComputedStyle(el);
-  return cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0.05;
+  if (cs.visibility === 'hidden' || cs.display === 'none' || Number(cs.opacity) <= 0.05) return false;
+  // al menos la mitad a la vista (o 12 px de alto, para bloques largos que asoman)
+  const v = visibleBox(el, clips);
+  return v.w * v.h >= 0.5 * r.width * r.height || (v.h >= 12 && v.w >= 24);
 };
 const ownText = el => {
   let t = '';
@@ -32,6 +59,7 @@ function label(el) {
 
 // { list: [{ id, kind, text, box: [x,y,w,h], attack?, disabled? }], map: Map(id → element) }
 export function harvestScreen({ skip = () => false } = {}) {
+  clips = new Map();
   const picked = new Set(), out = [];
   const add = (el, kind, r) => {
     if (picked.has(el) || out.length >= MAX * 2) return;
@@ -88,7 +116,8 @@ export function harvestScreen({ skip = () => false } = {}) {
     const text = (o.el.matches(INTERACTIVE) || /^H[1-6]$/.test(o.el.tagName) || o.kind === 'fila' ? label(o.el) : clean(o.el.innerText || o.el.alt || '')).slice(0, big ? 1200 : 160);
     if (!text && o.el.tagName !== 'IMG' && !o.el.matches(INTERACTIVE)) continue;
     map.set(id, o.el);
-    const item = { id, kind: o.kind, text, box: [o.r.left, o.r.top, o.r.width, o.r.height].map(Math.round) };
+    const v = visibleBox(o.el, clips); // la parte que se ve, que es la que está en la captura
+    const item = { id, kind: o.kind, text, box: [v.x, v.y, v.w, v.h].map(Math.round) };
     if (o.el.closest(ATTACK)) item.attack = true;
     if (o.el.disabled || o.el.getAttribute('aria-disabled') === 'true') item.disabled = true;
     list.push(item);

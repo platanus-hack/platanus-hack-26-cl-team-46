@@ -10,7 +10,7 @@ import { createVoiceInput, stopSpeaking } from './voice.js';
 import { createDirector } from './director.js';
 import { createGesture } from './gesture.js';
 import { createSounds } from './sounds.js';
-import { harvestScreen, labelShot, ATTACK } from './harvest.js';
+import { harvestScreen, labelShot, shownFraction, ATTACK } from './harvest.js';
 
 // Public entry point. Mount once on any page:
 //   const clicky = createClicky({ api: 'https://api.example.com/clicky', headers: () => ({ 'x-sim-id': id }) })
@@ -147,8 +147,10 @@ export function createClicky({
     if (reflowRaf || (!ctx.anchors.length && !ctx.spotHoles.length)) return;
     reflowRaf = requestAnimationFrame(() => {
       reflowRaf = 0;
+      const cache = new Map();
       for (const a of ctx.anchors) {
-        const gone = !a.el.isConnected;
+        // si el elemento salió de su panel (scroll adentro de un chat o un log), su marca se esconde
+        const gone = !a.el.isConnected || shownFraction(a.el, cache) < 0.3;
         [a.g, a.gh].forEach(g => g.style.opacity = gone ? '0' : '');
         a.div.style.opacity = gone ? '0' : '';
         if (gone) continue;
