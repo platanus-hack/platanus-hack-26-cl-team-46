@@ -95,7 +95,9 @@ export class SandboxesController {
   async update(
     @Param('id') id: string,
     @Body({ schema: updateSandboxSchema }) body: UpdateSandboxBody,
+    @CurrentUser() user: AuthUser | null,
   ) {
+    this.owned(id, user);
     return this.sandboxes.toContract(this.sandboxes.rename(id, body.name));
   }
 
