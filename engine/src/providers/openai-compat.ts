@@ -4,7 +4,8 @@
  * acaban los créditos. HTTP puro (sin dependencias).
  */
 import { llmCost, type Usage } from '../core/ledger.ts';
-import type { AnalysisProvider, ProposedAngle, ProviderInput } from './types.ts';
+import { PROBE_SYSTEM, parseProbeSpecs } from './probe-prompt.ts';
+import type { AnalysisProvider, ProbeGenInput, ProbeSpec, ProposedAngle, ProviderInput } from './types.ts';
 
 export class ProviderRefusal extends Error {}
 
@@ -46,5 +47,25 @@ export class OpenAICompatProvider implements AnalysisProvider {
     } catch {
       return [];
     }
+  }
+
+  private async chat(system: string, user: string): Promise<string> {
+    const res = await fetch(`${this.o.baseUrl.replace(/\/$/, '')}/chat/completions`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${this.o.apiKey}` },
+      body: JSON.stringify({ model: this.o.model, max_tokens: 4096, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
+    });
+    const data = (await res.json()) as any;
+    if (!res.ok) throw new Error(`${this.id} ${res.status}: ${JSON.stringify(data).slice(0, 200)}`);
+    const usage: Usage = { tokensIn: data.usage?.prompt_tokens, tokensOut: data.usage?.completion_tokens };
+    this.o.onUsage?.(this.o.model, usage, llmCost(this.o.model, usage));
+    const text = data.choices?.[0]?.message?.content ?? '';
+    if (!text) throw new ProviderRefusal(`${this.id}: respuesta vacía`);
+    return text;
+  }
+
+  async generateProbes(input: ProbeGenInput): Promise<ProbeSpec[]> {
+    const user = JSON.stringify({ repo: input.repo, angles: input.angles, scope: input.scopeOrigins }).slice(0, 100_000);
+    return parseProbeSpecs(await this.chat(PROBE_SYSTEM, user));
   }
 }

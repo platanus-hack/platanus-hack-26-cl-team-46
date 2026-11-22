@@ -49,6 +49,13 @@ export async function startDestructiveFixture(): Promise<DFixture> {
       return res.end();
     }
 
+    // Reflected XSS: refleja el query param sin escapar en HTML.
+    if (p === '/echo') {
+      const q = u.searchParams.get('q') ?? '';
+      res.writeHead(200, { 'content-type': 'text/html' });
+      return res.end(`<!doctype html><html><body><div>Buscaste: ${q}</div></body></html>`);
+    }
+
     if (p === '/' || p === '/health') return send(200, { ok: true });
     send(404, { error: 'not found' });
   });
