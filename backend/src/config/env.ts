@@ -148,13 +148,19 @@ export const envSchema = z.object({
     .transform((v) => v === 'true'),
 
   // Clicky: copiloto en pantalla (src/clicky). Sin las keys, sus rutas responden 503.
-  /** Solo si CLICKY_BRAIN_MODEL es un modelo de OpenAI. */
+  /** Cerebro de Hinty con un modelo de OpenAI (el default). */
   OPENAI_API_KEY: z.string().optional(),
   /**
-   * Cerebro de Clicky: mira la captura y decide qué decir y qué marcar. Un modelo
-   * `claude-*` usa ANTHROPIC_API_KEY; cualquier otro (p. ej. gpt-6-luna), OPENAI_API_KEY.
+   * Cerebro de Hinty: mira la captura y decide qué decir y qué marcar. El mismo de
+   * HeyClicky: GPT-6.1 Sol en medium y en Fast mode. Un modelo `claude-*` (p. ej.
+   * claude-sonnet-5-5) usa ANTHROPIC_API_KEY en vez de OPENAI_API_KEY.
    */
-  CLICKY_BRAIN_MODEL: z.string().default('claude-sonnet-5-5'),
+  CLICKY_BRAIN_MODEL: z.string().default('gpt-6.1-sol'),
+  /**
+   * Carril de OpenAI (`service_tier`): "fast" responde hasta 2,5× más rápido al doble
+   * del precio por token; "default" es el normal. No aplica a Claude.
+   */
+  CLICKY_BRAIN_TIER: z.enum(['default', 'fast']).default('fast'),
   /**
    * Cuánto razona el cerebro antes de responder. "medium": mejores explicaciones a
    * cambio de una primera frase un poco más tardía. "low" responde antes y "none" aún

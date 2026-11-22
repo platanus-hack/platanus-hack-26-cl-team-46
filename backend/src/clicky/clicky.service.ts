@@ -105,6 +105,7 @@ export class ClickyService {
           key: key!,
           model,
           effort: this.cfg('CLICKY_BRAIN_EFFORT'),
+          tier: this.cfg('CLICKY_BRAIN_TIER'),
           messages: buildMessages(
             input,
             simStatus,

@@ -100,6 +100,8 @@ export interface BrainOptions {
   key: string;
   model: string;
   effort: string;
+  /** Carril de OpenAI: "fast" responde hasta 2,5× más rápido al doble de precio. Claude lo ignora. */
+  tier?: string;
   /** Conversación en formato chat/completions (system, historial y la última pregunta). */
   messages: unknown[];
   signal: AbortSignal;
@@ -208,7 +210,7 @@ async function* streamClaude(opts: BrainOptions): AsyncGenerator<unknown> {
 }
 
 async function* streamOpenAI(opts: BrainOptions): AsyncGenerator<unknown> {
-  const send = (withEffort: boolean) =>
+  const send = (withEffort: boolean, withTier: boolean) =>
     fetch(`${OPENAI}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -221,17 +223,22 @@ async function* streamOpenAI(opts: BrainOptions): AsyncGenerator<unknown> {
         response_format: { type: 'json_object' },
         stream: true,
         ...(withEffort ? { reasoning_effort: opts.effort } : {}),
+        ...(withTier ? { service_tier: opts.tier } : {}),
       }),
       signal: AbortSignal.any([opts.signal, AbortSignal.timeout(TIMEOUT_MS)]),
     });
 
-  const withEffort = opts.effort !== 'default';
-  let res = await send(withEffort);
-  if (withEffort && res.status === 400) {
-    // Un modelo sin reasoning_effort (si se cambia CLICKY_BRAIN_MODEL): se reintenta sin él.
+  let withEffort = opts.effort !== 'default';
+  let withTier = !!opts.tier && opts.tier !== 'default';
+  let res = await send(withEffort, withTier);
+  // Un modelo sin reasoning_effort o sin ese carril (si se cambia CLICKY_BRAIN_MODEL):
+  // se reintenta sin lo que rechazó, en vez de dejar a Hinty mudo.
+  for (let i = 0; i < 2 && res.status === 400; i++) {
     const body = await res.text();
-    if (!/reasoning/i.test(body)) throw new BrainError(body.slice(0, 300), 400);
-    res = await send(false);
+    if (withTier && /service_tier/i.test(body)) withTier = false;
+    else if (withEffort && /reasoning/i.test(body)) withEffort = false;
+    else throw new BrainError(body.slice(0, 300), 400);
+    res = await send(withEffort, withTier);
   }
   if (!res.ok || !res.body)
     throw new BrainError((await res.text()).slice(0, 300), res.status);
