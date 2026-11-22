@@ -8,10 +8,12 @@ import { AgentChat } from "@/components/agent/AgentChat";
 import { setClickySimulation } from "@/clicky/active-sim";
 import { BrowserWindow } from "@/components/workspace/BrowserWindow";
 import { ChannelIcon } from "@/components/workspace/ChannelIcon";
-import { Logo } from "@/components/mayday";
+import { PixelTransition } from "@/components/mayday";
+import { TopBarSlot } from "@/components/app/AppSidebar";
 import { CmdK, RenameInput, repoShortName, SandboxPicker, type SandboxEntry } from "@/components/sandbox/SandboxPicker";
 import { api, type Sandbox } from "@/lib/api";
 import { SimGate } from "@/components/engine/EngineFirstPass";
+import { StartCountdown } from "@/components/engine/StartCountdown";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
 import { eventToMessage, seedMessages } from "@/lib/workspace-chat";
 import { eventToMail, seedMails } from "@/lib/workspace-mail";
@@ -67,6 +69,14 @@ function SimulateConsole() {
   const godMode = searchParams.get("view") === "all";
   const [log, setLog] = useState<{ key: string; list: TimelineEvent[] }>({ key: "", list: [] });
   const [error, setError] = useState<string | null>(null);
+  // "Comenzar simulación": pixeles cian que salen del botón; la pantalla queda tapada hasta que el simulacro parte.
+  const [startFx, setStartFx] = useState<{ key: number; origin?: { x: number; y: number }; hold: boolean }>({ key: 0, hold: false });
+  // Al destaparse el escritorio: cuenta regresiva 3 · 2 · 1. Espera las dos cosas: que el simulacro
+  // haya partido y que la transición haya terminado (con movimiento reducido termina al tiro).
+  const started = useRef(false);
+  const fxDone = useRef(false);
+  const [countdown, setCountdown] = useState(false);
+  const endCountdown = useCallback(() => setCountdown(false), []);
   const creating = useRef(new Set<string>());
 
   const refresh = useCallback(async () => {
@@ -241,12 +251,10 @@ function SimulateConsole() {
   ];
 
   return (
-    // Mobile: la página hace scroll (no cabe en una pantalla) y debajo de la barra de la app, que ya trae el logo.
-    <main className="flex min-h-[calc(100svh-56px)] flex-col gap-3 p-4 font-sans text-sm md:h-screen md:min-h-0">
-      <header className={`flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line pb-3 ${entry ? "" : "max-md:hidden"}`} data-clicky-region="header">
-        <Link href="/" aria-label="Mayday, inicio" className="shrink-0 max-md:hidden">
-          <Logo height={24} priority />
-        </Link>
+    // Debajo de la barra de la app (que trae el logo). Mobile: la página hace scroll (no cabe en una pantalla).
+    <main className="flex min-h-[calc(100svh-56px)] flex-col gap-3 p-4 font-sans text-sm md:h-[calc(100svh-56px)] md:min-h-0">
+      {/* Desktop: va dentro de la barra superior, al lado del logo. Mobile: en su propia fila. */}
+      <TopBarSlot mobileClassName={`flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line pb-3 ${entry ? "" : "hidden"}`}>
         {entry && (
           <>
             <span className="h-6 w-px shrink-0 bg-line max-md:hidden" aria-hidden="true" />
@@ -293,13 +301,30 @@ function SimulateConsole() {
             </button>
           </>
         )}
-        <div className="flex items-center gap-4 max-md:w-full md:ml-auto">{sim && <FlowControls sim={sim} run={run} onNewRun={newRun} />}</div>
-      </header>
+        {/* Mientras se prepara, el estado y el botón para partir ya están en la página (fases y "Todo listo"). */}
+        <div className="flex items-center gap-4 max-md:w-full md:ml-auto">
+          {sim && !(firstPass && (sim.status === "starting" || sim.status === "ready")) && (
+            <FlowControls sim={sim} run={run} onNewRun={newRun} />
+          )}
+        </div>
+      </TopBarSlot>
 
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
 
       {sim && firstPass && (
-        <SimGate sim={sim} onStart={() => run(() => simApi.start(sim.sim_id))} />
+        <SimGate
+          sim={sim}
+          onStart={(origin) => {
+            setStartFx((fx) => ({ key: fx.key + 1, origin, hold: true }));
+            started.current = false;
+            fxDone.current = false;
+            return run(async () => {
+              await simApi.start(sim.sim_id);
+              started.current = true;
+              if (fxDone.current) setCountdown(true);
+            }).finally(() => setStartFx((fx) => ({ ...fx, hold: false })));
+          }}
+        />
       )}
 
       {sim && !firstPass && (
@@ -357,6 +382,19 @@ function SimulateConsole() {
           onRename={rename}
         />
       )}
+      <PixelTransition
+        runKey={startFx.key}
+        cell="lg"
+        fixed
+        duration={900}
+        origin={startFx.origin}
+        hold={startFx.hold}
+        onDone={() => {
+          fxDone.current = true;
+          if (started.current) setCountdown(true);
+        }}
+      />
+      {countdown && <StartCountdown onDone={endCountdown} />}
     </main>
   );
 }

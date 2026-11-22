@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { StatusChip } from "@/components/mayday";
+import { StatusChip, useReducedMotion } from "@/components/mayday";
 import type { Simulation } from "@/lib/sim-api";
 
 /**
@@ -9,7 +9,10 @@ import type { Simulation } from "@/lib/sim-api";
  * cuando TODOS los agentes están listos, el botón para partir. Al partir, las alertas
  * empiezan a llegar al tiro: el backend ya tiene escritas las primeras.
  */
-export function SimGate({ sim, onStart }: { sim: Simulation; onStart: () => Promise<unknown> }) {
+/** Parte el simulacro. `from` es el centro del botón (coordenadas de la ventana): de ahí sale la transición. */
+export type StartFn = (from?: { x: number; y: number }) => Promise<unknown>;
+
+export function SimGate({ sim, onStart }: { sim: Simulation; onStart: StartFn }) {
   if (sim.status === "ready") return <ReadyGate sim={sim} onStart={onStart} />;
   if (sim.engine_driven) return <EnginePrep sim={sim} />;
   return <AgentsPrep sim={sim} />;
@@ -108,7 +111,7 @@ export function EnginePrep({ sim }: { sim: Simulation }) {
             ? (engine?.error ?? sim.error ?? "Revisa el deploy y parte un simulacro nuevo.")
             : "Antes del simulacro, el motor prueba cada vulnerabilidad contra tu app desplegada. Solo toca tu sandbox. Tarda uno o dos minutos."}
         </p>
-        <PhaseList phases={phases} />
+        <PhaseList phases={phases} live={lines.at(-1)} />
       </div>
       <div className="flex min-h-0 flex-col rounded-md border border-line bg-bg-100 p-5 font-mono text-[13px] leading-7">
         <div className="mb-3 flex justify-between">
@@ -159,29 +162,70 @@ function AgentsPrep({ sim }: { sim: Simulation }) {
   );
 }
 
-function PhaseList({ phases }: { phases: Phase[] }) {
+/** Las fases como un log de Claude Code: la que corre gira, brilla, cuenta segundos y muestra en vivo lo último (`live`). */
+function PhaseList({ phases, live }: { phases: Phase[]; live?: string }) {
   return (
-    <ol className="mt-8 flex max-w-xl flex-col">
+    <ol className="mt-8 flex max-w-xl flex-col gap-3 font-mono text-[14px] leading-6" aria-live="polite">
       {phases.map((p) => (
-        <li key={p.label} className="grid grid-cols-[28px_1fr_auto] items-center gap-3 border-b border-line py-3.5">
-          <span
-            aria-hidden="true"
-            className={`size-3 border-[1.5px] ${
-              p.state === "done"
-                ? "border-defense bg-defense"
-                : p.state === "run"
-                  ? "border-attack bg-attack shadow-[0_0_0_1px_#FF8A0080,0_0_28px_#FF8A0040]"
-                  : "border-line-strong"
-            }`}
-          />
-          <span className={p.state === "todo" || p.state === "skip" ? "text-ink-faint" : "text-ink"}>{p.label}</span>
-          <span className={`font-mono text-xs ${p.state === "run" ? "text-attack" : "text-ink-faint"}`}>
-            {p.state === "skip" ? "sin repo" : (p.detail ?? (p.state === "run" ? "en curso" : "—"))}
-          </span>
-        </li>
+        <PhaseLine key={p.label} phase={p} live={live} />
       ))}
     </ol>
   );
+}
+
+/** Una fase del log. Lista: pixel cian + resultado. En curso: spinner, brillo, segundos y la última línea. */
+function PhaseLine({ phase: p, live }: { phase: Phase; live?: string }) {
+  const running = p.state === "run";
+  const result = p.state === "skip" ? "sin repo" : p.state === "done" ? p.detail : running ? (live ?? p.detail) : undefined;
+  return (
+    <li className="flex flex-col">
+      <span className="flex items-center gap-3">
+        <span aria-hidden="true" className="grid w-4 shrink-0 place-items-center">
+          {running ? (
+            <Spinner />
+          ) : (
+            <span className={`size-2.5 border-[1.5px] ${p.state === "done" ? "border-defense bg-defense" : "border-line-strong"}`} />
+          )}
+        </span>
+        <span className={running ? "md-shimmer" : p.state === "done" ? "text-ink" : "text-ink-faint"}>
+          {p.label}
+          {running && "…"}
+        </span>
+        {running && <Elapsed />}
+      </span>
+      {result && (
+        <span className={`flex min-w-0 gap-2 pl-7 text-[12.5px] ${running ? "text-ink-muted" : "text-ink-faint"}`}>
+          <span aria-hidden="true">⎿</span>
+          <span className="truncate" title={result}>
+            {result}
+          </span>
+        </span>
+      )}
+    </li>
+  );
+}
+
+/** Spinner de estrellas, como el de Claude Code. Con movimiento reducido queda fijo. */
+const SPINNER = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"];
+function Spinner() {
+  const reduced = useReducedMotion();
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (reduced) return;
+    const t = setInterval(() => setI((n) => (n + 1) % SPINNER.length), 120);
+    return () => clearInterval(t);
+  }, [reduced]);
+  return <span className="text-[15px] leading-none text-attack">{reduced ? "✻" : SPINNER[i]}</span>;
+}
+
+/** Segundos desde que se montó: se monta solo mientras la fase corre, así parte de cero en cada fase. */
+function Elapsed() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSeconds((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <span className="text-[12px] text-ink-faint tabular-nums">({seconds}s)</span>;
 }
 
 // ---------------------------------------------------------------- todo listo
@@ -190,7 +234,7 @@ function PhaseList({ phases }: { phases: Phase[] }) {
  * Todos los agentes listos: un solo botón grande al centro. No mostramos qué vulnerabilidades
  * encontró el atacante: eso lo descubre el developer en el simulacro y lo ve en el reporte.
  */
-function ReadyGate({ sim, onStart }: { sim: Simulation; onStart: () => Promise<unknown> }) {
+function ReadyGate({ sim, onStart }: { sim: Simulation; onStart: StartFn }) {
   const [starting, setStarting] = useState(false);
   const vectors = sim.engine?.findings.filter((f) => f.confirmed).length ?? sim.attack_plan?.findings?.length ?? 0;
   return (
@@ -205,10 +249,12 @@ function ReadyGate({ sim, onStart }: { sim: Simulation; onStart: () => Promise<u
       <button
         type="button"
         disabled={starting}
-        onClick={() => {
+        onClick={(e) => {
           setStarting(true);
+          // Los pixeles de la transición salen desde el centro del botón.
+          const r = e.currentTarget.getBoundingClientRect();
           // Si falla, el error se muestra arriba y el botón vuelve a quedar disponible.
-          void onStart().finally(() => setStarting(false));
+          void onStart({ x: r.left + r.width / 2, y: r.top + r.height / 2 }).finally(() => setStarting(false));
         }}
         className="md-btn md-btn--primary h-20! rounded-lg! px-16! text-[24px]! font-semibold tracking-[-0.01em] shadow-[0_0_0_1px_#2EE6FF66,0_0_48px_#2EE6FF55] transition-shadow hover:shadow-[0_0_0_1px_#2EE6FF99,0_0_72px_#2EE6FF77] disabled:opacity-60"
       >

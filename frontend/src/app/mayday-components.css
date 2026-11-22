@@ -287,3 +287,15 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 @keyframes md-drop { from { transform: translateY(-16px); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes md-type { from { clip-path: inset(0 100% 0 0); } 70%, to { clip-path: inset(0 0 0 0); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ---------- Brillo de "cargando" (como el de Claude Code): el texto recorre una luz de izquierda a derecha ---------- */
+.md-shimmer { background: linear-gradient(90deg, var(--ink-muted) 0%, var(--ink-muted) 35%, var(--ink) 50%, var(--ink-muted) 65%, var(--ink-muted) 100%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; color: transparent; animation: md-shimmer 2.2s linear infinite; }
+@keyframes md-shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+@media (prefers-reduced-motion: reduce) { .md-shimmer { animation: none; color: var(--ink); background: none; } }
+
+/* ---------- Cuenta regresiva al entrar al simulacro: cada número entra grande y se asienta ---------- */
+.md-countdown-in { animation: md-countdown-fade .2s ease-out; }
+.md-countdown-num { animation: md-countdown-pop .9s cubic-bezier(.2,.8,.2,1) both; }
+@keyframes md-countdown-fade { from { opacity: 0; } }
+@keyframes md-countdown-pop { 0% { opacity: 0; transform: scale(1.6); } 25% { opacity: 1; transform: scale(1); } 80% { opacity: 1; transform: scale(.96); } 100% { opacity: 0; transform: scale(.9); } }
+@media (prefers-reduced-motion: reduce) { .md-countdown-in, .md-countdown-num { animation: none; } }

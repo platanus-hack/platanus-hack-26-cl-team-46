@@ -9,7 +9,7 @@ export default function SimulateError({ error, retry }: { error: unknown; retry:
   }, [error]);
 
   return (
-    <main className="flex h-screen flex-col items-center justify-center gap-3 p-4 font-sans text-sm">
+    <main className="flex h-[calc(100svh-56px)] flex-col items-center justify-center gap-3 p-4 font-sans text-sm">
       <h2 className="text-lg font-semibold">La vista de la simulación tuvo un error</h2>
       <p className="max-w-md text-center text-zinc-600">
         La simulación sigue corriendo en el backend. Reintenta para volver a conectarte al stream.

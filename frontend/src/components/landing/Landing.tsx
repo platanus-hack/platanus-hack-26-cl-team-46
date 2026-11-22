@@ -259,7 +259,11 @@ export function Landing() {
                   label={QUESTION.label}
                   back={<BackButton onClick={backToHero}>Vuelve al inicio</BackButton>}
                   title={QUESTION.title}
-                  context={QUESTION.context}
+                  context={
+                    <>
+                      <strong className="font-semibold text-ink">{QUESTION.contextLead}</strong> {QUESTION.context}
+                    </>
+                  }
                   code={QUESTION.code.map((line) => (
                     <div key={line.time}>
                       <span className="text-ink-faint">{line.time}</span>

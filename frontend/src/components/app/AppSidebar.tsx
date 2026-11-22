@@ -3,7 +3,8 @@
 import { CircleHelp, FileText, Menu, Plus, Radar, Server, X, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { Logo } from "@/components/mayday";
 
 /** La landing es la única pantalla sin barra lateral: todo lo que se abre desde ella la lleva. */
@@ -22,21 +23,60 @@ const OPEN = "group-hover/side:w-56 group-has-[:focus-visible]/side:w-56"; // 22
 const isActive = (pathname: string, item: (typeof NAV)[number]) =>
   (item.match ?? [item.href]).some((r) => pathname === r || pathname.startsWith(`${r}/`));
 
+/** La barra superior mide 56 px (h-14, igual que la de mobile): las pantallas de alto completo usan h-[calc(100svh-56px)]. */
+const SLOT_ID = "app-topbar-slot";
+
 /**
- * Envuelve las pantallas de la app con la barra lateral. Reserva solo el ancho de la franja:
- * al expandirse, la barra pasa por encima del contenido, así que nunca le quita espacio.
- * En mobile no hay barra lateral: arriba va el logo y un botón que abre la cortina con la navegación.
+ * Envuelve las pantallas de la app con la barra superior y la barra lateral.
+ * Desktop: la barra superior ocupa todo el ancho, con el logo (una sola vez) a la izquierda y, a su lado,
+ * lo que cada pantalla ponga con <TopBarSlot>. La barra lateral parte debajo de ella y reserva solo el
+ * ancho de la franja: al expandirse pasa por encima del contenido, así que nunca le quita espacio.
+ * Mobile: no hay barra lateral; arriba va el logo y un botón que abre la cortina con la navegación.
  */
 export function AppFrame({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   if (WITHOUT_SIDEBAR.includes(pathname)) return children;
   return (
     <>
+      {/* data-clicky-region="header": la barra azul de Hinty calza con esta barra. */}
+      <header
+        data-clicky-region="header"
+        className="fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-4 border-b border-line bg-bg-000 pr-4 max-md:hidden"
+      >
+        {/* pl-4: el símbolo queda centrado sobre la franja de íconos de la barra lateral (56 px). */}
+        <Link href="/" aria-label="Mayday, inicio" className="flex h-full shrink-0 items-center rounded-sm pr-2 pl-4 focus-visible:outline-offset-[-2px]">
+          <Logo height={24} priority />
+        </Link>
+        <div id={SLOT_ID} className="flex min-w-0 flex-1 items-center gap-4" />
+      </header>
       <AppSidebar pathname={pathname} />
       <MobileNav pathname={pathname} />
-      <div className="flex min-h-full flex-1 flex-col md:pl-14">{children}</div>
+      <div className="flex min-h-full flex-1 flex-col md:pt-14 md:pl-14">{children}</div>
     </>
   );
+}
+
+const DESKTOP = "(min-width: 768px)";
+function subscribeDesktop(cb: () => void) {
+  const mq = window.matchMedia(DESKTOP);
+  mq.addEventListener("change", cb);
+  return () => mq.removeEventListener("change", cb);
+}
+
+/**
+ * Lo que una pantalla pone en la barra superior (al lado del logo). En desktop se muestra dentro de la barra;
+ * en mobile se dibuja en su lugar, envuelto en `<header className={mobileClassName}>`.
+ * Sin `mobileClassName` no se muestra en mobile.
+ */
+export function TopBarSlot({ children, mobileClassName }: { children: ReactNode; mobileClassName?: string }) {
+  const slot = useSyncExternalStore(
+    subscribeDesktop,
+    () => (window.matchMedia(DESKTOP).matches ? document.getElementById(SLOT_ID) : null),
+    () => null,
+  );
+  if (slot) return createPortal(children, slot);
+  if (mobileClassName === undefined) return null;
+  return <header className={`md:hidden ${mobileClassName}`}>{children}</header>;
 }
 
 /**
@@ -45,21 +85,11 @@ export function AppFrame({ children }: { children: ReactNode }) {
  */
 function AppSidebar({ pathname }: { pathname: string }) {
   return (
-    <aside className="group/side fixed inset-y-0 left-0 z-40 max-md:hidden" aria-label="Navegación">
+    // Parte debajo de la barra superior (el logo va allá, una sola vez).
+    <aside className="group/side fixed top-14 bottom-0 left-0 z-40 max-md:hidden" aria-label="Navegación">
       <nav
         className={`flex h-full ${RAIL} ${OPEN} flex-col overflow-hidden border-r border-line bg-bg-100 py-3 transition-[width,box-shadow] duration-200 ease-[cubic-bezier(.2,.8,.2,1)] group-hover/side:shadow-window group-has-[:focus-visible]/side:shadow-window motion-reduce:transition-none`}
       >
-        {/* El lockup se recorta: colapsada se ve solo el símbolo y al abrirse aparece "MAYDAY". */}
-        <Link
-          href="/"
-          aria-label="Mayday, inicio"
-          className="mb-4 flex h-10 shrink-0 items-center px-4 focus-visible:outline-offset-[-2px]"
-        >
-          <span className="w-6 shrink-0 overflow-hidden [&_img]:max-w-none transition-[width] duration-200 ease-[cubic-bezier(.2,.8,.2,1)] group-hover/side:w-[134px] group-has-[:focus-visible]/side:w-[134px] motion-reduce:transition-none">
-            <Logo height={24} />
-          </span>
-        </Link>
-
         <ul className="flex flex-col gap-1 px-2">
           {NAV.map((item) => (
             <li key={item.href}>

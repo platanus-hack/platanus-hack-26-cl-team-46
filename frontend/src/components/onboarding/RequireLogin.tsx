@@ -27,7 +27,7 @@ export function RequireLogin({ children }: { children: ReactNode }) {
   return (
     <>
       {!ready && (
-        <div className="flex min-h-svh items-center justify-center">
+        <div className="flex min-h-[calc(100svh-56px)] items-center justify-center">
           <span className="md-index">{blocked ? "ENTRA CON GITHUB PARA CONTINUAR…" : "REVISANDO TU SESIÓN…"}</span>
         </div>
       )}

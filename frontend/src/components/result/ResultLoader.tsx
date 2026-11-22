@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Button, ButtonLink, Logo, StatusChip } from "@/components/mayday";
+import { Button, ButtonLink, StatusChip } from "@/components/mayday";
 import { simApi, type ReportView } from "@/lib/sim-api";
 import { mockResult } from "./mock-result";
 import { ResultDashboard } from "./ResultDashboard";
@@ -65,9 +65,8 @@ function LiveResult({ simId }: { simId: string }) {
   const failed = view?.status === "failed";
 
   return (
-    <main className="flex min-h-screen flex-col bg-bg-000">
+    <main className="flex min-h-[calc(100svh-56px)] flex-col bg-bg-000">
       <header className="flex items-center gap-4 border-b border-line px-8 py-5">
-        <Logo variant="mark" height={32} />
         <span className="md-index">REPORTE · {(view?.title ?? simId).toUpperCase()}</span>
       </header>
       <div className="flex flex-1 items-center px-8 py-16">
