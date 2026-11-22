@@ -48,6 +48,8 @@ export interface CreateSimulationInput {
   /** Con repo_url: dueño del sandbox nuevo y si el repo es privado (ver src/auth). */
   owner?: { github_id: number; login: string };
   private_repo?: boolean;
+  /** Forzar un sandbox nuevo en vez de reusar uno ya desplegado del mismo repo. */
+  fresh_sandbox?: boolean;
 }
 
 export interface QuickActionInput {
@@ -237,12 +239,28 @@ export class SimulationsService implements OnModuleInit {
         throw new ConflictException(`El sandbox ${sandboxId} fue eliminado`);
       repoUrl = sbx.repo_url;
     } else if (repoUrl) {
-      sandboxId = this.sandboxes.create({
-        repo_url: repoUrl,
-        mode: 'auto',
-        owner: input.owner,
-        private_repo: input.private_repo,
-      }).sandbox_id;
+      // Reusar un sandbox ya "ready" del mismo repo (y dueño) evita re-desplegar
+      // en Render entre simulacros: es más rápido y no gasta cuota. Con
+      // fresh_sandbox se fuerza uno nuevo para partir de estado limpio.
+      const reusable = input.fresh_sandbox
+        ? undefined
+        : this.sandboxes.findReusable({
+            repo_url: repoUrl,
+            owner: input.owner,
+          });
+      if (reusable) {
+        sandboxId = reusable.sandbox_id;
+        this.logger.log(
+          `Reusando sandbox ${sandboxId} para ${repoUrl} (sin re-desplegar)`,
+        );
+      } else {
+        sandboxId = this.sandboxes.create({
+          repo_url: repoUrl,
+          mode: 'auto',
+          owner: input.owner,
+          private_repo: input.private_repo,
+        }).sandbox_id;
+      }
     } else {
       throw new BadRequestException('Indica repo_url o sandbox_id');
     }

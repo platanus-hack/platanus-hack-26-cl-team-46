@@ -30,6 +30,11 @@ export const createSimulationSchema = z
     /** emulated: thread de Conductor que emula el hack. external: lo opera el motor real vía HTTP. */
     /** Sin valor: external si el motor real está configurado (ENGINE_URL), si no emulated. */
     hacker: z.enum(['emulated', 'external']).optional(),
+    /**
+     * Forzar un sandbox nuevo con repo_url en vez de reusar uno ya desplegado
+     * del mismo repo. Útil para partir de un estado limpio (ver trade-off en el PR).
+     */
+    fresh_sandbox: z.boolean().optional(),
   })
   .refine((v) => v.repo_url || v.sandbox_id, 'Indica repo_url o sandbox_id');
 
