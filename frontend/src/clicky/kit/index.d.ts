@@ -34,6 +34,8 @@ export interface ClickyOptions {
 export interface ClickyInstance {
   ask(question: string): Promise<void>;
   clear(options?: { fast?: boolean }): Promise<void>;
+  /** La × de la isla: borra marcas, tarjetas, pizarra y guía, y corta la voz y la respuesta en curso. */
+  clearAll(): void;
   setTheme(name: string): void;
   setVoice(on: boolean): void;
   setSounds(on: boolean): void;

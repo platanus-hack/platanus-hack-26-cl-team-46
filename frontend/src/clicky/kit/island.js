@@ -7,7 +7,7 @@ import { headsetSvg } from './icons.js';
 const BAR_SHAPE = [0.6, 0.9, 1, 0.85, 0.65];
 const step4 = v => Math.max(4, Math.min(20, Math.round(v / 4) * 4)); // alturas en pasos de 4 px
 
-export function createIsland(parent, { hint = '⌃⌥ / ESPACIO · Mantén apretado para hablar', onType } = {}) {
+export function createIsland(parent, { hint = '⌃⌥ / ESPACIO · Mantén apretado para hablar', onType, onClear } = {}) {
   const [key, label] = String(hint).split(' · ');
   const el = htmlEl('div', 'clicky-island', parent, `
     <div class="av">${headsetSvg(16, { mic: true })}</div>
@@ -15,7 +15,8 @@ export function createIsland(parent, { hint = '⌃⌥ / ESPACIO · Mantén apret
     <div class="dots"><i></i><i></i><i></i></div>
     <span class="err"></span>
     <div class="cap"></div>
-    <span class="hint">${String(key).split(' / ').map(k => `<kbd>${esc(k)}</kbd>`).join('')}${label ? `<span>${esc(label)}</span>` : ''}</span>`);
+    <span class="hint">${String(key).split(' / ').map(k => `<kbd>${esc(k)}</kbd>`).join('')}${label ? `<span>${esc(label)}</span>` : ''}</span>
+    <button type="button" class="x" aria-label="Borrar todo lo que marcó Hinty (Esc)" title="Borrar todo (Esc)">${X_SVG}</button>`);
   const cap = el.querySelector('.cap'), bars = [...el.querySelectorAll('.wave i')];
   let words = [], speakTimer = 0;
 
@@ -84,11 +85,17 @@ export function createIsland(parent, { hint = '⌃⌥ / ESPACIO · Mantén apret
     input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== input) close(); }, 150));
   }
   el.addEventListener('click', openInput);
+  // La ×: borra todas las marcas, tarjetas y pizarra, y corta la explicación (como en HeyClicky).
+  // Solo se ve cuando hay algo que borrar (data-clearable).
+  el.querySelector('.x').addEventListener('click', e => { e.stopPropagation(); onClear?.(); });
+  function clearable(on) { el.toggleAttribute('data-clearable', !!on); }
 
   return {
-    el, state, level, word, idle, openInput,
+    el, state, level, word, idle, openInput, clearable,
     caption(text, opts) { caption(text, opts); },
   };
 }
+
+const X_SVG = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.75" stroke-linecap="square"/></svg>';
 
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

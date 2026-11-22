@@ -83,7 +83,7 @@ export function createClicky({
   const ACT = { click: actions.click, type: actions.type, scroll: actions.scroll, step: actions.step };
   const draw = (m, s) => (marks[m.type] || ACT[m.type] || cards[m.type])?.(m, s);
 
-  const island = createIsland(root, { hint: hint ?? (pushToTalkKey === 'Space' ? '⌃⌥ / ESPACIO · Mantén apretado para hablar' : pushToTalkKey), onType: q => ask(q) });
+  const island = createIsland(root, { hint: hint ?? (pushToTalkKey === 'Space' ? '⌃⌥ / ESPACIO · Mantén apretado para hablar' : pushToTalkKey), onType: q => ask(q), onClear: () => clearAll() });
   const releaseSpotlight = () => {
     if (!ctx.spotHoles.length) return;
     ctx.spotHoles = [];
@@ -217,6 +217,7 @@ export function createClicky({
       const image = secret ? null : await capture(h);
       gesture.clear();
       const ctxText = typeof context === 'function' ? context() : context;
+      if (gen <= clearedGen) return; // la × llegó mientras se capturaba: no se pregunta
       const abort = answering = new AbortController();
       const res = await fetch(api + '/lesson', {
         method: 'POST',
@@ -235,6 +236,7 @@ export function createClicky({
         throw new Error([data.message].flat().join('; ') || data.error || res.statusText);
       }
       busy = false; // a new question can interrupt this answer from now on
+      if (gen <= clearedGen) return;
       show = director.start();
       const said = [];
       const reader = res.body.getReader(), decoder = new TextDecoder();
@@ -317,6 +319,22 @@ export function createClicky({
     wipe({ fast: true });
     island.idle('Guía terminada. Pregúntame cuando quieras.');
   }
+  // La × de la isla (o Esc): borra todo lo dibujado (marcas, tarjetas, pizarra, guía), corta la
+  // voz y la respuesta en curso, y deja a Hinty esperando la próxima pregunta.
+  let clearedGen = 0;
+  function clearAll() {
+    clearedGen = askGen;
+    ctx.walk = null;
+    pending = null;
+    nudging = null;
+    dim(false);
+    island.state('idle');
+    island.idle();
+    island.clearable(false);
+    wipe({ fast: true }).then(syncPen);
+  }
+  const hasDrawing = () => !!(ctx.items.length || ctx.strokes.length || ctx.fades.length || ctx.spotHoles.length || pending || ctx.walk || talking);
+  const clearTimer = setInterval(() => island.clearable(hasDrawing()), 250);
   const inStep = t => pending && t instanceof Node && (pending.el === t || pending.el.contains(t));
   const onDocClick = e => { if (inStep(e.target) && !pending.field) completeStep(); };
   const onDocChange = e => { if (inStep(e.target)) completeStep(); };
@@ -504,7 +522,7 @@ export function createClicky({
   const isCombo = e => e.ctrlKey && e.altKey && (e.key === 'Control' || e.key === 'Alt');
   const down = e => {
     if (isCombo(e)) { e.preventDefault(); if (!e.repeat) listen('combo'); return; }
-    if (e.key === 'Escape' && (pending || ctx.walk) && !listening) { stopWalk(); return; }
+    if (e.key === 'Escape' && !listening && !typing() && hasDrawing()) { clearAll(); return; }
     if (e.code !== pushToTalkKey || e.ctrlKey || e.altKey || e.metaKey) return;
     if (listening === 'key') { e.preventDefault(); return; } // la tecla repetida no hace scroll
     if (!e.repeat && !typing()) { e.preventDefault(); listen('key'); }
@@ -532,6 +550,8 @@ export function createClicky({
   return {
     ask: q => ask(q),
     clear: opts => { ctx.walk = null; return wipe(opts); },
+    /** Lo mismo que la × de la isla: borra todo, corta la voz y vuelve a esperar. */
+    clearAll: () => clearAll(),
     setTheme,
     openInput: () => island.openInput(),
     caption: text => island.idle(text),
@@ -548,6 +568,7 @@ export function createClicky({
       mo?.disconnect();
       clearTimeout(nudgeTimer);
       clearTimeout(retry);
+      clearInterval(clearTimer);
       removeEventListener('keydown', down);
       removeEventListener('keyup', up);
       removeEventListener('blur', lost);

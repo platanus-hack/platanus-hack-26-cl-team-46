@@ -137,7 +137,7 @@ export function HintyPreview() {
           </svg>
 
           {/* Isla hablando: la palabra recién dicha en cian, las que faltan no se muestran */}
-          <div className="clicky-island" data-state="speaking" style={{ position: "absolute", left: COL.x + COL.w / 2, top: COL.y }}>
+          <div className="clicky-island" data-state="speaking" data-clearable="" style={{ position: "absolute", left: COL.x + COL.w / 2, top: COL.y }}>
             <div className="av" dangerouslySetInnerHTML={{ __html: headsetSvg(16, { mic: true }) }} />
             <div className="wave">
               {[8, 16, 20, 12, 8].map((h, i) => (
@@ -157,6 +157,7 @@ export function HintyPreview() {
               <kbd>Espacio</kbd>
               <span>Mantén apretado para hablar</span>
             </span>
+            <IslandClear />
           </div>
         </div>
 
@@ -443,4 +444,15 @@ function pad(r: Rect, p: number): Rect {
 }
 function box(r: Rect): CSSProperties {
   return { left: r.x, top: r.y, width: r.w, height: r.h };
+}
+
+/** La × de la isla (kit/island.js): borra todo lo que marcó Hinty. */
+function IslandClear() {
+  return (
+    <button type="button" className="x" aria-label="Borrar todo lo que marcó Hinty (Esc)" title="Borrar todo (Esc)">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+        <path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" strokeWidth="1.75" strokeLinecap="square" />
+      </svg>
+    </button>
+  );
 }

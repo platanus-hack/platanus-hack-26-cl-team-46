@@ -156,6 +156,11 @@
 /* mientras escucha, piensa, habla o muestra un error, el atajo queda solo como tecla para dejarle espacio al texto */
 .clicky-island:not([data-state='idle']) .hint span, .clicky-island[data-error] .hint span { display: none; }
 
+/* La × (borrar todo): solo con algo dibujado. Cuadrada, a la derecha, attack al pasar el cursor. */
+.clicky-island .x { flex: none; display: none; place-items: center; width: 32px; height: 32px; margin-left: -4px; padding: 0; background: transparent; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink-muted); cursor: pointer; transition: color .15s, border-color .15s, background-color .15s; }
+.clicky-island[data-clearable] .x { display: grid; }
+.clicky-island .x:hover { color: var(--attack-strong); border-color: var(--attack); background: var(--attack-soft); }
+.clicky-island .x:focus-visible { outline: 2px solid var(--defense); outline-offset: 2px; }
 .clicky-island input { flex: 1; min-width: 0; height: 32px; box-sizing: border-box; padding: 0 10px; background: var(--bg-200); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); outline: 0; color: var(--ink); font: 400 16px var(--f-ui); }
 .clicky-island input::placeholder { color: var(--ink-faint); }
 .clicky-island input:focus { border-color: var(--defense); }
