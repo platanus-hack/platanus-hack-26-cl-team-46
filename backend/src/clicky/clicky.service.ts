@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
 import { SimulationsService } from '../simulations/simulations.service.js';
-import { BrainError, streamBeats } from './brain.js';
+import { BrainError, isClaudeModel, streamBeats } from './brain.js';
 import type { LessonBody } from './clicky.schemas.js';
 import {
   liveSttUrl,
@@ -86,11 +86,13 @@ export class ClickyService {
         'Clicky llegó al máximo de preguntas de esta simulación',
         HttpStatus.TOO_MANY_REQUESTS,
       );
-    const key = this.cfg('OPENAI_API_KEY');
+    const model = this.cfg('CLICKY_BRAIN_MODEL');
+    const keyName = isClaudeModel(model)
+      ? 'ANTHROPIC_API_KEY'
+      : 'OPENAI_API_KEY';
+    const key = this.cfg(keyName);
     if (!this.cfg('CLICKY_MOCK') && !key)
-      throw new ServiceUnavailableException(
-        'Falta OPENAI_API_KEY en el backend',
-      );
+      throw new ServiceUnavailableException(`Falta ${keyName} en el backend`);
     u.questions++;
 
     const t0 = Date.now();
@@ -101,7 +103,7 @@ export class ClickyService {
       ? mockBeats(input)
       : streamBeats({
           key: key!,
-          model: this.cfg('CLICKY_BRAIN_MODEL'),
+          model,
           effort: this.cfg('CLICKY_BRAIN_EFFORT'),
           messages: buildMessages(
             input,
@@ -213,7 +215,7 @@ export class ClickyService {
 
   private describe(err: unknown): string {
     if (err instanceof BrainError) {
-      this.logger.error(`OpenAI ${err.status}: ${err.message}`);
+      this.logger.error(`Cerebro ${err.status}: ${err.message}`);
       return 'El modelo no pudo responder, intenta de nuevo';
     }
     if ((err as Error)?.name === 'AbortError') return 'Respuesta cancelada';
