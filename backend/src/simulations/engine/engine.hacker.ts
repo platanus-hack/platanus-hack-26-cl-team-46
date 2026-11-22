@@ -194,6 +194,8 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
         duration_ms?: number;
       };
       replay?: Record<string, EngineReplayEvent[]>;
+      /** Discovery estático del repo (repo-model.json); se reusa en las verificaciones. */
+      repo_model?: Record<string, unknown>;
     };
     const raw = a.attack_plan?.raw;
     if (!result.ok || !raw?.findings) {
@@ -221,6 +223,8 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
         findings,
         summary,
         replay: a.replay ?? {},
+        // Para que las verificaciones reusen el discovery (sin re-descubrir el repo).
+        repo_model: a.repo_model,
       });
     });
     if (!confirmed.length) {
@@ -373,6 +377,9 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
         only: [vuln],
         no_recon: true,
         seed: `${simId}-verify-${seq}`,
+        // Verify liviano: reusa el discovery de la primera pasada y no corre SAST,
+        // para atacar una sola vuln sin re-descubrir todo el repo.
+        ...this.liteVerifySpec(s.engine),
       });
       this.store.update(simId, (r) => {
         const x = r.engine!.verifies.find((y) => y.seq === seq);
@@ -521,6 +528,25 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       profile: 'fast',
       seed: s.sim_id,
       ...(weak ? { weak_login: { email: weak.email, password: weak.password } } : {}),
+    };
+  }
+
+  /**
+   * Hace liviana una verificación reusando lo que ya calculó la primera pasada:
+   * pasa su RepoModel (el motor salta el discovery estático) y apaga el SAST.
+   * Para los plugins propios (apuntes/tasks) tampoco hace falta re-clonar: el
+   * ataque de una sola vuln sale del modelo, así que se omite el repo. El plugin
+   * genérico sí lee secretos del código, por eso ahí se mantiene el clon.
+   * Sin RepoModel guardado (p. ej. primera pasada sin repo) devuelve {} y la
+   * verificación corre como antes.
+   */
+  private liteVerifySpec(engine: EngineRecord): Record<string, unknown> {
+    if (!engine.repo_model) return {};
+    const dropRepo = engine.plugin && engine.plugin !== 'generic';
+    return {
+      repo_model: engine.repo_model,
+      semgrep: false,
+      ...(dropRepo ? { repo: undefined, commit: undefined } : {}),
     };
   }
 

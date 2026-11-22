@@ -467,6 +467,12 @@ export interface EngineRecord {
     correlated: number;
   };
   findings?: EngineFinding[];
+  /**
+   * RepoModel que produjo la primera pasada (discovery estático del repo). Se
+   * guarda para que las re-verificaciones lo reusen y el motor no tenga que
+   * re-clonar ni re-descubrir todo el repo para atacar una sola vuln.
+   */
+  repo_model?: Record<string, unknown>;
   /** Pasos reales por vuln, para la repetición. */
   replay?: Record<string, EngineReplayEvent[]>;
   /** Incidentes que eligió el developer, en orden. */

@@ -268,6 +268,77 @@ describe('EngineHacker', () => {
     expect(t.sim().engine!.verifies[0].status).toBe('done');
   });
 
+  it('verify liviano: reusa el RepoModel guardado, apaga el SAST y no re-clona (plugin propio)', async () => {
+    const t = setup();
+    t.append('system', { type: 'deploy.ready' });
+    await vi.waitFor(() => expect(t.sim().engine?.call_id).toBe('fc-1'));
+    // Primera pasada con RepoModel en los artefactos y un plugin propio (apuntes).
+    t.client.status.mockResolvedValueOnce({
+      status: 'done',
+      result: {
+        ...FIRST_PASS,
+        artifacts: {
+          ...FIRST_PASS.artifacts,
+          attack_plan: { raw: { ...(FIRST_PASS.artifacts as any).attack_plan.raw, plugin: 'apuntes' } },
+          repo_model: { schemaVersion: '1', routes: [], signals: [] },
+        },
+      },
+    });
+    await t.tick();
+    // El RepoModel quedó guardado en sim.engine para reusarlo en las verificaciones.
+    expect(t.sim().engine!.repo_model).toMatchObject({ schemaVersion: '1' });
+
+    t.sim().status = 'running';
+    t.client.start.mockResolvedValueOnce('fc-verify');
+    t.client.status.mockResolvedValueOnce({
+      status: 'done',
+      result: { ...FIRST_PASS, artifacts: { diagnoses: [{ vuln_id: 'idor', verdict: 'confirmed' }] } },
+    });
+    t.append('observer', { type: 'control.verify', raw: { vuln_id: 'idor' } });
+    await vi.waitFor(() => expect(t.client.start).toHaveBeenCalledTimes(2));
+    const spec = t.client.start.mock.calls[1][0] as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(spec).toMatchObject({
+      only: ['idor'],
+      no_recon: true,
+      plugin: 'apuntes',
+      semgrep: false,
+      repo_model: { schemaVersion: '1' },
+    });
+    // Plugin propio: ataca una sola vuln desde el modelo, sin re-clonar.
+    expect(spec.repo).toBeUndefined();
+    expect(spec.commit).toBeUndefined();
+  });
+
+  it('verify liviano con plugin genérico mantiene el clon (lee secretos del código)', async () => {
+    const t = setup();
+    t.append('system', { type: 'deploy.ready' });
+    await vi.waitFor(() => expect(t.sim().engine?.call_id).toBe('fc-1'));
+    // FIRST_PASS trae plugin 'generic'; le agregamos un RepoModel.
+    t.client.status.mockResolvedValueOnce({
+      status: 'done',
+      result: { ...FIRST_PASS, artifacts: { ...FIRST_PASS.artifacts, repo_model: { schemaVersion: '1', routes: [], signals: [] } } },
+    });
+    await t.tick();
+
+    t.sim().status = 'running';
+    t.client.start.mockResolvedValueOnce('fc-verify');
+    t.client.status.mockResolvedValueOnce({
+      status: 'done',
+      result: { ...FIRST_PASS, artifacts: { diagnoses: [{ vuln_id: 'idor', verdict: 'confirmed' }] } },
+    });
+    t.append('observer', { type: 'control.verify', raw: { vuln_id: 'idor' } });
+    await vi.waitFor(() => expect(t.client.start).toHaveBeenCalledTimes(2));
+    const spec = t.client.start.mock.calls[1][0] as Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    expect(spec).toMatchObject({
+      plugin: 'generic',
+      semgrep: false,
+      repo_model: { schemaVersion: '1' },
+      // El genérico sí necesita el repo para leer secretos: se mantiene el clon.
+      repo: 'https://github.com/mayday-sbx/sbx-1',
+      commit: 'abc1234',
+    });
+  });
+
   it('un veredicto inconclusive no cuenta como arreglado', async () => {
     const t = setup();
     t.append('system', { type: 'deploy.ready' });

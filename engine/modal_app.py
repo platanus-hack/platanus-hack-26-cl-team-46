@@ -134,6 +134,11 @@ def validate_spec(spec: dict) -> dict:
         r = urlparse(str(repo))
         if r.scheme != "https" or not r.hostname:
             raise SpecError("repo debe ser una URL https de git (p. ej. https://github.com/org/repo)")
+    # RepoModel ya calculado (--repo-model): reusa el discovery de una corrida previa
+    # y salta el escaneo estático. Útil para re-verificar una vuln sin re-descubrir.
+    repo_model = spec.get("repo_model")
+    if repo_model is not None and not isinstance(repo_model, dict):
+        raise SpecError("repo_model debe ser un objeto (RepoModel serializado)")
     progress = spec.get("progress")
     if progress is not None:
         pu = urlparse(str((progress or {}).get("url", "")))
@@ -145,7 +150,7 @@ def validate_spec(spec: dict) -> dict:
     return spec
 
 
-def _cli_args(spec: dict, out_dir: str, repo_dir: str | None) -> list[str]:
+def _cli_args(spec: dict, out_dir: str, repo_dir: str | None, repo_model_path: str | None = None) -> list[str]:
     args = ["node", "src/cli/run.ts", "--url", spec["url"], "--out", out_dir]
     args += ["--plugin", spec.get("plugin", "auto"), "--profile", spec.get("profile", "fast")]
     if spec.get("seed"):
@@ -162,6 +167,10 @@ def _cli_args(spec: dict, out_dir: str, repo_dir: str | None) -> list[str]:
     for key, flag in (("read_only", "--read-only"), ("destructive", "--destructive"), ("no_recon", "--no-recon")):
         if spec.get(key):
             args.append(flag)
+    # RepoModel precomputado: salta el discovery estático (y, si no se clonó el
+    # repo, también el clon). Vive aparte de --repo para poder combinarse con él.
+    if repo_model_path:
+        args += ["--repo-model", repo_model_path]
     if repo_dir:
         args += ["--repo", repo_dir]
         if spec.get("semgrep", True):
@@ -273,11 +282,18 @@ def _execute(spec: dict, repo_dir: str | None = None) -> dict:
         if spec.get("repo") and not repo_dir:
             repo_dir = os.path.join(work, "repo")
             _clone(str(spec["repo"]), spec.get("commit"), repo_dir)
+        # RepoModel reusado de una corrida previa: se materializa a un archivo y se
+        # pasa al CLI, que así evita re-escanear el repo (discovery estático).
+        repo_model_path = None
+        if spec.get("repo_model"):
+            repo_model_path = os.path.join(work, "repo-model.json")
+            with open(repo_model_path, "w") as f:
+                json.dump(spec["repo_model"], f)
         out_dir = os.path.join(work, "out")
         reporter = _ProgressReporter(spec.get("progress"))
-        reporter.add("▶ repo clonado" if repo_dir else "▶ sin repo: solo ataque")
+        reporter.add("▶ repo clonado" if repo_dir else ("▶ RepoModel reusado: sin re-descubrir" if repo_model_path else "▶ sin repo: solo ataque"))
         proc = subprocess.Popen(
-            _cli_args(spec, out_dir, repo_dir),
+            _cli_args(spec, out_dir, repo_dir, repo_model_path),
             cwd=REMOTE_ENGINE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # una sola tubería: sin riesgo de bloqueo por stderr lleno
