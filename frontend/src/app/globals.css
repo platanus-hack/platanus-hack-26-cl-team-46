@@ -20,6 +20,36 @@ body {
   outline-offset: 2px;
 }
 
+/* Tailwind v4 deja los botones con cursor: default. Todo lo clickeable muestra la manito; lo deshabilitado, no.
+   En @layer base para que las utilidades (cursor-not-allowed, cursor-default…) sigan ganando. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="option"],
+  [role="menuitem"],
+  select:not(:disabled),
+  summary,
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  input[type="range"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled,
+  input:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* .md-btn y .md-option fijan cursor: pointer fuera de capas: deshabilitados también muestran que no se puede. */
+.md-btn:disabled,
+.md-option:disabled {
+  cursor: not-allowed;
+}
+
 /* Barra de carga del navegador simulado (WebView). */
 @keyframes md-load {
   from { transform: translateX(-100%); }
