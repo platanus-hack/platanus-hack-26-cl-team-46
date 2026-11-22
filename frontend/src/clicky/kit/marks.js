@@ -1,4 +1,4 @@
-import { svgEl, htmlEl, rectOf, sleep, animate, easeOut, rectD, elbow, tipD } from './geometry.js';
+import { svgEl, htmlEl, rectOf, sleep, animate, easeOut, easeStroke, reducedMotion, rectD, elbow, tipD } from './geometry.js';
 import { checkSvg } from './icons.js';
 import { ATTACK, textRect, tightRect } from './harvest.js';
 
@@ -184,12 +184,26 @@ export function createMarks(ctx) {
     async frame({ target, label, tone }, s = 1) {
       const el = find(target); if (!el) return;
       const t = theme(), A = anchor(el), attack = isAttack(el, tone), b = rectOf(el, 8);
-      if (!attack) {
-        const tint = svgEl('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 8, fill: t.zone, opacity: 0 }, A.g);
-        ctx.fades.push(tint);
-        animate(0.2, u => tint.setAttribute('opacity', t.zoneOpacity * u));
+      // Se abre como una selección (el marquee de HeyClicky): el lápiz arrastra la esquina de abajo a la
+      // derecha desde la de arriba a la izquierda en 0,55 s, y el tinte crece con el marco.
+      const tint = attack ? null : svgEl('rect', { x: b.x, y: b.y, width: 0, height: 0, rx: 8, fill: t.zone, opacity: t.zoneOpacity }, A.g);
+      if (tint) ctx.fades.push(tint);
+      const p = stroke(rectD({ ...b, w: 1, h: 1 }, 1), A, { color: attack ? t.attack : t.zone, width: 2 });
+      p.style.strokeDasharray = p.dataset.dash = DASH;
+      const size = e => {
+        const w = Math.max(1, b.w * e), h = Math.max(1, b.h * e);
+        p.setAttribute('d', rectD({ x: b.x, y: b.y, w, h }, Math.min(8, w / 2, h / 2)));
+        tint?.setAttribute('width', w); tint?.setAttribute('height', h);
+        return { w, h };
+      };
+      if (reducedMotion()) size(1);
+      else {
+        await pen.travel(A.dx + b.x, A.dy + b.y);
+        await animate(0.55 * Math.max(Math.min(s, 1.4), 0.35), u => {
+          const { w, h } = size(easeStroke(u));
+          pen.place(A.dx + b.x + w, A.dy + b.y + h);
+        });
       }
-      await pen.draw(stroke(rectD(b, 8), A, { color: attack ? t.attack : t.zone, width: 2, dash: DASH }), s);
       const words = label || (attack ? ATTACK_LABEL : '');
       if (words) labelSide(b, words, A);
       await sleep(120 * s);

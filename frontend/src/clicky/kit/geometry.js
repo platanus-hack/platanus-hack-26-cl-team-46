@@ -104,6 +104,29 @@ export function animate(seconds, step) {
 export const easeInOut = u => (u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2);
 export const easeOut = u => 1 - Math.pow(1 - u, 3);
 
+// Curva cubic-bezier(x1, y1, x2, y2) de CSS como función de 0..1 (Newton y, si no converge, bisección).
+export function cubicBezier(x1, y1, x2, y2) {
+  const bx = t => 3 * x1 * t * (1 - t) ** 2 + 3 * x2 * t * t * (1 - t) + t ** 3;
+  const by = t => 3 * y1 * t * (1 - t) ** 2 + 3 * y2 * t * t * (1 - t) + t ** 3;
+  const dx = t => 3 * x1 * (1 - t) ** 2 + 6 * (x2 - x1) * t * (1 - t) + 3 * (1 - x2) * t * t;
+  return u => {
+    if (u <= 0 || u >= 1) return Math.max(0, Math.min(1, u));
+    let t = u;
+    for (let i = 0; i < 6; i++) {
+      const e = bx(t) - u, d = dx(t);
+      if (Math.abs(e) < 1e-4) return by(t);
+      if (Math.abs(d) < 1e-6) break;
+      t -= e / d;
+    }
+    let lo = 0, hi = 1;
+    t = u;
+    for (let i = 0; i < 20; i++) { bx(t) < u ? (lo = t) : (hi = t); t = (lo + hi) / 2; }
+    return by(t);
+  };
+}
+// El trazo de HeyClicky: arranca decidido y frena suave al final.
+export const easeStroke = cubicBezier(0.35, 0.2, 0.55, 0.95);
+
 // --- Trazos rectos de Hinty (wobble 0): rectángulos, codos a 90° y puntas sólidas.
 
 // Rectángulo con esquinas de radio r, empezando arriba a la izquierda y en sentido horario.

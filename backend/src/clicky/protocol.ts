@@ -81,18 +81,23 @@ export const MARKS: Record<string, { use: string; shape: string }> = {
       '{"type":"chart","title":"Ventas Q3 por región","subtitle":"opcional","bars":[{"label":"Norte","value":131}],"highlight":"Sur","note":"+32 %"}',
   },
   board: {
-    use: 'abre una pizarra en blanco para explicar un proceso o una causa dibujándolo de a poco; define su grilla de cols × rows celdas (máx 4 × 3)',
+    use: 'abre una pizarra en blanco para explicar un proceso o una causa dibujándolo de a poco; define su grilla de cols × rows celdas (máx 4 × 3; cols = pasos de la cadena más larga, rows = ramas)',
     shape:
       '{"type":"board","title":"Cómo funciona un token","subtitle":"opcional","cols":3,"rows":2}',
   },
   node: {
-    use: 'una caja en la pizarra, en la celda col,row (desde 0); se dibuja cuando la nombras',
+    use: 'una caja en la pizarra, en la celda col,row (desde 0); se dibuja cuando la nombras. tone (opcional) le da su color: "attack" lo del atacante o lo que sale mal, "defense" la defensa o lo que está bien, "key" la idea central (una sola por pizarra); sin tone es un paso neutro',
     shape:
-      '{"type":"node","id":"login","text":"máx 4 palabras","col":0,"row":0,"hot":false}',
+      '{"type":"node","id":"login","text":"máx 4 palabras","col":0,"row":0,"tone":"opcional"}',
   },
   edge: {
-    use: 'una flecha entre dos cajas que ya están en la pizarra, con un verbo corto',
-    shape: '{"type":"edge","from":"login","to":"token","label":"entrega"}',
+    use: 'una flecha entre dos cajas que ya están en la pizarra, con un verbo corto (máx 12 letras). tone "attack" si es el camino del atacante',
+    shape:
+      '{"type":"edge","from":"login","to":"token","label":"entrega","tone":"opcional"}',
+  },
+  example: {
+    use: 'un ejemplo de la vida diaria que aterriza la idea (una analogía), en un papelito pegado en la pizarra o al costado. Empieza con "Es como"',
+    shape: '{"type":"example","text":"Es como dejar la llave bajo el felpudo"}',
   },
   card: {
     use: 'tarjeta resumen con 2 a 4 líneas',
@@ -232,6 +237,8 @@ function cleanMark(m: any, ids: Set<string>): Mark | null {
     }
     case 'note':
       return m.text ? { type: 'note', text: str(m.text, 90) } : null;
+    case 'example':
+      return m.text ? { type: 'example', text: str(m.text, 110) } : null;
     case 'button':
       return m.text ? { type: 'button', text: str(m.text, 48) } : null;
   }
@@ -252,6 +259,7 @@ export type Budget = {
   buttons: number;
   boards: number;
   cards: number;
+  examples: number;
   beats: number;
   actions: number;
   flow: Flow | null;
@@ -262,6 +270,7 @@ export const newBudget = (): Budget => ({
   buttons: 0,
   boards: 0,
   cards: 0,
+  examples: 0,
   beats: 0,
   actions: 0,
   flow: null,
@@ -318,14 +327,13 @@ function cleanFlowPiece(m: any, budget: Budget): Mark | null {
     }
     f.nodes.add(id);
     f.cells.add(`${col},${row}`);
-    return {
-      type: 'node',
-      id,
-      text,
-      col,
-      row,
-      hot: m.hot === true ? true : undefined,
-    };
+    // "hot" es el nombre anterior de la idea central
+    const tone = NODE_TONES.has(m.tone)
+      ? m.tone
+      : m.hot === true
+        ? 'key'
+        : undefined;
+    return { type: 'node', id, text, col, row, tone };
   }
   if (m.type === 'edge') {
     const from = str(m.from, 24),
@@ -345,10 +353,14 @@ function cleanFlowPiece(m: any, budget: Budget): Mark | null {
       from,
       to,
       label: m.label ? str(m.label, 18) : undefined,
+      tone: m.tone === 'attack' || m.tone === 'problem' ? 'attack' : undefined,
     };
   }
   return null;
 }
+
+/** Colores con significado de una caja de la pizarra. */
+const NODE_TONES = new Set(['attack', 'defense', 'key']);
 
 const fold = (w: string) =>
   w
@@ -414,6 +426,7 @@ export function cleanBeat(
       if (clean.type === 'button') return ++budget.buttons <= 2;
       if (clean.type === 'chart') return !budget.flow && ++budget.boards <= 1;
       if (clean.type === 'card') return ++budget.cards <= 1;
+      if (clean.type === 'example') return ++budget.examples <= 1;
       if (ACTIONS.has(clean.type)) return ++budget.actions <= MAX_ACTIONS;
       return true;
     })

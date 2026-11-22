@@ -126,13 +126,19 @@ export function createClicky({
     items.forEach(el => el.classList.add('clicky-out'));
     fades.forEach(el => animate(0.15, u => el.setAttribute('opacity', current.zoneOpacity * (1 - u))));
     if (ctx.spotHoles.length) animate(fast ? 0.15 : 0.3, u => layers.spot.style.opacity = 1 - u);
+    // Como HeyClicky: borra en cascada, del último trazo al primero, cada uno en 0,4 s y empezando
+    // apenas después del anterior (de a 50 ms como mucho, y todo el arranque en menos de 0,5 s).
+    // `fast` hace lo mismo en un fundido corto, para que la captura salga limpia sin esperar.
+    const n = strokes.length;
     if (fast) {
-      await Promise.all(strokes.map(({ path }) => animate(0.15, u => path.setAttribute('opacity', 1 - u)).then(() => path.remove())));
+      const gap = n > 1 ? Math.min(0.015, 0.15 / (n - 1)) : 0;
+      await Promise.all(strokes.map(({ path }, i) => sleep(i * gap * 1000).then(() => animate(0.15, u => path.setAttribute('opacity', 1 - u))).then(() => path.remove())));
       items.forEach(el => (el.style.transition = 'opacity .15s'));
     } else {
-      const per = Math.min(0.14, 0.9 / Math.max(1, strokes.length));
-      for (const { path, anchor: a } of strokes) await ctx.pen.erase(path, per, a?.dx || 0, a?.dy || 0);
+      const gap = n > 1 ? Math.min(0.05, 0.5 / (n - 1)) : 0;
+      await Promise.all(strokes.map(({ path, anchor: a }, i) => sleep(i * gap * 1000).then(() => ctx.pen.erase(path, 0.4, a?.dx || 0, a?.dy || 0))));
     }
+    ctx.pen.rest?.();
     await sleep(fast ? 160 : 300);
     items.forEach(el => el.remove());
     fades.forEach(el => el.remove());

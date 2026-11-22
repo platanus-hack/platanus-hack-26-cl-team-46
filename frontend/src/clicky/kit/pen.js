@@ -1,14 +1,19 @@
-import { svgEl, animate, easeInOut, reducedMotion } from './geometry.js';
+import { svgEl, animate, easeInOut, easeStroke, reducedMotion } from './geometry.js';
 
 // El lápiz de Hinty es el blip del radar (DESIGN.md › Hinty › 4): un cuadrado cian de 10×10 que
 // viaja hasta cada marca y deja el trazo detrás. No gira: es un pixel.
 // Como el compañero de HeyClicky, cuando no está dibujando acompaña al cursor (un poco abajo a la
 // derecha, siguiéndolo con suavidad); al explicar vuela recto a cada cosa y después vuelve.
-// Trazo a 600 px/s, entre 250 y 700 ms por trazo. `s` es el factor del director para calzar con
-// la voz: si hay poco tiempo (s < 1), el trazo se apura; nunca se alarga más allá del máximo.
-const PX_PER_S = 600, MIN = 0.25, MAX = 0.7;
+// Tiempos de HeyClicky: cada trazo dura 0,25 s + 1 s por cada 1400 px (entre 0,3 y 1,4 s), con su
+// curva (arranque decidido, frenado suave). `s` es el ritmo del director para calzar con la voz: lo
+// estira o lo apura, pero nunca baja de 0,35 (un trazo que no se alcanza a ver no explica nada).
+// Entre trazos el lápiz vuela: un salto corto (< 110 px) se desliza recto; uno largo levanta en un
+// arco suave, entre 0,2 y 0,55 s, y la tinta espera a que aterrice.
 const OFFSET = { x: 14, y: 18 }; // junto al cursor, sin taparlo
-export const strokeTime = (len, s = 1) => Math.min(MAX, Math.max(MIN, len / PX_PER_S)) * Math.min(1, s);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+export const strokeTime = (len, s = 1) => clamp(0.25 + len / 1400, 0.3, 1.4) * Math.max(s, 0.35);
+export const flightTime = d => Math.min(0.55, 0.2 + d / 2400);
+const HOP = 110;
 let maskSeq = 0;
 
 export function createPen(svg, { onStroke } = {}) {
@@ -41,30 +46,46 @@ export function createPen(svg, { onStroke } = {}) {
     if (on) { if (cursor) show(); wake(); }
   }
 
-  async function travel(x, y, seconds = 0.35) {
+  let flown = false; // el primer vuelo de una explicación es más pausado (0,45 s): el ojo lo sigue
+  // `exact`: dura justo `seconds` (para acompañar algo que crece, como una barra). Si no, el vuelo
+  // lo decide la distancia, como en HeyClicky, y `seconds` se ignora.
+  async function travel(x, y, seconds, { exact = false } = {}) {
     show();
     moving++;
     try {
       const p0 = { ...pos }, d = Math.hypot(x - p0.x, y - p0.y);
       if (reducedMotion() || p0.x < -50 || d < 4) return place(x, y);
-      // recto y sin arco: la torre marca en línea, no a mano alzada
-      await animate(Math.min(seconds, 0.12 + d / 2400), u => {
-        const t = easeInOut(u);
-        place(p0.x + (x - p0.x) * t, p0.y + (y - p0.y) * t);
+      if (d < HOP) {
+        await animate(exact ? seconds : 0.12 + d / 2400, u => {
+          const t = easeInOut(u);
+          place(p0.x + (x - p0.x) * t, p0.y + (y - p0.y) * t);
+        });
+        return;
+      }
+      const time = exact ? seconds : flown ? flightTime(d) : 0.45;
+      flown = true;
+      // arco suave hacia arriba (la normal que apunta al cielo), proporcional al salto
+      let nx = -(y - p0.y) / d, ny = (x - p0.x) / d;
+      if (ny > 0) { nx = -nx; ny = -ny; }
+      const lift = Math.min(48, d * 0.12);
+      await animate(time, u => {
+        const t = easeInOut(u), k = Math.sin(Math.PI * t) * lift;
+        place(p0.x + (x - p0.x) * t + nx * k, p0.y + (y - p0.y) * t + ny * k);
       });
     } finally {
       moving--;
       wake();
     }
   }
+  const rest = () => { flown = false; };
 
   // Dibuja un path. Si es punteado (data-dash), lo revela con una máscara para que el punteado
   // se vea desde el primer trazo.
-  async function draw(path, s = 1, ox = 0, oy = 0) {
+  async function draw(path, s = 1, ox = 0, oy = 0, { onStart } = {}) {
     const dash = path.dataset.dash;
     if (dash) path.style.strokeDasharray = dash;
     const len = path.getTotalLength();
-    if (reducedMotion()) return; // aparece completa, sin trazo
+    if (reducedMotion()) return void onStart?.(0); // aparece completa, sin trazo
     let reveal = path, mask = null;
     if (dash) {
       const owner = path.ownerSVGElement;
@@ -80,10 +101,11 @@ export function createPen(svg, { onStroke } = {}) {
     await travel(start.x + ox, start.y + oy);
     const time = strokeTime(len, s);
     onStroke?.(time);
+    onStart?.(time);
     moving++;
     try {
       await animate(time, u => {
-        const e = easeInOut(u);
+        const e = easeStroke(u);
         reveal.style.strokeDashoffset = len * (1 - e);
         const a = path.getPointAtLength(len * e);
         place(a.x + ox, a.y + oy);
@@ -96,8 +118,12 @@ export function createPen(svg, { onStroke } = {}) {
     wake();
   }
 
+  // Borra un trazo corriendo el lápiz hacia atrás. Varios borrados pueden ir encimados (HeyClicky borra
+  // en cascada): el lápiz acompaña solo al último que empezó.
+  let eraseSeq = 0;
   async function erase(path, seconds, ox = 0, oy = 0) {
     if (!path.isConnected) return;
+    const mine = ++eraseSeq;
     if (path.dataset.dash || path.getAttribute('fill') !== 'none') {
       await animate(seconds, u => path.setAttribute('opacity', 1 - u));
       return path.remove();
@@ -107,8 +133,10 @@ export function createPen(svg, { onStroke } = {}) {
     moving++;
     try {
       await animate(seconds, u => {
-        path.style.strokeDashoffset = len * u;
-        const a = path.getPointAtLength(len * (1 - u));
+        const e = easeStroke(u);
+        path.style.strokeDashoffset = len * e;
+        if (mine !== eraseSeq) return;
+        const a = path.getPointAtLength(len * (1 - e));
         place(a.x + ox, a.y + oy);
       });
     } finally {
@@ -118,5 +146,5 @@ export function createPen(svg, { onStroke } = {}) {
     wake();
   }
 
-  return { draw, erase, travel, show, hide, place, cursor: setCursor, follow: setFollow, get following() { return follow; }, get pos() { return pos; } };
+  return { draw, erase, travel, rest, show, hide, place, cursor: setCursor, follow: setFollow, get following() { return follow; }, get pos() { return pos; } };
 }
