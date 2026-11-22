@@ -71,10 +71,14 @@ function SimulateConsole() {
   const [error, setError] = useState<string | null>(null);
   // "Comenzar simulación": pixeles cian que salen del botón; la pantalla queda tapada hasta que el simulacro parte.
   const [startFx, setStartFx] = useState<{ key: number; origin?: { x: number; y: number }; hold: boolean }>({ key: 0, hold: false });
-  // Al destaparse el escritorio: cuenta regresiva 3 · 2 · 1. Espera las dos cosas: que el simulacro
-  // haya partido y que la transición haya terminado (con movimiento reducido termina al tiro).
-  const started = useRef(false);
+  // Al destaparse el escritorio: cuenta regresiva 3 · 2 · 1, solo para la simulación que se partió
+  // con el botón en esta pantalla. Espera las dos cosas: que el simulacro haya partido y que la
+  // transición haya terminado (con movimiento reducido termina al tiro).
+  // Entrar a una simulación que ya está en curso solo pasa por la transición, sin cuenta regresiva.
+  const pressedFor = useRef<string | null>(null);
+  const startedFor = useRef<string | null>(null);
   const fxDone = useRef(false);
+  const enteredSim = useRef<string | null>(null);
   const [countdown, setCountdown] = useState(false);
   const endCountdown = useCallback(() => setCountdown(false), []);
   const creating = useRef(new Set<string>());
@@ -233,6 +237,28 @@ function SimulateConsole() {
   const firstPass =
     Boolean(sim) &&
     (sim!.status === "starting" || sim!.status === "ready" || (sim!.status === "failed" && !sim!.report));
+  /** La cuenta regresiva corre una vez, solo si la simulación abierta es la que se partió con el botón. */
+  const maybeCountdown = () => {
+    const id = startedFor.current;
+    if (!id || !fxDone.current || pressedFor.current !== id || enteredSim.current !== id) return;
+    pressedFor.current = null;
+    setCountdown(true);
+  };
+
+  // Entrar a una simulación que ya partió (en curso, en pausa o terminada): directo al escritorio,
+  // con la transición de pixeles desde el centro, sin botón ni cuenta regresiva.
+  const simKey = sim?.sim_id ?? null;
+  useEffect(() => {
+    if (!simKey || enteredSim.current === simKey) return;
+    enteredSim.current = simKey;
+    setCountdown(false);
+    if (firstPass || pressedFor.current === simKey) return;
+    const t = setTimeout(() =>
+      setStartFx((fx) => ({ key: fx.key + 1, origin: { x: window.innerWidth / 2, y: window.innerHeight / 2 }, hold: false })),
+    );
+    return () => clearTimeout(t);
+  }, [simKey, firstPass]);
+
   const project = sim ? sim.repo_url.replace(/\/$/, "").split("/").pop() || "proyecto" : "proyecto";
   const simStart = sim?.created_at;
   const mails = [
@@ -315,13 +341,15 @@ function SimulateConsole() {
         <SimGate
           sim={sim}
           onStart={(origin) => {
+            const id = sim.sim_id;
             setStartFx((fx) => ({ key: fx.key + 1, origin, hold: true }));
-            started.current = false;
+            pressedFor.current = id;
+            startedFor.current = null;
             fxDone.current = false;
             return run(async () => {
-              await simApi.start(sim.sim_id);
-              started.current = true;
-              if (fxDone.current) setCountdown(true);
+              await simApi.start(id);
+              startedFor.current = id;
+              maybeCountdown();
             }).finally(() => setStartFx((fx) => ({ ...fx, hold: false })));
           }}
         />
@@ -391,7 +419,7 @@ function SimulateConsole() {
         hold={startFx.hold}
         onDone={() => {
           fxDone.current = true;
-          if (started.current) setCountdown(true);
+          maybeCountdown();
         }}
       />
       {countdown && <StartCountdown onDone={endCountdown} />}
