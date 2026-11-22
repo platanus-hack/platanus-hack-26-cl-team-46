@@ -143,4 +143,6 @@ body {
   background: var(--sim-close); animation: none;
   box-shadow: 0 0 3px 0 color-mix(in srgb, var(--sim-close) 80%, transparent), 0 0 8px 1px color-mix(in srgb, var(--sim-close) 45%, transparent);
 }
+/* Terminando: la luz se apaga de a poco (cian tenue, fijo) mientras se arma el reporte. */
+.md-power.is-finishing i { background: color-mix(in srgb, var(--defense) 40%, transparent); box-shadow: 0 0 2px 0 color-mix(in srgb, var(--defense) 18%, transparent); animation: none; }
 @media (prefers-reduced-motion: reduce) { .md-power i { animation: none; } }

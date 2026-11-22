@@ -76,6 +76,9 @@ function SimulateConsole() {
   const started = useRef(false);
   const fxDone = useRef(false);
   const [countdown, setCountdown] = useState(false);
+  // "Terminar": el backend arma el reporte antes de marcar la simulación como terminada (puede tardar).
+  // Mientras tanto la UI ya muestra "Terminando…", sin esperar a que cambie el estado.
+  const [finishingId, setFinishingId] = useState<string | null>(null);
   const endCountdown = useCallback(() => setCountdown(false), []);
   const creating = useRef(new Set<string>());
 
@@ -233,6 +236,7 @@ function SimulateConsole() {
   const firstPass =
     Boolean(sim) &&
     (sim!.status === "starting" || sim!.status === "ready" || (sim!.status === "failed" && !sim!.report));
+  const finishing = Boolean(sim) && finishingId === sim!.sim_id && (sim!.status === "running" || sim!.status === "paused");
   const project = sim ? sim.repo_url.replace(/\/$/, "").split("/").pop() || "proyecto" : "proyecto";
   const simStart = sim?.created_at;
   const mails = [
@@ -304,7 +308,20 @@ function SimulateConsole() {
         {/* Mientras se prepara, el estado y el botón para partir ya están en la página (fases y "Todo listo"). */}
         <div className="flex items-center gap-4 max-md:w-full md:ml-auto">
           {sim && !(firstPass && (sim.status === "starting" || sim.status === "ready")) && (
-            <FlowControls sim={sim} run={run} onNewRun={newRun} />
+            <FlowControls
+              sim={sim}
+              finishing={finishing}
+              onFinish={() => {
+                const id = sim.sim_id;
+                setFinishingId(id);
+                // Si el pedido falla, se vuelve al estado normal (el error se muestra arriba).
+                void simApi.control(id, "finish").then(refresh, (e: Error) => {
+                  setFinishingId(null);
+                  setError(e.message);
+                });
+              }}
+              onNewRun={newRun}
+            />
           )}
         </div>
       </TopBarSlot>
@@ -344,7 +361,7 @@ function SimulateConsole() {
                 mails={mails}
               />
             </div>
-            <FeedLog key={sim.sim_id} status={sim.status} follow={`${feed.length}|${sim.status}|${sim.debrief ? 1 : 0}`}>
+            <FeedLog key={sim.sim_id} status={sim.status} finishing={finishing} follow={`${feed.length}|${sim.status}|${sim.debrief ? 1 : 0}`}>
               {godMode && <InternalPanel sim={sim} run={run} />}
               {feed.map((e) => (
                 <FeedItem key={e.seq} e={e} />
@@ -358,7 +375,7 @@ function SimulateConsole() {
             <AgentChat
               title={sim.repo_url.replace(/\/$/, "").split("/").pop() || "Respuesta a incidente"}
               events={chat}
-              live={sim.status === "running" || sim.status === "paused"}
+              live={(sim.status === "running" || sim.status === "paused") && !finishing}
               onSend={(msg) => run(() => simApi.message(sim.sim_id, msg))}
             />
           </div>
@@ -415,30 +432,39 @@ const STATUS_LABEL: Record<string, string> = {
  */
 function FlowControls({
   sim,
-  run,
+  finishing,
+  onFinish,
   onNewRun,
 }: {
   sim: Simulation;
-  run: (fn: () => Promise<unknown>) => void;
+  finishing: boolean;
+  onFinish: () => void;
   onNewRun: () => void;
 }) {
   const live = sim.status === "running" || sim.status === "paused";
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-ink-muted max-md:w-full" title={sim.error ?? undefined}>
-        <span className="font-medium text-ink">{STATUS_LABEL[sim.status] ?? sim.status}</span>
-        {sim.status === "paused" && <> · hablando con Hinty</>}
-        {sim.status === "failed" && sim.error && <> · {sim.error.slice(0, 80)}</>}
+        {finishing ? (
+          <>
+            <span className="font-medium text-ink">Terminando…</span> · armando tu reporte
+          </>
+        ) : (
+          <>
+            <span className="font-medium text-ink">{STATUS_LABEL[sim.status] ?? sim.status}</span>
+            {sim.status === "paused" && <> · hablando con Hinty</>}
+            {sim.status === "failed" && sim.error && <> · {sim.error.slice(0, 80)}</>}
+          </>
+        )}
       </span>
       {live && (
         <Btn
+          disabled={finishing}
           onClick={() => {
-            if (window.confirm("¿Terminar el simulacro? El atacante se detiene y se arma tu reporte.")) {
-              run(() => simApi.control(sim.sim_id, "finish"));
-            }
+            if (window.confirm("¿Terminar el simulacro? El atacante se detiene y se arma tu reporte.")) onFinish();
           }}
         >
-          Terminar
+          {finishing ? "Terminando…" : "Terminar"}
         </Btn>
       )}
       {(sim.status === "finished" || sim.status === "failed" || sim.status === "stopped") && (
@@ -514,7 +540,17 @@ function Btn({ onClick, children, disabled }: { onClick: () => void; children: R
  * haya subido a leer algo (ahí no se mueve y aparece un botón para volver al final). Cierra con una
  * línea de estado: tres pixeles cargando mientras corre, o el estado en mayúsculas (EN PAUSA…).
  */
-function FeedLog({ status, follow, children }: { status: Simulation["status"]; follow: string; children: React.ReactNode }) {
+function FeedLog({
+  status,
+  finishing,
+  follow,
+  children,
+}: {
+  status: Simulation["status"];
+  finishing: boolean;
+  follow: string;
+  children: React.ReactNode;
+}) {
   const box = useRef<HTMLElement>(null);
   const stuck = useRef(true);
   const [away, setAway] = useState(false);
@@ -547,7 +583,12 @@ function FeedLog({ status, follow, children }: { status: Simulation["status"]; f
         <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Historial de sucesos</h2>
         {children}
         <div className="flex items-center gap-2 px-2 py-1 font-mono text-xs" role="status" aria-live="polite">
-          {loading || status === "paused" ? (
+          {finishing ? (
+            <span className="md-power is-finishing" aria-label="Terminando el simulacro">
+              <i />
+              <span>Terminando · armando tu reporte</span>
+            </span>
+          ) : loading || status === "paused" ? (
             <span className={`md-power${status === "paused" ? " is-paused" : ""}`} aria-label={STATUS_LABEL[status]}>
               <i />
               <span>{status === "paused" ? "Off" : "On"}</span>
