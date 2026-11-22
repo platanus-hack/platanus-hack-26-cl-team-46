@@ -5,10 +5,11 @@ vulnerabilidades existen con **ataques reales** (no emulados), captura el paso a
 paso de cada uno (telemetría), y produce la guía del hackeo + escenarios
 preconfigurados para el simulador.
 
-> **Cualquier app:** con `--plugin auto` (default en Modal y en el backend) el motor
-> usa el plugin propio si el repo es una víctima conocida (Apuntes, Tasks) y si no,
-> el **plugin genérico**, que ataca apps HTTP desconocidas. Ver
-> [Plugin genérico](#plugin-genérico-cualquier-app).
+> **Un solo motor, siempre agresivo.** No hay manuales por app ni modos: toda app
+> recibe el mismo trato. La superficie sale del repo (discovery) y de la app en
+> vivo, y en cada corrida se ejecutan **todos** los módulos, también los mutantes y
+> los que generan daño (DoS, SSRF→secrets, prompt injection, phishing). Por eso el
+> motor solo ataca contenedores desechables. Ver [Motor genérico](#motor-genérico-cualquier-app).
 
 ## Uso
 
@@ -27,7 +28,6 @@ npm test                          # suite contra un fixture víctima local
 | `--url` | — (obligatorio) | Target autorizado. **Solo se ataca este host** (scope guard). |
 | `--profile` | `fast` | `noisy` \| `normal` \| `fast` \| `stealth`. |
 | `--seed` | `default` | Semilla de reproducibilidad (gobierna la aleatoriedad controlable). |
-| `--read-only` | off | Corre solo módulos no mutantes (no crea/modifica estado). |
 | `--only` | (todas) | CSV de `vuln_id`. |
 | `--weak-email` / `--weak-pass` | — | Credencial conocida (fuerza bruta / sesión de baja privilegia). |
 | `--repo <path>` | — | Repo del target: discovery estática (rutas/señales/OpenAPI) + correlación archivo/línea. |
@@ -38,7 +38,7 @@ npm test                          # suite contra un fixture víctima local
 | `--no-recon` | off | Saltar la fase de reconocimiento. |
 | `--out` | `engine/out` | Carpeta de salida. |
 
-Ejemplo (plugin Apuntes):
+Ejemplo:
 
 ```bash
 node src/cli/run.ts --url https://sbx-xxxx.onrender.com \
@@ -67,8 +67,9 @@ modal deploy engine/modal_app.py                                  # API permanen
 - **Teardown robusto** (`tracker.ts`): lo que se crea se deshace en un `finally`
   (notas borradas, roles revertidos). Lo que la app no deja borrar (cuentas) se
   reporta como **residuo** para decidir el reset del sandbox.
-- **Separación read-only vs mutante**: cada módulo declara `mutating`; `--read-only`
-  corre solo los que no tocan estado.
+- **Siempre agresivo**: cada módulo declara `mutating`/`destructive` (para la guía y
+  el catálogo), pero no se filtran: corren todos. El DoS va al final para no
+  falsear los demás ataques.
 - **Límite ético**: emulación de adversario (timing, identidades, ritmo). **No**
   hace anti-forense ni toca/borra logs del target.
 
@@ -118,27 +119,22 @@ src/
     types.ts          contratos: Attack, EnginePlugin, VulnMeta, …
   plugins/generic/    CUALQUIER app HTTP: superficie desde el repo y la app en vivo
     surface.ts        rutas reales, prefijos, fallback de SPA, login/registro/sesión
-    attacks.ts        11 ataques con evidencia real
+    attacks.ts        17 ataques con evidencia real (incluye los destructivos)
     catalog.ts        enseñanza (CWE/OWASP/ATT&CK, caso real, arreglos)
-  plugins/detect.ts   auto: plugin propio o genérico según el repo
-  plugins/apuntes/    ESPECÍFICO de la app víctima "Apuntes"
-    index.ts          ensambla el EnginePlugin
-    catalog.ts        ATT&CK/ATLAS, D3FEND, caso real, fixes (de ANSWER_KEY.md)
-    attacks/*.ts      un módulo de ataque real por vuln (+ session.ts)
-    recon-candidates.ts  rutas candidatas
-    storylines.ts     beats de storytelling
-test/   fixture.ts (app víctima local en memoria) + *.test.ts (node:test)
+    cicd.ts           análisis de workflows envenenables (read-only, sobre el repo)
+test/   fixture.ts y fixtures/ (apps vulnerables locales en memoria) + *.test.ts (node:test)
 ```
 
-## Plugin genérico (cualquier app)
+## Motor genérico (cualquier app)
 
-Para apps sin plugin propio. Arma la superficie de ataque así:
+Es el único motor. Arma la superficie de ataque así:
 
 1. **Rutas del repo** (`discovery/`): Express, Flask, NestJS (`@Controller` + `@Get`,
    guards), FastAPI, Next.js (`app/api/**/route.ts`, `pages/api`) y OpenAPI.
 2. **Rutas publicadas por la app**: `/openapi.json`, `/api-json` (Nest), `/swagger.json`…
 3. **Prefijo real** en vivo: `setGlobalPrefix`, `app.use('/api/x', router)`, `url_prefix`.
-   Por archivo, gana la respuesta más "de API" (JSON o 401/403 > HTML).
+   Si la ruta tal como sale del código responde de verdad, se usa esa; si no, gana
+   la respuesta más "de API" (JSON o 401/403 > HTML > un 404 con cuerpo propio).
 4. **Fallback de SPA**: una ruta inventada marca cómo responde el frontend a todo;
    un 200 HTML igual no cuenta como hallazgo.
 5. **Sesión**: la credencial conocida (`weak_login`/seed) o una cuenta desechable;
@@ -156,31 +152,23 @@ Para apps sin plugin propio. Arma la superficie de ataque así:
 | `cors-misconfiguration` | Origin ajeno reflejado con `Allow-Credentials: true`. |
 | `weak-password-no-rate-limit` | 12 contraseñas comunes sin 429 ni bloqueo, y el login válido sigue entrando. |
 | `user-enumeration` | Status o mensaje distinto para usuario existente vs inexistente. |
-| `verbose-errors` | Stack trace en la respuesta a un request malformado. |
+| `verbose-errors` | Stack trace (o el detalle interno del error de la BDD) en la respuesta a un request malformado o a una comilla sin cerrar. |
+| `stored-xss` | Contenido guardado con `<img onerror>` que una vista HTML devuelve sin escapar. Se borra en el teardown. |
+| `jwt-not-invalidated-on-password-change` | Cuenta desechable: se guarda su sesión, cambia la contraseña y la sesión vieja sigue entrando. |
+| `dos` *(destructivo)* | Ráfaga acotada (24 × 12 concurrentes) a un endpoint público sin un solo 429/503. Corre al final. |
+| `ssrf-secrets` *(destructivo)* | Parámetros de URL de las rutas descubiertas que hacen fetch del metadata endpoint y devuelven credenciales. |
+| `prompt-injection` *(destructivo)* | Endpoint de chat/LLM que, ante una inyección, revela su system prompt o un secreto (y con una pregunta normal no). |
+| `phishing` *(destructivo)* | Redirect que acepta un destino externo arbitrario (entrega simulada, nunca a personas reales). |
 
 Probado contra una app vulnerable y su versión endurecida (`test/generic.test.ts`):
-11/11 y 0/11 (sin falsos positivos). Contra un sandbox real de Apuntes, sin usar su
-plugin, confirma 6 (IDOR, SQLi, mass assignment, export de admin, fuerza bruta y
-errores verbosos), todas con archivo y línea.
+12 confirmadas y 0 falsos positivos. Contra la app de entrenamiento `victim-app/`
+real (Express + Postgres en Docker), sin nada específico de ella, confirma sus 8
+debilidades plantadas (IDOR, SQLi, mass assignment, export de admin, fuerza bruta,
+errores verbosos, XSS almacenado y JWT que sobrevive al cambio de clave) más el DoS.
 
-**Límites:** no ataca WebSockets/socket.io, GraphQL ni XSS almacenado; una app sin API
-HTTP (p. ej. un juego en tiempo real por sockets) da 0 confirmadas.
-
-## Reutilizable vs específico de Apuntes
-
-**Núcleo reutilizable** (`src/core/`): sirve para cualquier target HTTP; el
-conocimiento de la app entra por el contrato `EnginePlugin`.
-
-**Específico de "Apuntes"** (`src/plugins/apuntes/`): los `attacks/*.ts` (endpoints,
-shapes y tablas exactas), el payload SQLi (esquema Postgres), `catalog.ts`
-(ubicaciones del repo), `recon-candidates.ts` y `storylines.ts`, y el namespace
-`apuntes` del `scenario_id`.
-
-**Todavía NO existe (para que sea general):**
-- Parámetro `--repo` / adapters derivados del repo (rutas, OpenAPI) o de un spec.
-- SAST/AST para ubicar la vuln en el código de cualquier app.
-- Discovery de endpoints por OpenAPI/Swagger o por el router del framework.
-- Contrato de credenciales por app. Lifecycle de contenedor (levantar/derribar).
+**Límites:** no ataca WebSockets/socket.io ni GraphQL; una app sin API HTTP (p. ej.
+un juego en tiempo real por sockets) da 0 confirmadas. Sin repo, la superficie sale
+solo de la app en vivo (OpenAPI publicado y rutas comunes).
 
 ## Roadmap
 
@@ -193,8 +181,9 @@ shapes y tablas exactas), el payload SQLi (esquema Postgres), `catalog.ts`
 - [x] **M2** — discovery del repo (`discovery/`: manifests, rutas Express/Flask, OpenAPI, señales) + correlación hallazgo↔archivo/línea (JS/TS + Python).
 - [x] **M3** — scheduler (DAG/lanes, mutex/baseline, explica paralelo vs secuencial).
 - [x] **M4** — variantes de ataque (F) + diagnóstico estructurado (I): veredicto/confianza/causa raíz(FileRef)/remediación/re-verify.
-- [x] **M5** — 2º target "Tasks" (plugin+fixture) con vulns solapadas/no solapadas → generalización del core.
+- [x] **M5** — 2º target "Tasks" (fixture) con vulns solapadas/no solapadas → generalización del core.
 - [x] **M6** — providers (interfaz + tier Haiku/Sonnet/Opus) + **gate** de artefactos generados + **provenance** de fuentes externas (`semgrep`/`nuclei`/ARTEX **no aprobadas hasta review supervisado**; LLM real inerte hasta habilitar).
-- [x] **M8** — modo agresivo/destructivo (`--destructive`): DoS acotado, SSRF→secrets+lateral, prompt-injection (ATLAS), phishing (open-redirect, entrega simulada) + análisis de deploy/CICD; cascada LLM Sonnet 4.5→DeepSeek→GLM; despliegue del motor (Dockerfile + render.yaml + modal_app.py, server `/run`).
-- [x] **M9** — plugin genérico (`plugins/generic/`) + `--plugin auto`: 11 ataques sobre apps desconocidas; discovery NestJS/FastAPI/Next.js y prefijos de montaje.
+- [x] **M8** — modo agresivo/destructivo: DoS acotado, SSRF→secrets+lateral, prompt-injection (ATLAS), phishing (open-redirect, entrega simulada) + análisis de deploy/CICD; cascada LLM Sonnet 4.5→DeepSeek→GLM; despliegue del motor (Dockerfile + render.yaml + modal_app.py, server `/run`).
+- [x] **M9** — plugin genérico (`plugins/generic/`): ataques sobre apps desconocidas; discovery NestJS/FastAPI/Next.js y prefijos de montaje.
+- [x] **M10** — un solo motor y siempre agresivo: se eliminan los manuales por app (`apuntes`, `tasks`, `destructive`), `--plugin`, `--destructive` y `--read-only`; el genérico suma XSS almacenado, JWT tras cambio de clave, prompt injection y phishing.
 - [ ] **M7** — Render (pendiente de créditos) + ejecución live de providers LLM, ARTEX/scanners y corridas destructivas (checkpoints supervisados; ahora bloqueados por key LLM ausente / Docker daemon / reset del sandbox).

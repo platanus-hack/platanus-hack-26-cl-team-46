@@ -26,6 +26,8 @@ export async function startGenericFixture(opts: { hardened?: boolean } = {}): Pr
     { id: 3, customerId: 3, total: 99990 },
   ];
   const fails = new Map<string, number>();
+  // Bien hecha: rate limit por ruta (ventana de 1 s).
+  const hits = new Map<string, number[]>();
 
   const sign = (p: Record<string, unknown>) => {
     const h = b64({ alg: 'HS256', typ: 'JWT' });
@@ -59,6 +61,13 @@ export async function startGenericFixture(opts: { hardened?: boolean } = {}): Pr
       res.writeHead(code, { 'content-type': 'application/json', ...cors });
       res.end(JSON.stringify(body));
     };
+    if (hard) {
+      const now = Date.now();
+      const recent = (hits.get(p) ?? []).filter((t) => now - t < 1000);
+      recent.push(now);
+      hits.set(p, recent);
+      if (recent.length > 15) return send(429, { message: 'Too Many Requests' });
+    }
     const html = () => {
       res.writeHead(200, { 'content-type': 'text/html' });
       res.end('<!doctype html><html><body><div id="root"></div></body></html>');

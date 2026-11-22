@@ -5,7 +5,6 @@ import { fileURLToPath } from 'node:url';
 import { diagnose } from '../src/core/diagnose.ts';
 import { buildAttackPlan, toTimelineEvents } from '../src/core/events.ts';
 import { discoverRepo } from '../src/discovery/index.ts';
-import { detectPlugin } from '../src/plugins/detect.ts';
 import { buildGenericPlugin, readRepoSecrets } from '../src/plugins/generic/index.ts';
 import type { TargetConfig } from '../src/core/types.ts';
 import { startGenericFixture } from './fixtures/generic-fixture.ts';
@@ -13,7 +12,7 @@ import { startGenericFixture } from './fixtures/generic-fixture.ts';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const nestRepo = path.join(here, 'fixtures/repo-nest');
 const ALL = [
-  'admin-endpoint-no-authz', 'cors-misconfiguration', 'exposed-sensitive-files', 'idor', 'jwt-forgery', 'mass-assignment',
+  'admin-endpoint-no-authz', 'cors-misconfiguration', 'dos', 'exposed-sensitive-files', 'idor', 'jwt-forgery', 'mass-assignment',
   'sql-injection', 'unauthenticated-data-access', 'user-enumeration', 'verbose-errors', 'weak-password-no-rate-limit',
 ];
 
@@ -35,11 +34,10 @@ test('discovery NestJS: rutas con @Controller/@Get, guards y prefijo global', as
   assert.equal(repo.routes.find((r) => r.path === '/customers')?.auth, undefined);
   assert.ok(repo.routes.some((r) => r.method === 'POST' && r.path === '/auth/signin'));
   assert.ok(repo.prefixes?.includes('/api/v1'));
-  assert.equal(detectPlugin(repo), 'generic');
   assert.ok((await readRepoSecrets(nestRepo)).includes('changeme'));
 });
 
-test('genérico: confirma las 11 vulnerabilidades en una app desconocida, con archivo y línea', async () => {
+test('genérico: confirma las 12 vulnerabilidades en una app desconocida, con archivo y línea', async () => {
   const fx = await startGenericFixture();
   try {
     const { plugin: p } = await plugin();
@@ -63,7 +61,7 @@ test('genérico: confirma las 11 vulnerabilidades en una app desconocida, con ar
 
     // Contrato del backend: plan y replay.
     const plan = buildAttackPlan(diag, p);
-    assert.equal((plan.raw.findings as unknown[]).length, 11);
+    assert.equal((plan.raw.findings as unknown[]).filter((f: any) => f.confirmed).length, ALL.length);
     const replay = toTimelineEvents(by('idor'), p);
     assert.deepEqual(replay.map((e) => e.type).slice(-2), ['attack.success', 'attack.done']);
   } finally {

@@ -79,7 +79,6 @@ modal secret create hack26-engine \
 | `ANTHROPIC_API_KEY` | No | Primer modelo de la cascada LLM (solo si el pedido trae `providers: true`). |
 | `DEEPSEEK_API_KEY` / `GLM_API_KEY` | No | Respaldos de la cascada LLM. |
 | `GITHUB_TOKEN` | Sí, con el backend | Para clonar el mirror del sandbox (la org de sandboxes suele ser privada) o repos privados. Usa el mismo token del backend o uno con lectura de contenido en esa org. Va como header de git, nunca en la URL. |
-| `ENGINE_ALLOW_DESTRUCTIVE` | No | `1` permite el modo destructivo (DoS, SSRF, etc.). Por defecto está apagado. |
 
 Para cambiar un valor después: `modal secret create hack26-engine ... --force`
 (reemplaza el secret entero) o edítalo en el dashboard (Secrets). Para usar
@@ -94,7 +93,7 @@ cd engine && npm run modal:selftest
 
 Construye la imagen (unos 2 minutos la primera vez; después queda en caché),
 corre los 33 tests y una corrida completa contra el fixture local. Debe terminar
-con `✅ selftest OK` y `8/8 vulnerabilidades confirmadas`. No necesita el secret.
+con `✅ selftest OK` (la app de notas de prueba confirma sus 8 debilidades plantadas + el DoS). No necesita el secret.
 
 ### 4. Desplegar
 
@@ -139,7 +138,6 @@ Authorization: Bearer wk-....ws-...
 ```json
 {
   "url": "https://sbx-xxxx.onrender.com",
-  "plugin": "auto",
   "profile": "fast",
   "seed": "sim-123",
   "repo": "https://github.com/org/app-victima",
@@ -148,14 +146,15 @@ Authorization: Bearer wk-....ws-...
   "semgrep": true,
   "providers": false,
   "budget_usd": 5,
-  "read_only": false,
   "only": ["idor", "sql-injection"],
-  "no_recon": false,
-  "destructive": false
+  "no_recon": false
 }
 ```
 
-Solo `url` es obligatorio. `plugin`: `auto` (default: el propio si reconoce el repo; si no, `generic`) | `generic` | `apuntes` | `tasks` | `destructive`.
+Solo `url` es obligatorio. Hay **un solo motor** (genérico) y **siempre corre en
+modo agresivo**, con los módulos que generan daño incluidos (DoS, SSRF, prompt
+injection, phishing): no hay `plugin`, `destructive` ni `read_only` que elegir. Si
+un backend anterior todavía los manda, se ignoran.
 `profile`: `noisy` | `normal` | `fast` | `stealth`. `semgrep` y `providers` solo
 se aplican si viene `repo`. `repo` tiene que ser una URL `https`.
 
@@ -253,7 +252,10 @@ Usa el secret `hack26-engine`, así que la URL tiene que estar en
   API) y `ENGINE_ALLOWED_HOSTS` (aun con token, solo se atacan esos hosts). Dentro
   de la corrida sigue activo el scope guard del motor (no sale del host pedido ni
   sigue redirects a otro lado).
-- **El modo destructivo está apagado** salvo que el secret tenga `ENGINE_ALLOW_DESTRUCTIVE=1`.
+- **Siempre agresivo.** Cada corrida incluye los módulos que generan daño real
+  (DoS acotado, SSRF, prompt injection, phishing simulado). Por eso solo se atacan
+  contenedores desechables de los hosts autorizados. `ENGINE_ALLOW_DESTRUCTIVE` ya
+  no se usa.
 - **Las keys solo viven en el secret de Modal.** El token de GitHub se usa solo
   para clonar y no queda en los artefactos. El contenedor borra el repo clonado y
   la carpeta de salida al terminar.
@@ -324,9 +326,8 @@ y el motor no la toca. Lo maneja
 
 ## Pendiente
 
-- Con `ENGINE_PLUGIN=auto` (default) el motor usa el plugin propio de Apuntes o
-  Tasks si reconoce el repo y, si no, el plugin genérico (ver `engine/README.md`).
-  El genérico no ataca WebSockets, GraphQL ni XSS almacenado: una app sin API HTTP
-  termina con 0 confirmadas y la simulación falla con ese mensaje.
+- Un solo motor para todas las apps (ver `engine/README.md`). No ataca WebSockets
+  ni GraphQL: una app sin API HTTP termina con 0 confirmadas y la simulación falla
+  con ese mensaje.
 - Las notificaciones (correos, alertas, tickets) las sigue escribiendo el generador
   a partir de los eventos `attack.*`; el motor no las produce.

@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { runVariants, type AttackVariant } from '../src/core/variants.ts';
 import { buildDiagnoses } from '../src/core/diagnosis.ts';
-import { apuntesPlugin } from '../src/plugins/apuntes/index.ts';
+import { buildGenericPlugin } from '../src/plugins/generic/index.ts';
 import type { AttackResult } from '../src/core/types.ts';
 
 const ctx = { log: () => {} } as any;
@@ -42,7 +42,7 @@ test('buildDiagnoses: veredicto, confianza, causa raíz con ref y remediación',
   ];
   const diag = { results } as any;
   const refs = { 'sql-injection': { file: 'src/models/notes.ts', line: 15, commit: 'abc' } };
-  const diags = buildDiagnoses(diag, apuntesPlugin, refs);
+  const diags = buildDiagnoses(diag, buildGenericPlugin(), refs);
 
   const sql = diags.find((d) => d.vuln_id === 'sql-injection')!;
   assert.equal(sql.verdict, 'confirmed');

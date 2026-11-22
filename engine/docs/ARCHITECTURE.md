@@ -1,5 +1,10 @@
 # Motor de hacking — propuesta de arquitectura general
 
+> **Actualización (M10):** hoy hay **un solo motor** (`plugins/generic/`) y **siempre
+> corre en modo agresivo**. Los plugins por app (`apuntes`, `tasks`, `destructive`)
+> y los flags `--plugin`, `--destructive` y `--read-only` se eliminaron. Lo de abajo
+> es el plan original y queda como contexto histórico.
+
 > Estado: **propuesta para revisión** (Sebastián + supervisor). Incorpora los
 > requisitos A–I. Apuntes es **un plugin/target más**, no el centro. Nada acá se
 > ejecuta hasta aprobar los contratos y las decisiones marcadas (§11).

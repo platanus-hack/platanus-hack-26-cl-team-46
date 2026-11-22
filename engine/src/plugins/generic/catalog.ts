@@ -115,7 +115,29 @@ export const CATALOG: Record<string, VulnMeta> = {
     fix_wrong: ['Ocultarlo solo en el frontend.'],
     teaching: 'El cliente recibe "algo falló"; los detalles, solo tus logs.',
   },
-  // ----- clases destructivas (solo corren en modo agresivo / --destructive) -----
+  'stored-xss': {
+    id: 'stored-xss', title: 'XSS almacenado (contenido de usuario sin escapar)', severity: 'high', difficulty: 3, order: 12,
+    cwe: ['CWE-79 Cross-site Scripting', 'CWE-1004 Sensitive Cookie Without HttpOnly Flag'], owasp: ['A03:2021 Injection'],
+    mitre_attack: ['T1059.007 — Command and Scripting Interpreter: JavaScript', 'T1539 — Steal Web Session Cookie', 'T1189 — Drive-by Compromise'],
+    d3fend: ['Output encoding o sanitización con allowlist', 'Cookie httpOnly + secure', 'Content Security Policy'],
+    code_location: 'Vista HTML que imprime contenido guardado por el usuario sin escapar',
+    real_case: 'Samy worm, MySpace (2005): un XSS almacenado se autopropagó a más de 1M de usuarios en ~20 h.',
+    fix_correct: 'Escapar en todas las vistas que muestran el contenido (o sanitizar con allowlist), cookie httpOnly y secure, CSP sin inline, limpiar el contenido malicioso y rotar sesiones.',
+    fix_wrong: ['Arreglar una vista y olvidar otra (p. ej. el panel de admin).', 'Blocklist que borra <script>: se evade con onerror.'],
+    teaching: 'Todo contenido de usuario es ejecutable hasta que lo escapes en la salida.',
+  },
+  'jwt-not-invalidated-on-password-change': {
+    id: 'jwt-not-invalidated-on-password-change', title: 'El cambio de contraseña no invalida las sesiones', severity: 'high', difficulty: 2, order: 13,
+    cwe: ['CWE-613 Insufficient Session Expiration'], owasp: ['A07:2021 Identification and Authentication Failures'],
+    mitre_attack: ['T1528 — Steal Application Access Token', 'T1550.001 — Use Alternate Authentication Material: Application Access Token'],
+    d3fend: ['Rotar el secreto de firma', 'Invalidación de sesión (token_version / password_changed_at)', 'Access tokens cortos + refresh revocable'],
+    code_location: 'Cambio de contraseña que no revoca los tokens/sesiones ya emitidos',
+    real_case: 'CircleCI (2023): una sesión robada siguió sirviendo pese a 2FA; tuvieron que pedir a todos rotar secretos.',
+    fix_correct: 'Inmediato: rotar el secreto de firma. De fondo: token_version o password_changed_at en el token, rechazar tokens anteriores al cambio y bajar la expiración.',
+    fix_wrong: ['Cambiar la contraseña y darlo por resuelto: el token robado sigue vivo.', 'Redeployar sin rotar el secreto.'],
+    teaching: 'Con sesiones stateless, cambiar la contraseña no saca al atacante: hay que invalidar los tokens ya emitidos.',
+  },
+  // ----- clases destructivas (el motor siempre corre en modo agresivo) -----
   dos: {
     id: 'dos', title: 'Denegación de servicio (sin rate limit)', severity: 'high', difficulty: 2, order: 20,
     cwe: ['CWE-770 Allocation of Resources Without Limits', 'CWE-400 Uncontrolled Resource Consumption'],
@@ -138,6 +160,27 @@ export const CATALOG: Record<string, VulnMeta> = {
     fix_wrong: ['Filtrar solo "http://" (se evade).'],
     teaching: 'Si tu servidor hace fetch de URLs del usuario, puede ser obligado a leer tus propios secretos.',
   },
+  'prompt-injection': {
+    id: 'prompt-injection', title: 'Prompt injection (componente LLM)', severity: 'high', difficulty: 3, order: 22,
+    cwe: ['CWE-1427 Improper Neutralization of Input Used for LLM Prompting'], owasp: ['LLM01: Prompt Injection (OWASP Top 10 for LLM)'],
+    mitre_attack: [], mitre_atlas: ['AML.T0051 — LLM Prompt Injection', 'AML.T0057 — LLM Data Leakage'],
+    d3fend: ['Separar instrucción de dato', 'Mínimo privilegio del agente (tools)', 'Validación de salida', 'No poner secretos en el system prompt'],
+    code_location: 'Endpoint LLM que mezcla input del usuario con instrucciones o secretos',
+    real_case: 'Bing/Sydney (2023): una inyección filtró el system prompt completo.',
+    fix_correct: 'Separar instrucción y dato, mínimo privilegio para las tools, validar la salida y nunca poner secretos en el system prompt.',
+    fix_wrong: ['Una blocklist de frases "prohibidas" (se evade reformulando).'],
+    teaching: 'Para un LLM, el dato del usuario y tus instrucciones se ven igual: sepáralos y dale mínimo privilegio.',
+  },
+  phishing: {
+    id: 'phishing', title: 'Phishing habilitado por open-redirect', severity: 'medium', difficulty: 1, order: 23,
+    cwe: ['CWE-601 Open Redirect'], owasp: ['A01:2021 Broken Access Control'],
+    mitre_attack: ['T1566 — Phishing', 'T1204 — User Execution'], d3fend: ['Allowlist de destinos de redirect', 'Solo rutas relativas'],
+    code_location: 'Endpoint de redirect que acepta URLs externas arbitrarias',
+    real_case: 'Open redirects en dominios confiables usados para dar legitimidad a campañas de phishing.',
+    fix_correct: 'Allowlist de destinos o solo rutas relativas; nunca redirigir a una URL arbitraria del usuario.',
+    fix_wrong: ['Bloquear "http://" dejando "//evil.com" o "https://".'],
+    teaching: 'Un redirect abierto en tu dominio le presta tu reputación al atacante.',
+  },
 };
 
 export const STORYLINES: Record<string, StorylineBeat[]> = {
@@ -154,4 +197,8 @@ export const STORYLINES: Record<string, StorylineBeat[]> = {
   'verbose-errors': [{ phase: 'recon', fact: 'Requests malformados para provocar errores.', channel: 'sentry', symptom: 'Errores 500 por JSON inválido.' }],
   dos: [{ phase: 'impact', fact: 'Ráfaga de peticiones a un endpoint sin límite.', channel: 'datadog', symptom: 'Pico de CPU/latencia y timeouts; el servicio se cae.' }],
   'ssrf-secrets': [{ phase: 'impact', fact: 'El servidor fue forzado a leer el metadata endpoint.', channel: 'sentry', symptom: 'Peticiones salientes a 169.254.169.254 y uso de credenciales desde una IP nueva.' }],
+  'stored-xss': [{ phase: 'exploit', fact: 'Contenido con <img onerror> guardado y servido sin escapar.', channel: 'support', symptom: 'Usuarios (o el admin) reportan comportamientos raros al abrir un registro.' }],
+  'jwt-not-invalidated-on-password-change': [{ phase: 'persistence', fact: 'Un token anterior al cambio de contraseña sigue autenticando.', channel: 'datadog', symptom: 'Requests con la sesión de un usuario que ya cambió su clave.' }],
+  'prompt-injection': [{ phase: 'exploit', fact: 'El asistente reveló su system prompt o un secreto.', channel: 'support', symptom: 'El bot "dijo cosas raras" o filtró datos internos.' }],
+  phishing: [{ phase: 'exploit', fact: 'Enlaces con el dominio de la víctima que llevan a un sitio clonado.', channel: 'email', symptom: 'Usuarios reportan correos con links de la app que piden su clave.' }],
 };

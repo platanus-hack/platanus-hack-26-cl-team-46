@@ -1,6 +1,6 @@
 /**
- * Servidor víctima LOCAL en memoria para los tests: reproduce fielmente las 8
- * debilidades de "Apuntes" sin Postgres ni red externa. Permite validar los
+ * Servidor víctima LOCAL en memoria para los tests: una app de notas con 8
+ * debilidades plantadas, sin Postgres ni red externa. Permite validar los
  * módulos, el scope guard, la redacción y el teardown sin tocar Render.
  *
  * Es un fixture de test, no la app real (esa vive en victim-app/).
@@ -132,7 +132,8 @@ export async function startFixture(): Promise<Fixture> {
       const me = auth(req);
       if (!me) return send(401, { error: 'No autenticado' });
       const q = u.searchParams.get('q');
-      if (q === "'") return send(500, { error: 'db', code: '42601', detail: 'syntax error', position: '1', stack: 'at Query (/app/node_modules/pg/lib/query.js:1:1)' }); // verbose
+      // SQL armado con el input: una comilla sin cerrar rompe la consulta (como Postgres real).
+      if (q && (q.match(/'/g) ?? []).length % 2 === 1) return send(500, { error: 'syntax error at or near "%"', code: '42601', detail: 'unterminated quoted string', position: '1', stack: 'error: syntax error\n    at Query (/app/node_modules/pg/lib/query.js:1:1)' }); // verbose
       if (q && /union\s+select/i.test(q) && /from users/i.test(q)) {
         return send(200, users.map((x) => ({ id: x.id, user_id: x.id, title: x.email, body: x.password_hash, created_at: x.created_at, updated_at: x.updated_at })));
       }

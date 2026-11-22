@@ -17,7 +17,6 @@ export interface DiagnosisResult {
   target: TargetConfig;
   profile: string;
   seed: string;
-  read_only: boolean;
   started_at: string;
   finished_at: string;
   duration_ms: number;
@@ -42,9 +41,6 @@ export interface DiagnoseOpts {
   only?: string[];
   profile?: ProfileName;
   seed?: string;
-  readOnly?: boolean;
-  /** Habilita los módulos destructivos (DoS, etc.). Default: OFF. */
-  destructive?: boolean;
   clock?: Clock;
 }
 
@@ -58,13 +54,12 @@ export async function diagnose(target: TargetConfig, plugin: EnginePlugin, opts:
   const started = clock.now();
   const started_at = clock.iso();
 
+  // Siempre en modo agresivo: corren todos los módulos, también los mutantes y los
+  // destructivos (DoS, SSRF…). El motor solo ataca contenedores desechables.
   let toRun: Attack[] = opts.only ? plugin.attacks.filter((a) => opts.only!.includes(a.meta.id)) : plugin.attacks;
-  if (opts.readOnly) toRun = toRun.filter((a) => !a.mutating);
-  // Los módulos destructivos solo corren en modo --destructive (contenedor desechable).
-  if (!opts.destructive) toRun = toRun.filter((a) => !a.destructive);
   if (profile.shuffle) toRun = shuffle(makeRng(`${seed}:order`), toRun);
 
-  log(`perfil: ${profile.name} · seed: ${seed}${opts.readOnly ? ' · read-only' : ''} (concurrencia ${profile.concurrency}, jitter ${profile.minDelayMs}-${profile.maxDelayMs}ms, identidad ${profile.rotateIdentity})`);
+  log(`perfil: ${profile.name} · seed: ${seed} · agresivo (concurrencia ${profile.concurrency}, jitter ${profile.minDelayMs}-${profile.maxDelayMs}ms, identidad ${profile.rotateIdentity})`);
 
   // Scheduler (B): construye lanes (paralelo por defecto, secuencia por
   // dependencia/baseline/mutex). Lane por lane; paralelo dentro de cada lane.
@@ -127,7 +122,6 @@ export async function diagnose(target: TargetConfig, plugin: EnginePlugin, opts:
     target,
     profile: profile.name,
     seed,
-    read_only: !!opts.readOnly,
     started_at,
     finished_at,
     duration_ms: clock.now() - started,

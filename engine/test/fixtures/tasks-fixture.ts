@@ -72,6 +72,8 @@ export async function startTasksFixture(): Promise<TasksFixture> {
       const me = auth(req);
       if (!me) return send(401, { error: 'no auth' });
       const q = u.searchParams.get('search');
+      // SQL armado con el input: una comilla sin cerrar rompe la consulta.
+      if (q && (q.match(/'/g) ?? []).length % 2 === 1) return send(500, { error: 'SQLITE_ERROR: unrecognized token: "\'"' });
       if (q && /union\s+select/i.test(q) && /from users/i.test(q)) {
         return send(200, users.map((x) => ({ id: x.id, owner: x.id, title: x.email, body: x.password_hash })));
       }
