@@ -11,7 +11,11 @@ import {
   Post,
   Put,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { AuthService, type AuthUser } from '../auth/auth.service.js';
+import { CurrentUser, SessionGuard } from '../auth/session.guard.js';
+import { classifySourceRepo } from '../git/git.service.js';
 import { AgentOrchestrator } from '../agent/agent.orchestrator.js';
 import { SandboxEventsService } from './sandbox-events.service.js';
 import {
@@ -36,19 +40,27 @@ import { SandboxesService } from './sandboxes.service.js';
  * API del servicio de deploy. Las operaciones largas responden 202 al tiro
  * y el progreso sale por GET /sandboxes/:id/events (SSE). Con `?wait=true`
  * la respuesta espera a que la operación termine (útil para scripts).
+ *
+ * Con el login encendido (src/auth), todo exige sesión y cada usuario ve y toca solo sus
+ * sandboxes: los ajenos responden 404. Los admins (ADMIN_GITHUB_LOGINS) ven todo.
  */
 @Controller('sandboxes')
+@UseGuards(SessionGuard)
 export class SandboxesController {
   constructor(
     private readonly sandboxes: SandboxesService,
     private readonly eventBus: SandboxEventsService,
     private readonly agents: AgentOrchestrator,
+    private readonly auth: AuthService,
   ) {}
 
   @Get()
-  async list() {
+  async list(@CurrentUser() user: AuthUser | null) {
     return Promise.all(
-      this.sandboxes.list().map((s) => this.sandboxes.toContract(s)),
+      this.sandboxes
+        .list()
+        .filter((s) => this.auth.canAccess(user, s.owner))
+        .map((s) => this.sandboxes.toContract(s)),
     );
   }
 
@@ -56,15 +68,26 @@ export class SandboxesController {
   @HttpCode(202)
   async create(
     @Body({ schema: createSandboxSchema }) body: CreateSandboxBody,
+    @CurrentUser() user: AuthUser | null,
     @Query('wait') wait?: string,
   ) {
-    const s = this.sandboxes.create(body);
+    // Con login: el repo tiene que ser público o uno que el usuario compartió con la app.
+    const privateRepo = await this.auth.repoAccessFor(
+      user,
+      body.repo_url,
+      classifySourceRepo(body.repo_url, this.sandboxes.org),
+    );
+    const s = this.sandboxes.create({
+      ...body,
+      owner: this.auth.ownerOf(user),
+      private_repo: privateRepo,
+    });
     return this.respond(s.sandbox_id, wait);
   }
 
   @Get(':id')
-  async get(@Param('id') id: string) {
-    return this.sandboxes.toContract(this.sandboxes.get(id));
+  async get(@Param('id') id: string, @CurrentUser() user: AuthUser | null) {
+    return this.sandboxes.toContract(this.owned(id, user));
   }
 
   /** Renombra el sandbox (solo el nombre para mostrar; no toca el deploy). */
@@ -72,7 +95,9 @@ export class SandboxesController {
   async update(
     @Param('id') id: string,
     @Body({ schema: updateSandboxSchema }) body: UpdateSandboxBody,
+    @CurrentUser() user: AuthUser | null,
   ) {
+    this.owned(id, user);
     return this.sandboxes.toContract(this.sandboxes.rename(id, body.name));
   }
 
@@ -81,8 +106,8 @@ export class SandboxesController {
   @Header('Content-Type', 'text/event-stream')
   @Header('Cache-Control', 'no-cache')
   @Header('X-Accel-Buffering', 'no')
-  events(@Param('id') id: string) {
-    this.sandboxes.get(id);
+  events(@Param('id') id: string, @CurrentUser() user: AuthUser | null) {
+    this.owned(id, user);
     return this.eventBus.sseStream(id);
   }
 
@@ -92,8 +117,10 @@ export class SandboxesController {
   async redeploy(
     @Param('id') id: string,
     @Body({ schema: redeploySchema }) body: RedeployBody,
+    @CurrentUser() user: AuthUser | null,
     @Query('wait') wait?: string,
   ) {
+    this.owned(id, user);
     this.sandboxes.redeploy(id, body);
     return this.respond(id, wait);
   }
@@ -103,15 +130,22 @@ export class SandboxesController {
   async setEnv(
     @Param('id') id: string,
     @Body({ schema: setEnvSchema }) body: SetEnvBody,
+    @CurrentUser() user: AuthUser | null,
     @Query('wait') wait?: string,
   ) {
+    this.owned(id, user);
     this.sandboxes.setEnv(id, body);
     return this.respond(id, wait);
   }
 
   @Post(':id/restart')
   @HttpCode(202)
-  async restart(@Param('id') id: string, @Query('wait') wait?: string) {
+  async restart(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser | null,
+    @Query('wait') wait?: string,
+  ) {
+    this.owned(id, user);
     this.sandboxes.restart(id);
     return this.respond(id, wait);
   }
@@ -121,7 +155,9 @@ export class SandboxesController {
   logs(
     @Param('id') id: string,
     @Query({ schema: logsQuerySchema }) query: LogsQuery,
+    @CurrentUser() user: AuthUser | null,
   ) {
+    this.owned(id, user);
     return this.sandboxes.logs(id, query);
   }
 
@@ -133,7 +169,9 @@ export class SandboxesController {
   logsStream(
     @Param('id') id: string,
     @Query({ schema: logsStreamQuerySchema }) query: LogsStreamQuery,
+    @CurrentUser() user: AuthUser | null,
   ) {
+    this.owned(id, user);
     return this.sandboxes.logsStream(id, query);
   }
 
@@ -143,8 +181,9 @@ export class SandboxesController {
   async provideInputs(
     @Param('id') id: string,
     @Body({ schema: provideInputsSchema }) body: ProvideInputsBody,
+    @CurrentUser() user: AuthUser | null,
   ) {
-    const s = this.sandboxes.get(id);
+    const s = this.owned(id, user);
     if (!this.sandboxes.agentActive(s))
       throw new ConflictException('No hay un agente esperando datos');
     this.agents.provideInputs(id, body.env);
@@ -152,8 +191,16 @@ export class SandboxesController {
   }
 
   @Delete(':id')
-  async remove(@Param('id') id: string) {
+  async remove(@Param('id') id: string, @CurrentUser() user: AuthUser | null) {
+    this.owned(id, user);
     return this.sandboxes.toContract(await this.sandboxes.remove(id));
+  }
+
+  /** El sandbox si el usuario puede verlo; si no, 404 (no confirmamos que existe). */
+  private owned(id: string, user: AuthUser | null) {
+    const s = this.sandboxes.get(id);
+    this.auth.assertAccess(user, s.owner, `Sandbox ${id}`);
+    return s;
   }
 
   private async respond(id: string, wait?: string) {

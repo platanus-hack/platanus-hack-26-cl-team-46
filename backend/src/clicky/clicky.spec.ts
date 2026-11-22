@@ -1,4 +1,9 @@
-import { ConflictException, HttpException } from '@nestjs/common';
+import {
+  ConflictException,
+  HttpException,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import type { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ClickyAccessGuard } from './clicky-access.guard.js';
@@ -22,10 +27,21 @@ const ctx = (headers: Record<string, string>, ip = '1.2.3.4') => {
   } as unknown as ExecutionContext;
 };
 
-const guard = (status: string, limit = 20) =>
+/** Login apagado por defecto (como antes del login con GitHub). */
+const authOff = {
+  enabled: false,
+  userFrom: () => null,
+  assertAccess: () => {},
+};
+
+const guard = (status: string, limit = 20, auth: object = authOff) =>
   new ClickyAccessGuard(
-    { get: vi.fn(() => ({ status })) } as never,
+    {
+      get: vi.fn(() => ({ status })),
+      ownerOf: vi.fn(() => ({ github_id: 1, login: 'duena' })),
+    } as never,
     { get: vi.fn(() => limit) } as never,
+    auth as never,
   );
 
 describe('ClickyAccessGuard', () => {
@@ -55,6 +71,34 @@ describe('ClickyAccessGuard', () => {
     expect(() =>
       guard('stopped').canActivate(ctx({ 'x-sim-id': 'sim-0a1b2c3d' })),
     ).toThrow(ConflictException);
+  });
+
+  it('con login: sin sesión responde 401', () => {
+    const auth = {
+      enabled: true,
+      userFrom: () => null,
+      assertAccess: () => {},
+    };
+    expect(() =>
+      guard('running', 20, auth).canActivate(
+        ctx({ 'x-sim-id': 'sim-0a1b2c3d' }),
+      ),
+    ).toThrow(UnauthorizedException);
+  });
+
+  it('con login: la simulación de otro usuario responde 404', () => {
+    const auth = {
+      enabled: true,
+      userFrom: () => ({ github_id: 2, login: 'otro', admin: false }),
+      assertAccess: (_u: unknown, owner: { github_id: number }) => {
+        if (owner.github_id !== 2) throw new NotFoundException();
+      },
+    };
+    expect(() =>
+      guard('running', 20, auth).canActivate(
+        ctx({ 'x-sim-id': 'sim-0a1b2c3d' }),
+      ),
+    ).toThrow(NotFoundException);
   });
 
   it('limita las preguntas por minuto por IP', () => {

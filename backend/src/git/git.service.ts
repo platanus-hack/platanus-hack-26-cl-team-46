@@ -55,6 +55,8 @@ export class GitService {
     sandboxId: string,
     repoUrl: string,
     ref?: string,
+    /** Token del dueño (GitHub App): solo para repos privados que compartió con Mayday. */
+    userToken?: string,
   ): Promise<{ dir: string; sha: string }> {
     const dir = this.workdir(sandboxId);
     await rm(dir, { recursive: true, force: true });
@@ -76,7 +78,10 @@ export class GitService {
       );
     }
     try {
-      await this.git(args, this.reposDir, { auth: kind === 'org' });
+      await this.git(args, this.reposDir, {
+        auth:
+          kind === 'org' ? true : kind === 'external' ? userToken : undefined,
+      });
     } catch (err) {
       const msg = (err as Error).message;
       if (ref && /Remote branch .* not found/i.test(msg)) {
@@ -88,7 +93,9 @@ export class GitService {
         )
       ) {
         throw new Error(
-          `No pudimos clonar ${repoUrl}: el repo no existe o es privado. Por ahora solo se aceptan repos públicos de GitHub.`,
+          userToken
+            ? `No pudimos clonar ${repoUrl}: el repo no existe o no lo compartiste con Mayday en GitHub.`
+            : `No pudimos clonar ${repoUrl}: el repo no existe o es privado. Para un repo privado, entra con GitHub y compártelo con Mayday.`,
         );
       }
       throw err;
@@ -278,18 +285,24 @@ export class GitService {
   private async git(
     args: string[],
     cwd: string,
-    opts: { auth?: boolean } = {},
+    /** true = token de la org; string = token del usuario (repo privado propio). */
+    opts: { auth?: boolean | string } = {},
   ): Promise<string> {
     // El token va como header HTTP de una sola invocación: nunca queda escrito en .git/config.
-    const authArgs =
-      opts.auth && this.token
-        ? [
-            '-c',
-            `http.https://github.com/.extraheader=AUTHORIZATION: basic ${Buffer.from(
-              `x-access-token:${this.token}`,
-            ).toString('base64')}`,
-          ]
-        : [];
+    const token =
+      typeof opts.auth === 'string'
+        ? opts.auth
+        : opts.auth
+          ? this.token
+          : undefined;
+    const authArgs = token
+      ? [
+          '-c',
+          `http.https://github.com/.extraheader=AUTHORIZATION: basic ${Buffer.from(
+            `x-access-token:${token}`,
+          ).toString('base64')}`,
+        ]
+      : [];
     try {
       const { stdout } = await exec('git', [...authArgs, ...args], {
         cwd,
@@ -299,10 +312,9 @@ export class GitService {
       return stdout;
     } catch (err) {
       const e = err as { stderr?: string; message: string };
-      const stderr = (e.stderr ?? e.message).replaceAll(
-        this.token ?? '\0',
-        '***',
-      );
+      const stderr = (e.stderr ?? e.message)
+        .replaceAll(this.token ?? '\0', '***')
+        .replaceAll(token ?? '\0', '***');
       throw new Error(`git ${args[0]} falló: ${stderr.trim()}`);
     }
   }

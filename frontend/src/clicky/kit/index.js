@@ -184,7 +184,8 @@ export function createClicky({
   }
 
   async function post(path, body, headers) {
-    const res = await fetch(api + path, { method: 'POST', headers: { ...extraHeaders(), ...headers }, body });
+    // credentials: el backend exige la cookie de sesión de Mayday (login con GitHub).
+    const res = await fetch(api + path, { method: 'POST', credentials: 'include', headers: { ...extraHeaders(), ...headers }, body });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error([data.message].flat().join('; ') || data.error || res.statusText);
     return data;
@@ -219,6 +220,7 @@ export function createClicky({
       const abort = answering = new AbortController();
       const res = await fetch(api + '/lesson', {
         method: 'POST',
+        credentials: 'include',
         headers: { ...extraHeaders(), 'Content-Type': 'application/vnd.clicky+json' },
         body: JSON.stringify({
           question, elements: h.list, viewport: { w: innerWidth, h: innerHeight }, history, screenshot: image,

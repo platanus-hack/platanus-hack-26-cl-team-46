@@ -53,6 +53,33 @@ export const envSchema = z.object({
   GITHUB_HACK26_ORG_TOKEN: z.string().optional(),
   GITHUB_ORG: z.string().default('hack26-sandboxes'),
 
+  // Login con GitHub (GitHub App, src/auth). Sin las tres variables, el login queda apagado
+  // y la API se comporta como antes: abierta, sin dueños (modo equipo / desarrollo).
+  /** Client ID de la GitHub App (empieza con Iv…). */
+  GITHUB_APP_CLIENT_ID: z.string().optional(),
+  GITHUB_APP_CLIENT_SECRET: z.string().optional(),
+  /** Slug público de la app (github.com/apps/<slug>): para el link "comparte repos con Mayday". */
+  GITHUB_APP_SLUG: z.string().optional(),
+  /** Firma la cookie de sesión y cifra los tokens de GitHub guardados. */
+  SESSION_SECRET: z
+    .string()
+    .min(32, 'SESSION_SECRET debe tener al menos 32 caracteres')
+    .optional(),
+  /** Adónde vuelve el usuario después del login (default: el primer origen de CORS_ORIGIN). */
+  FRONTEND_URL: z.url().optional(),
+  /** Callback de OAuth (default: PUBLIC_BACKEND_URL/auth/github/callback o localhost:PORT). */
+  AUTH_CALLBACK_URL: z.url().optional(),
+  /** Logins de GitHub que ven todos los sandboxes y simulaciones (equipo). Separados por coma. */
+  ADMIN_GITHUB_LOGINS: z
+    .string()
+    .default('')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((k) => k.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+
   // Agente de deploy (fallback cuando el camino determinista no alcanza)
   /**
    * Secreto maestro de los endpoints /agent/*. Cada agente recibe un token
@@ -80,7 +107,7 @@ export const envSchema = z.object({
   CONDUCTOR_AGENT_BLANK_ENV: z
     .string()
     .default(
-      'RENDER_API_KEY,GITHUB_TOKEN,GITHUB_HACK26_ORG_TOKEN,AGENT_API_SECRET,OPENAI_API_KEY,ELEVENLABS_API_KEY,CLOUDFLARE_API_TOKEN,DATABASE_URL',
+      'RENDER_API_KEY,GITHUB_TOKEN,GITHUB_HACK26_ORG_TOKEN,AGENT_API_SECRET,OPENAI_API_KEY,ELEVENLABS_API_KEY,CLOUDFLARE_API_TOKEN,DATABASE_URL,GITHUB_APP_CLIENT_SECRET,SESSION_SECRET',
     )
     .transform((v) =>
       v

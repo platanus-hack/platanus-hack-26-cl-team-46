@@ -1,5 +1,5 @@
 /** Cliente de /simulations (orquestación multi-agente). Tipos alineados con backend/src/simulations. */
-import { API_URL } from "./api";
+import { API_URL, authedEventSource, goToLogin } from "./api";
 
 export type SimStatus = "starting" | "ready" | "running" | "paused" | "finished" | "failed" | "stopped";
 export type SimRole = "infra" | "hacker" | "observer" | "generator" | "coder";
@@ -65,8 +65,10 @@ export interface Simulation {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: { "content-type": "application/json", ...init?.headers },
   });
+  if (res.status === 401) goToLogin();
   const text = await res.text();
   const body = text ? JSON.parse(text) : undefined;
   if (!res.ok) throw new Error(body?.message ?? `${res.status}`);
@@ -88,7 +90,7 @@ export const simApi = {
   stop: (id: string) => post<Simulation>(`/simulations/${id}/stop`, {}),
   /** SSE del timeline. view=user: lo que ve el developer. view=all: también lo interno. */
   subscribe(id: string, view: "user" | "all", onEvent: (e: TimelineEvent) => void): () => void {
-    const es = new EventSource(`${API_URL}/simulations/${id}/stream?view=${view}`);
+    const es = authedEventSource(`${API_URL}/simulations/${id}/stream?view=${view}`);
     // Cada evento llega con `event: <tipo>`, así que hay que escuchar tipo por tipo.
     const types = [
       "sim.status", "deploy.progress", "deploy.ready", "deploy.failed", "control.start", "control.next", "control.pause",

@@ -68,6 +68,10 @@ export interface SandboxRecord {
   /** Nombre que le puso el usuario. Si no hay, se muestra `owner/repo` (sandboxDisplayName). */
   name?: string;
   repo_url: string;
+  /** Usuario de GitHub que lo creó. Sin dueño (creado antes del login) solo lo ven los admins. */
+  owner?: { github_id: number; login: string };
+  /** Repo privado del dueño: se clona con su token de la GitHub App. */
+  private_repo?: boolean;
   ref?: string;
   mode: SandboxMode;
   status: SandboxStatus;

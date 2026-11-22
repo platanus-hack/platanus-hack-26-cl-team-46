@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { createObserveModule } from '@nestjs/observe';
 import { AppController } from './app.controller.js';
+import { AuthModule } from './auth/auth.module.js';
 import { ClickyModule } from './clicky/clicky.module.js';
 import { validateEnv } from './config/env.js';
 import { PreviewModule } from './preview/preview.module.js';
@@ -23,6 +24,7 @@ export const { ObserveModule, ObserveInstrument } = createObserveModule();
       appSecret: process.env.OBSERVE_APP_SECRET ?? 'YOUR_APP_SECRET',
       serviceId: 'backend',
     }),
+    AuthModule,
     SandboxesModule,
     PreviewModule,
     SimulationsModule,

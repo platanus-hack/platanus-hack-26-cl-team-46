@@ -45,6 +45,9 @@ export interface CreateSimulationInput {
   repo_url?: string;
   sandbox_id?: string;
   hacker?: 'emulated' | 'external';
+  /** Con repo_url: dueño del sandbox nuevo y si el repo es privado (ver src/auth). */
+  owner?: { github_id: number; login: string };
+  private_repo?: boolean;
 }
 
 export interface QuickActionInput {
@@ -91,6 +94,19 @@ export class SimulationsService implements OnModuleInit {
 
   list() {
     return this.store.list().map((s) => this.toView(s));
+  }
+
+  /** Dueño de la simulación = dueño de su sandbox (undefined si no tiene). */
+  ownerOf(s: SimulationRecord) {
+    try {
+      return this.sandboxes.get(s.sandbox_id).owner;
+    } catch {
+      return undefined;
+    }
+  }
+
+  records(): SimulationRecord[] {
+    return this.store.list();
   }
 
   get(id: string): SimulationRecord {
@@ -214,6 +230,8 @@ export class SimulationsService implements OnModuleInit {
       sandboxId = this.sandboxes.create({
         repo_url: repoUrl,
         mode: 'auto',
+        owner: input.owner,
+        private_repo: input.private_repo,
       }).sandbox_id;
     } else {
       throw new BadRequestException('Indica repo_url o sandbox_id');

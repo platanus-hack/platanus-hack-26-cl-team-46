@@ -5,9 +5,11 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
+import { AuthService } from '../auth/auth.service.js';
 import type { Env } from '../config/env.js';
 import { SimulationsService } from '../simulations/simulations.service.js';
 
@@ -31,9 +33,8 @@ export interface ClickyRequest extends Request {
 
 /**
  * Acceso a Clicky: solo con una simulación en curso o terminada (`x-sim-id`) y con un límite
- * de preguntas por minuto por IP. No es autenticación de usuario (la app no tiene
- * login); acota quién puede gastar las keys y cuánto. El tope por simulación vive
- * en ClickyService.
+ * de preguntas por minuto por IP. Con el login encendido (src/auth), además la simulación
+ * tiene que ser del usuario de la sesión. El tope por simulación vive en ClickyService.
  */
 @Injectable()
 export class ClickyAccessGuard implements CanActivate {
@@ -42,6 +43,7 @@ export class ClickyAccessGuard implements CanActivate {
   constructor(
     private readonly sims: SimulationsService,
     private readonly config: ConfigService<Env, true>,
+    private readonly auth: AuthService,
   ) {}
 
   canActivate(ctx: ExecutionContext): boolean {
@@ -53,7 +55,11 @@ export class ClickyAccessGuard implements CanActivate {
         'Clicky funciona dentro de una simulación (falta x-sim-id)',
         HttpStatus.UNAUTHORIZED,
       );
+    const user = this.auth.userFrom(req);
+    if (this.auth.enabled && !user)
+      throw new UnauthorizedException('Entra con GitHub para continuar');
     const sim = this.sims.get(simId); // 404 si no existe
+    this.auth.assertAccess(user, this.sims.ownerOf(sim), `Simulación ${simId}`);
     if (!CLICKY_ACTIVE.includes(sim.status))
       throw new ConflictException(
         `La simulación está ${sim.status}: Clicky solo responde con una simulación en curso o terminada`,
