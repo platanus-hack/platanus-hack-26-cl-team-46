@@ -30,11 +30,75 @@ export interface ResultVector {
 }
 
 export interface ResultTimelineEntry {
-  /** Segundos desde que partió el ataque. */
+  /** Segundos de incidente desde que partió el ataque (sin las pausas por Hinty). */
   t: number;
   attack: string;
   userAction: string;
   result: 'ok' | 'tarde' | 'empeora';
+  /** Vuln del momento, si aplica. */
+  vulnId?: string;
+  /** seq del evento del timeline que ancla el momento: el replay en detalle parte de ahí. */
+  seq?: number;
+}
+
+/** Un pedido al agente de código y qué pasó con lo que propuso. */
+export interface ResultAiMoment {
+  t: number;
+  /** seq del user.message. */
+  seq: number;
+  /** Lo que pidió, resumido. */
+  prompt: string;
+  outcome: 'seguida' | 'parcial' | 'ignorada' | 'sin_respuesta';
+  note: string;
+}
+
+/** Cambios reales que hizo el agente de código en la app (medidos en el timeline). */
+export interface ResultAiChanges {
+  commits: number;
+  env: number;
+  db: number;
+  restarts: number;
+  deploys: number;
+  failed: number;
+}
+
+export interface ResultAiUsage {
+  /** Mensajes al agente de código. */
+  prompts: number;
+  /** Sugerencias del agente que siguió. */
+  followed: number;
+  /** Acciones rápidas (botones). */
+  manual: number;
+  changes?: ResultAiChanges;
+  /** Segundos de incidente hasta el primer mensaje al agente (null: nunca le escribió). */
+  firstPrompt?: number | null;
+  /** Segundos promedio que tardó el agente en responder. */
+  avgReply?: number | null;
+  moments?: ResultAiMoment[];
+}
+
+/** Una pregunta a Hinty durante el incidente. */
+export interface ResultHintyMoment {
+  t: number;
+  question: string;
+  /** Hinty respondió con una guía paso a paso. */
+  guided: boolean;
+}
+
+export interface ResultClickyUsage {
+  /** Preguntas que hizo (sin contar los pasos de una guía). */
+  questions: number;
+  /** Marcas que Hinty dibujó en la pantalla. */
+  highlights: number;
+  /** Pasos de una guía que el developer completó. */
+  hintsFollowed: number;
+  /** Veces que abrió Hinty (cada una pausa el incidente). */
+  sessions?: number;
+  /** Segundos con el incidente en pausa por Hinty. */
+  pausedSeconds?: number;
+  moments?: ResultHintyMoment[];
+  /** Lectura del agente de reportes sobre cómo usó a Hinty. */
+  note?: string;
 }
 
 export interface SimulationResult {
@@ -52,12 +116,9 @@ export interface SimulationResult {
     didWell: string[];
     improve: { point: string; why: string }[];
   };
-  aiUsage: { prompts: number; followed: number; manual: number };
-  clickyUsage?: {
-    questions: number;
-    highlights: number;
-    hintsFollowed: number;
-  };
+  aiUsage: ResultAiUsage;
+  /** Solo si mode === 'instructor'. */
+  clickyUsage?: ResultClickyUsage;
   fixes: { title: string; done: boolean; file?: string; steps: string[] }[];
 }
 
@@ -90,4 +151,42 @@ export interface ReportRecord {
   degraded?: boolean;
   error?: string;
   result?: SimulationResult;
+}
+
+/** Una lectura comparada: tú contra las demás corridas. */
+export interface BenchmarkMetric {
+  you: number;
+  median: number | null;
+  /** 0-100: a cuántas corridas les ganaste (null si hay pocos datos). */
+  percentile: number | null;
+  /** Corridas con las que se compara. */
+  runs: number;
+  better: 'higher' | 'lower';
+}
+
+export interface BenchmarkVector {
+  id: string;
+  name: string;
+  family: VectorFamily;
+  score: BenchmarkMetric;
+}
+
+/** GET /simulations/:id/benchmark. Solo agregados anónimos: nunca repos ni usuarios de otros. */
+export interface BenchmarkView {
+  /** Corridas comparables (reportes listos con análisis, sin contar esta). */
+  runs: number;
+  /** Developers distintos detrás de esas corridas. */
+  devs: number;
+  /** Mínimo de corridas para mostrar una comparación. */
+  min_sample: number;
+  overall: {
+    score: BenchmarkMetric;
+    time: BenchmarkMetric;
+    steps: BenchmarkMetric;
+    /** % de corridas que terminaron con el atacante afuera (null si hay pocos datos). */
+    contained_rate: number | null;
+  };
+  /** Mediana de cada skill en las demás corridas (null si hay pocos datos). */
+  skills: ResultSkills | null;
+  vectors: BenchmarkVector[];
 }

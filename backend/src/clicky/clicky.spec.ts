@@ -346,8 +346,14 @@ describe('liveSttUrl', () => {
 });
 
 describe('ClickyService.lesson (ensayo)', () => {
-  const service = (env: Record<string, unknown>) =>
-    new ClickyService({ get: vi.fn((k: string) => env[k]) } as never);
+  const service = (
+    env: Record<string, unknown>,
+    sims: unknown = { recordHinty: vi.fn() },
+  ) =>
+    new ClickyService(
+      { get: vi.fn((k: string) => env[k]) } as never,
+      sims as never,
+    );
 
   it('manda los beats en orden, anclados, y termina con done', async () => {
     const s = service({ CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 5 });
@@ -375,6 +381,71 @@ describe('ClickyService.lesson (ensayo)', () => {
       target: 'b',
       word: 1,
     });
+  });
+
+  it('deja la pregunta en el timeline para el reporte, sin la captura', async () => {
+    const sims = { recordHinty: vi.fn() };
+    const s = service(
+      { CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 5 },
+      sims,
+    );
+    for await (const _ of s.lesson(
+      'sim-0a1b2c3d',
+      lessonSchema.parse({
+        question: '¿qué es este 401?',
+        elements: [{ id: 'b', kind: 'botón', text: 'Pausa' }],
+        voice: false,
+      }),
+    ));
+    expect(sims.recordHinty).toHaveBeenCalledTimes(1);
+    const [simId, rec] = sims.recordHinty.mock.calls[0];
+    expect(simId).toBe('sim-0a1b2c3d');
+    expect(rec).toMatchObject({
+      question: '¿qué es este 401?',
+      stepDone: false,
+    });
+    expect(rec.beats).toBeGreaterThan(0);
+    expect(JSON.stringify(rec)).not.toContain('data:image');
+  });
+
+  it('un paso de guía completado se registra como paso, con la meta', async () => {
+    const sims = { recordHinty: vi.fn() };
+    const s = service(
+      { CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 5 },
+      sims,
+    );
+    for await (const _ of s.lesson(
+      'sim-0a1b2c3d',
+      lessonSchema.parse({
+        question: 'listo',
+        voice: false,
+        walk: { goal: 'ver los logs', done: ['abrir Render'] },
+      }),
+    ));
+    expect(sims.recordHinty.mock.calls[0][1]).toMatchObject({
+      question: 'ver los logs',
+      stepDone: true,
+      walkGoal: 'ver los logs',
+    });
+  });
+
+  it('si registrar falla, la respuesta sigue igual', async () => {
+    const sims = {
+      recordHinty: vi.fn(() => {
+        throw new Error('caída');
+      }),
+    };
+    const s = service(
+      { CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 5 },
+      sims,
+    );
+    const events: LessonEvent[] = [];
+    for await (const e of s.lesson(
+      'sim-0a1b2c3d',
+      lessonSchema.parse({ question: 'x', voice: false }),
+    ))
+      events.push(e);
+    expect(events.at(-1)?.type).toBe('done');
   });
 
   it('respeta el tope de preguntas por simulación antes de llamar al modelo', async () => {
@@ -501,12 +572,15 @@ describe('lo que marca el usuario (modo marcar + shift)', () => {
   });
 
   it('el ensayo empieza por lo que marcó', async () => {
-    const s = new ClickyService({
-      get: vi.fn(
-        (k: string) =>
-          ({ CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 5 })[k],
-      ),
-    } as never);
+    const s = new ClickyService(
+      {
+        get: vi.fn(
+          (k: string) =>
+            ({ CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 5 })[k],
+        ),
+      } as never,
+      { recordHinty: vi.fn() } as never,
+    );
     const parsed = body({
       shape: 'underline',
       box: { x: 0, y: 0, w: 90, h: 6 },

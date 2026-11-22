@@ -1,16 +1,16 @@
 "use client";
 
-import { useRef, type KeyboardEvent } from "react";
+import { useEffect, useRef, type KeyboardEvent } from "react";
 
 export interface ResultTab {
   id: string;
   label: string;
-  /** false = placeholder "Próximamente". */
+  /** false = la pestaña existe pero todavía no tiene contenido (muestra "Pronto"). */
   ready: boolean;
 }
 
 /**
- * Columna de tabs a la izquierda. Navegable con flechas, Inicio y Fin (patrón tablist vertical).
+ * Columna de tabs a la izquierda (en mobile, una fila que se desliza). Navegable con flechas, Inicio y Fin (patrón tablist vertical).
  * El activo se marca con fondo bg-200 y el pixel cian; nunca con un borde de color a la izquierda.
  */
 export function ResultTabs({
@@ -23,6 +23,15 @@ export function ResultTabs({
   onSelect: (id: string) => void;
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // En mobile la fila se desliza: el tab activo siempre queda a la vista.
+  useEffect(() => {
+    const el = refs.current[tabs.findIndex((t) => t.id === active)];
+    const row = el?.parentElement;
+    if (!el || !row || row.scrollWidth <= row.clientWidth) return;
+    const offset = el.getBoundingClientRect().left - row.getBoundingClientRect().left;
+    row.scrollTo({ left: row.scrollLeft + offset - row.clientWidth / 2 + el.clientWidth / 2, behavior: "smooth" });
+  }, [active, tabs]);
 
   const onKeyDown = (e: KeyboardEvent, i: number) => {
     const last = tabs.length - 1;
@@ -40,8 +49,8 @@ export function ResultTabs({
 
   return (
     <nav className="flex flex-col gap-1" aria-label="Secciones del resultado">
-      <span className="md-hud__label px-3 pb-3">Debrief</span>
-      <div role="tablist" aria-orientation="vertical" className="flex flex-col gap-1">
+      <span className="md-hud__label hidden px-3 pb-3 md:block">Debrief</span>
+      <div role="tablist" aria-orientation="vertical" className="-mx-1 flex gap-1 overflow-x-auto px-1 md:mx-0 md:flex-col md:overflow-visible md:px-0">
         {tabs.map((tab, i) => {
           const selected = tab.id === active;
           return (
@@ -58,7 +67,7 @@ export function ResultTabs({
               tabIndex={selected ? 0 : -1}
               onClick={() => onSelect(tab.id)}
               onKeyDown={(e) => onKeyDown(e, i)}
-              className={`flex h-10 items-center gap-3 rounded-sm px-3 text-left text-[14px] leading-5 transition-colors ${
+              className={`flex h-10 shrink-0 items-center gap-3 rounded-sm px-3 text-left text-[14px] leading-5 transition-colors ${
                 selected ? "bg-bg-200 text-ink" : "text-ink-muted hover:bg-bg-100 hover:text-ink"
               }`}
             >

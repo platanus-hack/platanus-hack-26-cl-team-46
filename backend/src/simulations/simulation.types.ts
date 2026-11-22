@@ -291,6 +291,15 @@ export const EVENT_TYPES: Record<string, EventTypeSpec> = {
     description: 'Un redeploy falló (sigue la versión anterior)',
   },
 
+  // ---- Hinty (el profesor que ve la pantalla): solo para el reporte
+  'hinty.question': {
+    by: ['system'],
+    wakes: [],
+    visibility: 'internal',
+    description:
+      'El developer le preguntó a Hinty durante el incidente (raw.question, raw.step_done, raw.marks, raw.guided)',
+  },
+
   // ---- infra
   'context.ready': {
     by: ['infra'],

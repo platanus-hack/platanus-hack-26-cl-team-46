@@ -1,4 +1,4 @@
-import type { SimulationResult } from "./types";
+import type { Benchmark, SimulationResult } from "./types";
 
 /**
  * Resultado de ejemplo para la demo: simulacro en modo examen contra Apuntes (la app víctima).
@@ -49,7 +49,20 @@ export const mockResult: SimulationResult = {
       },
     ],
   },
-  aiUsage: { prompts: 7, followed: 5, manual: 2 },
+  aiUsage: {
+    prompts: 7,
+    followed: 5,
+    manual: 2,
+    changes: { commits: 3, env: 1, db: 1, restarts: 1, deploys: 5, failed: 0 },
+    firstPrompt: 41,
+    avgReply: 12,
+    moments: [
+      { t: 41, seq: 0, prompt: "Muéstrame los logs de /login", outcome: "seguida", note: "Viste los 1.240 intentos antes de tocar nada." },
+      { t: 118, seq: 1, prompt: "Cámbiale la contraseña a Martín", outcome: "seguida", note: "Se hizo por SQL, pero el JWT robado siguió sirviendo." },
+      { t: 180, seq: 2, prompt: "Rota JWT_SECRET y redespliega", outcome: "seguida", note: "Redeploy en 25 s: el atacante quedó afuera." },
+      { t: 380, seq: 3, prompt: "Reinicia el servicio", outcome: "ignorada", note: "El agente sugirió revisar /notes/:id; reiniciaste igual y no sirvió." },
+    ],
+  },
   fixes: [
     {
       title: "Invalida los JWT al cambiar la contraseña",
@@ -90,6 +103,40 @@ export const mockResult: SimulationResult = {
         "Baja la expiración del JWT de 30 días a 1 hora.",
         "Usa refresh tokens rotativos guardados en la base.",
       ],
+    },
+  ],
+};
+
+/** Benchmark de ejemplo para la demo (sin simulación real no hay corridas que comparar). */
+export const mockBenchmark: Benchmark = {
+  runs: 24,
+  devs: 17,
+  min_sample: 3,
+  overall: {
+    score: { you: 70, median: 58, percentile: 71, runs: 24, better: "higher" },
+    time: { you: 462, median: 540, percentile: 63, runs: 24, better: "lower" },
+    steps: { you: 9, median: 8, percentile: 42, runs: 24, better: "lower" },
+    contained_rate: 46,
+  },
+  skills: { contencion: 61, reaccion: 55, precision: 58, protocolo: 49, integridad: 80 },
+  vectors: [
+    {
+      id: "weak-password-no-rate-limit",
+      name: "Fuerza bruta en el login",
+      family: "C",
+      score: { you: 82, median: 70, percentile: 74, runs: 21, better: "higher" },
+    },
+    {
+      id: "jwt-not-invalidated-on-password-change",
+      name: "JWT robado sigue vivo",
+      family: "B",
+      score: { you: 46, median: 38, percentile: 60, runs: 18, better: "higher" },
+    },
+    {
+      id: "idor",
+      name: "IDOR en /api/notes/:id",
+      family: "A",
+      score: { you: 71, median: 66, percentile: 56, runs: 15, better: "higher" },
     },
   ],
 };

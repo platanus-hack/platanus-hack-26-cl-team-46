@@ -482,6 +482,40 @@ export class SimulationsService implements OnModuleInit {
     });
   }
 
+  /**
+   * Deja en el timeline una pregunta a Hinty hecha con el incidente en curso, para el
+   * reporte (modo instructor y pestaña "Uso de Hinty"). Interno: no se le muestra al
+   * developer ni despierta a ningún agente. Nunca guarda la captura, solo el texto.
+   */
+  recordHinty(
+    id: string,
+    input: {
+      question: string;
+      stepDone: boolean;
+      walkGoal?: string;
+      marks: number;
+      guided: boolean;
+      beats: number;
+    },
+  ) {
+    const s = this.store.get(id);
+    if (!s || !['running', 'paused'].includes(s.status)) return null;
+    return this.system(
+      id,
+      'hinty.question',
+      input.stepDone ? 'Hinty: siguiente paso de la guía' : 'Pregunta a Hinty',
+      input.question,
+      {
+        question: input.question,
+        step_done: input.stepDone,
+        ...(input.walkGoal ? { walk_goal: input.walkGoal } : {}),
+        marks: input.marks,
+        guided: input.guided,
+        beats: input.beats,
+      },
+    );
+  }
+
   /** Acciones rápidas (botones). Las deterministas se ejecutan acá; el resto se delega al agente de código. */
   action(id: string, input: QuickActionInput) {
     const s = this.requireActive(id);
