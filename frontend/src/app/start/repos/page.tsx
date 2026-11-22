@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Button, ButtonLink, StatusChip, TypedLog } from "@/components/mayday";
 import { Avatar } from "@/components/onboarding/Avatar";
 import { OnboardingShell, StepHeading } from "@/components/onboarding/OnboardingShell";
@@ -71,6 +71,10 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
   const [names, setNames] = useState<Record<string, string>>({});
   const name = selected ? (names[selected.full_name] ?? "") : "";
   const locked = send.status === "sending" || send.status === "sent";
+  // Mobile: el panel del sandbox queda bajo la lista. Una barra fija abajo lleva hasta él mientras no se ve.
+  const panelRef = useRef<HTMLElement>(null);
+  const panelVisible = useInView(panelRef);
+  const showBar = Boolean(selected) && send.status !== "sent" && !panelVisible;
 
   useEffect(() => {
     let cancelled = false;
@@ -130,22 +134,22 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
 
   return (
     <div className="grid flex-1 grid-cols-1 lg:grid-cols-[1fr_420px]">
-      <section className="flex min-w-0 flex-col gap-8 px-6 py-12 md:px-12">
+      <section className={`flex min-w-0 flex-col gap-6 px-5 py-8 md:gap-8 md:px-12 md:py-12 ${selected ? "max-lg:pb-20" : ""}`}>
         <StepHeading step={3} title="Elige el repo que vamos a hackear.">
           Funciona mejor con una app web con backend: una API, un login, una base de datos.
         </StepHeading>
 
         {user && (
-          <div className="flex flex-wrap items-center gap-3 text-[13px] text-ink-muted">
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-muted">
             <Avatar src={user.avatar_url} login={user.login} size={24} />
-            <span>
+            <span className="min-w-0 flex-1 sm:flex-none">
               Repos que <span className="font-mono text-ink">@{user.login}</span> compartió con Mayday
             </span>
             {installUrl && (
               <>
-                <span className="text-ink-faint">·</span>
-                {/* GitHub vuelve a esta página al terminar (Setup URL de la app). */}
-                <a href={installUrl} className="underline-offset-4 hover:text-ink hover:underline">
+                <span className="text-ink-faint max-sm:hidden">·</span>
+                {/* GitHub vuelve a esta página al terminar (Setup URL de la app). En mobile va en su propia línea. */}
+                <a href={installUrl} className="underline-offset-4 hover:text-ink hover:underline max-sm:basis-full max-sm:pl-9">
                   Comparte más repos en GitHub ↗
                 </a>
               </>
@@ -158,9 +162,10 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Busca por nombre, descripción o lenguaje"
+            placeholder="Busca por nombre o lenguaje"
             aria-label="Busca un repo"
-            className="h-10 rounded-md border border-line-strong bg-bg-100 px-3 text-[15px] text-ink placeholder:text-ink-faint focus:border-defense"
+            // 16 px en mobile: con menos, iOS hace zoom al enfocar.
+            className="h-12 rounded-md border border-line-strong bg-bg-100 px-4 text-[16px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] sm:h-10 sm:text-[15px]"
           />
 
           <div
@@ -238,6 +243,7 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
       </section>
 
       <SelectionPanel
+        ref={panelRef}
         selected={selected}
         send={send}
         name={name}
@@ -248,8 +254,37 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
           setSelected(null);
         }}
       />
+
+      {showBar && selected && (
+        <div className="md-bar-in fixed inset-x-0 bottom-0 z-30 flex items-center gap-3 border-t border-line bg-bg-100/95 px-5 pt-3 pb-[max(12px,env(safe-area-inset-bottom))] backdrop-blur lg:hidden">
+          <span className="flex min-w-0 flex-1 flex-col">
+            <span className="md-index">TU SANDBOX</span>
+            <span className="truncate font-mono text-[14px] text-ink">{selected.full_name}</span>
+          </span>
+          <Button
+            variant="primary"
+            onClick={() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
+            className="h-11 shrink-0 justify-center px-5 text-[15px]"
+          >
+            Continúa
+          </Button>
+        </div>
+      )}
     </div>
   );
+}
+
+/** true mientras el elemento se ve en pantalla (aunque sea un poco). */
+function useInView(ref: React.RefObject<HTMLElement | null>) {
+  const [inView, setInView] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const io = new IntersectionObserver(([entry]) => setInView(entry.isIntersecting), { threshold: 0 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [ref]);
+  return inView;
 }
 
 function RepoRow({
@@ -290,7 +325,7 @@ function RepoRow({
       </span>
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="flex flex-wrap items-center gap-2">
-          <span className="truncate font-mono text-[15px] text-ink">{choice.full_name}</span>
+          <span className="min-w-0 truncate font-mono text-[14px] text-ink sm:text-[15px]">{choice.full_name}</span>
           {choice.demo && <StatusChip>Ejemplo</StatusChip>}
           {choice.private && <StatusChip>Privado</StatusChip>}
           {repo?.fork && <StatusChip>Fork</StatusChip>}
@@ -312,6 +347,7 @@ function RepoRow({
 }
 
 function SelectionPanel({
+  ref,
   selected,
   send,
   name,
@@ -319,6 +355,7 @@ function SelectionPanel({
   onSend,
   onReset,
 }: {
+  ref: React.Ref<HTMLElement>;
   selected: Choice | null;
   send: SendState;
   name: string;
@@ -327,7 +364,7 @@ function SelectionPanel({
   onReset: () => void;
 }) {
   return (
-    <aside className="border-t border-line bg-bg-100 px-6 py-12 md:px-12 lg:border-t-0 lg:border-l lg:px-8">
+    <aside ref={ref} className="scroll-mt-14 border-t border-line bg-bg-100 px-5 py-8 md:px-12 md:py-12 lg:border-t-0 lg:border-l lg:px-8">
       <div className="flex flex-col gap-6 lg:sticky lg:top-12" aria-live="polite">
         <div className="flex items-center justify-between gap-3">
           <h2 className="md-index">TU SANDBOX</h2>
@@ -341,7 +378,7 @@ function SelectionPanel({
         ) : (
           <>
             <div className="flex flex-col gap-2">
-              <span className="font-mono text-[20px] leading-7 break-all">{selected.full_name}</span>
+              <span className="font-mono text-[17px] leading-6 break-all md:text-[20px] md:leading-7">{selected.full_name}</span>
               <a
                 href={selected.html_url}
                 target="_blank"
@@ -362,7 +399,7 @@ function SelectionPanel({
                   <dt className="text-ink-faint">SANDBOX</dt>
                   <dd className="text-ink">{send.name}</dd>
                 </dl>
-                <div className="flex flex-wrap gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap [&>*]:justify-center">
                   {/* El simulacro muestra el avance del deploy y parte solo cuando la app está arriba. */}
                   <ButtonLink href={`/simulate?sandbox=${send.sandboxId}`} variant="primary">
                     Ir al simulacro
@@ -373,7 +410,7 @@ function SelectionPanel({
               </div>
             ) : (
               <>
-                <ul className="flex flex-col gap-3 text-[15px] leading-[22px] text-ink-muted">
+                <ul className="flex flex-col gap-3 text-[14px] leading-[22px] text-ink-muted md:text-[15px]">
                   <li className="flex gap-3">
                     <span className="mt-2 size-1.5 shrink-0 bg-defense" aria-hidden="true" />
                     Copiamos el repo a un espacio privado nuestro. El tuyo no se toca.
@@ -395,12 +432,11 @@ function SelectionPanel({
                     maxLength={80}
                     disabled={send.status === "sending"}
                     placeholder={selected.full_name}
-                    style={{ outline: "none" }}
                     onChange={(e) => onName(e.target.value)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter") onSend();
                     }}
-                    className="h-10 rounded-sm border border-line-strong bg-bg-200 px-3 text-[15px] text-ink placeholder:text-ink-faint focus:border-defense"
+                    className="h-12 rounded-md border border-line-strong bg-bg-200 px-4 text-[16px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] sm:h-10 sm:text-[15px]"
                   />
                   <span className="text-[13px] text-ink-faint">Opcional. Si lo dejas vacío, se llama {selected.full_name}.</span>
                 </label>

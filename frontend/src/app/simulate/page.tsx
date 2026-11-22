@@ -241,15 +241,16 @@ function SimulateConsole() {
   ];
 
   return (
-    <main className="flex h-screen flex-col gap-3 p-4 font-sans text-sm">
-      <header className="flex items-center gap-4 border-b border-line pb-3">
-        <Link href="/" aria-label="Mayday, inicio" className="shrink-0">
+    // Mobile: la página hace scroll (no cabe en una pantalla) y debajo de la barra de la app, que ya trae el logo.
+    <main className="flex min-h-[calc(100svh-56px)] flex-col gap-3 p-4 font-sans text-sm md:h-screen md:min-h-0">
+      <header className={`flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line pb-3 ${entry ? "" : "max-md:hidden"}`}>
+        <Link href="/" aria-label="Mayday, inicio" className="shrink-0 max-md:hidden">
           <Logo height={24} priority />
         </Link>
         {entry && (
           <>
-            <span className="h-6 w-px shrink-0 bg-line" aria-hidden="true" />
-            <div className="flex min-w-0 items-center gap-1">
+            <span className="h-6 w-px shrink-0 bg-line max-md:hidden" aria-hidden="true" />
+            <div className="flex min-w-0 flex-1 items-center gap-1 md:flex-none">
               {renamingTitle ? (
                 <RenameInput
                   initial={entry.sandbox.name}
@@ -284,12 +285,15 @@ function SimulateConsole() {
               className="flex shrink-0 items-center gap-2 rounded-md border border-line-strong px-3 py-1.5 text-[13px] text-ink-muted hover:bg-bg-200 hover:text-ink"
             >
               <ArrowLeftRight className="size-4" strokeWidth={1.5} aria-hidden="true" />
-              Cambiar sandbox
-              <CmdK />
+              <span className="max-sm:hidden">Cambiar sandbox</span>
+              <span className="sm:hidden">Cambiar</span>
+              <span className="max-md:hidden">
+                <CmdK />
+              </span>
             </button>
           </>
         )}
-        <div className="ml-auto flex items-center gap-4">{sim && <FlowControls sim={sim} run={run} onNewRun={newRun} />}</div>
+        <div className="flex items-center gap-4 max-md:w-full md:ml-auto">{sim && <FlowControls sim={sim} run={run} onNewRun={newRun} />}</div>
       </header>
 
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
@@ -299,11 +303,11 @@ function SimulateConsole() {
       )}
 
       {sim && !firstPass && (
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] gap-3">
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1fr)_420px]">
           {/* Izquierda: el espacio de trabajo simulado (arriba) y el historial de sucesos (abajo).
               Es la columna de Hinty: su tile, su isla, su pizarra y sus tarjetas van aquí, nunca sobre el Agente. */}
           <div className="flex min-h-0 min-w-0 flex-col gap-3" data-clicky-region="column">
-            <div className="relative min-h-0 flex-[3]" data-clicky-region="stage">
+            <div className="relative min-h-0 flex-[3] max-lg:h-[min(560px,70svh)] max-lg:flex-none" data-clicky-region="stage">
               {/* Columna de tarjetas de Hinty: 320 px pegada al borde derecho de Chrome (invisible). */}
               <div data-clicky-region="stage-side" aria-hidden="true" className="pointer-events-none invisible absolute top-3 right-3 bottom-3 w-80" />
               <BrowserWindow
@@ -315,7 +319,7 @@ function SimulateConsole() {
                 mails={mails}
               />
             </div>
-            <section className="flex min-h-0 flex-[2] flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
+            <section className="flex min-h-0 flex-[2] flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3 max-lg:max-h-[360px] max-lg:flex-none">
               <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Historial de sucesos</h2>
               {godMode && <InternalPanel sim={sim} run={run} />}
               {sim.debrief && <Debrief debrief={sim.debrief} />}
@@ -325,13 +329,15 @@ function SimulateConsole() {
             </section>
           </div>
 
-          {/* Panel derecho: chat con el agente */}
-          <AgentChat
-            title={sim.repo_url.replace(/\/$/, "").split("/").pop() || "Respuesta a incidente"}
-            events={chat}
-            live={sim.status === "running" || sim.status === "paused"}
-            onSend={(msg) => run(() => simApi.message(sim.sim_id, msg))}
-          />
+          {/* Panel derecho: chat con el agente. En mobile va debajo, con alto propio. */}
+          <div className="min-h-0 min-w-0 max-lg:h-[75svh]">
+            <AgentChat
+              title={sim.repo_url.replace(/\/$/, "").split("/").pop() || "Respuesta a incidente"}
+              events={chat}
+              live={sim.status === "running" || sim.status === "paused"}
+              onSend={(msg) => run(() => simApi.message(sim.sim_id, msg))}
+            />
+          </div>
         </div>
       )}
 
@@ -388,8 +394,8 @@ function FlowControls({
   const live = sim.status === "running" || sim.status === "paused";
   const pending = sim.status === "starting" ? pendingSteps(sim) : [];
   return (
-    <div className="flex items-center gap-2">
-      <span className="text-ink-muted" title={sim.error ?? undefined}>
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-ink-muted max-md:w-full" title={sim.error ?? undefined}>
         <span className="font-medium text-ink">{STATUS_LABEL[sim.status] ?? sim.status}</span>
         {pending.length > 0 && <> · {pending.join(" · ")}…</>}
         {sim.status === "failed" && sim.error && <> · {sim.error.slice(0, 80)}</>}
