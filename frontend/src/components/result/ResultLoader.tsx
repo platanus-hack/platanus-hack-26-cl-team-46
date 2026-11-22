@@ -1,22 +1,31 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Button, ButtonLink, StatusChip } from "@/components/mayday";
 import { simApi, type ReportView } from "@/lib/sim-api";
-import { mockResult } from "./mock-result";
+import { mockBenchmark, mockResult } from "./mock-result";
 import { ResultDashboard } from "./ResultDashboard";
 
 const POLL_MS = 3_000;
 
 /**
  * Carga el reporte de `?sim=`: mientras el agente de reportes trabaja muestra la espera
- * y, cuando está listo, el dashboard. Sin `?sim=` queda el resultado de ejemplo (demo).
+ * y, cuando está listo, el dashboard. `?demo` muestra el resultado de ejemplo; sin nada,
+ * manda al historial de reportes.
  */
 export function ResultLoader() {
-  const simId = useSearchParams().get("sim");
-  if (!simId) return <ResultDashboard result={mockResult} />;
-  return <LiveResult key={simId} simId={simId} />;
+  const params = useSearchParams();
+  const simId = params.get("sim");
+  if (simId) return <LiveResult key={simId} simId={simId} />;
+  if (params.has("demo")) return <ResultDashboard result={mockResult} sampleBenchmark={mockBenchmark} />;
+  return <ToReports />;
+}
+
+function ToReports() {
+  const router = useRouter();
+  useEffect(() => router.replace("/reports"), [router]);
+  return null;
 }
 
 function LiveResult({ simId }: { simId: string }) {
@@ -47,7 +56,7 @@ function LiveResult({ simId }: { simId: string }) {
     };
   }, [simId, done]);
 
-  if (view?.status === "ready" && view.result) return <ResultDashboard result={view.result} />;
+  if (view?.status === "ready" && view.result) return <ResultDashboard result={view.result} simId={simId} />;
 
   const retry = async () => {
     setRetrying(true);

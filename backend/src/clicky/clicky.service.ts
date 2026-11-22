@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
+import { SimulationsService } from '../simulations/simulations.service.js';
 import { BrainError, streamBeats } from './brain.js';
 import type { LessonBody } from './clicky.schemas.js';
 import {
@@ -47,7 +48,10 @@ export class ClickyService {
     { questions: number; ttsChars: number; sttSessions: number }
   >();
 
-  constructor(private readonly config: ConfigService<Env, true>) {}
+  constructor(
+    private readonly config: ConfigService<Env, true>,
+    private readonly sims: SimulationsService,
+  ) {}
 
   private cfg<K extends keyof Env>(k: K): Env[K] {
     return this.config.get(k, { infer: true });
@@ -128,6 +132,8 @@ export class ClickyService {
 
     let sent = 0;
     let voiced = 0;
+    let marks = 0;
+    let guided = false;
     try {
       for (;;) {
         if (sent < ready.length) {
@@ -135,6 +141,8 @@ export class ClickyService {
           if (sent === 0)
             this.logger.log(`[${simId}] primer beat en ${Date.now() - t0} ms`);
           if (beat.audio) voiced++;
+          marks += beat.marks.length;
+          if (beat.marks.some((m) => m.type === 'step')) guided = true;
           yield { type: 'beat', index: sent++, ...beat };
           continue;
         }
@@ -160,6 +168,28 @@ export class ClickyService {
     } finally {
       abort.abort(); // si el usuario se fue o preguntó otra cosa, no seguir pagando el modelo
       await pump;
+      if (sent) this.record(simId, input, { marks, guided, beats: sent });
+    }
+  }
+
+  /** Deja la pregunta en el timeline para el reporte (solo con el incidente en curso). */
+  private record(
+    simId: string,
+    input: LessonBody,
+    out: { marks: number; guided: boolean; beats: number },
+  ) {
+    try {
+      const stepDone = Boolean(input.walk?.done.length);
+      this.sims?.recordHinty(simId, {
+        question: stepDone ? input.walk!.goal : input.question,
+        stepDone,
+        walkGoal: input.walk?.goal,
+        ...out,
+      });
+    } catch (err) {
+      this.logger.warn(
+        `[${simId}] no se pudo registrar la pregunta a Hinty: ${(err as Error).message}`,
+      );
     }
   }
 

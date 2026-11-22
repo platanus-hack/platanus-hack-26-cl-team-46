@@ -8,13 +8,13 @@
  * Uso:
  *   node engine/src/cli/run.ts --url https://sbx-xxxx.onrender.com [opciones]
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { diagnose } from '../core/diagnose.ts';
 import { buildDiagnoses, type CodeRef } from '../core/diagnosis.ts';
 import { buildAttackPlan, toTimelineEvents } from '../core/events.ts';
 import { CostLedger } from '../core/ledger.ts';
-import { appDirOf, correlate, discoverRepo } from '../discovery/index.ts';
+import { appDirOf, correlate, discoverRepo, type RepoModel } from '../discovery/index.ts';
 import { buildCascadeFromEnv } from '../providers/cascade.ts';
 import { runSemgrep } from '../providers/semgrep.ts';
 import { recon } from '../core/recon.ts';
@@ -55,6 +55,8 @@ Opciones:
   --weak-email <email>  Credencial conocida para fuerza bruta / sesión de baja privilegia
   --weak-pass <pass>    (ambos juntos; sin default, específico de la app)
   --repo <path>         Ruta al repo del target: discovery estática + correlación archivo/línea
+  --repo-model <path>   Reusa un RepoModel ya calculado (JSON) y SALTA el discovery
+                        estático. Ideal para re-verificar una vuln (--only) sin re-descubrir.
   --commit <sha>        Commit del target, para versionar el escenario y los FileRef
   --no-recon            Saltar la fase de reconocimiento
   --semgrep             Correr semgrep (SAST) sobre --repo; requiere el binario o Docker
@@ -73,6 +75,20 @@ function arg(name: string, def?: string): string | undefined {
 }
 function flag(name: string): boolean {
   return process.argv.includes(`--${name}`);
+}
+
+/** Carga un RepoModel serializado (--repo-model) para saltar el discovery estático. */
+async function loadRepoModel(file: string): Promise<RepoModel> {
+  let model: RepoModel;
+  try {
+    model = JSON.parse(await readFile(file, 'utf8')) as RepoModel;
+  } catch (e) {
+    throw new Error(`--repo-model no se pudo leer (${file}): ${e instanceof Error ? e.message : e}`);
+  }
+  if (!model || !Array.isArray(model.routes) || !Array.isArray(model.signals)) {
+    throw new Error(`--repo-model inválido (${file}): se esperaba un RepoModel con routes[] y signals[]`);
+  }
+  return model;
 }
 
 async function main() {
@@ -123,10 +139,19 @@ async function main() {
   console.log('');
 
   // Fase discovery (A): el repo participa. Correlaciona hallazgos con archivo/línea.
+  // --repo-model reusa un RepoModel ya calculado (p. ej. de la primera pasada) y
+  // SALTA el discovery estático pesado: así una re-verificación (--only) ataca una
+  // sola vuln sin re-clonar ni re-escanear todo el repo.
   const repoPath = arg('repo');
-  let repoModel;
+  const repoModelPath = arg('repo-model');
+  let repoModel: RepoModel | undefined;
   let discoveryMs = 0;
-  if (repoPath) {
+  if (repoModelPath) {
+    const t = Date.now();
+    repoModel = await loadRepoModel(path.resolve(repoModelPath));
+    discoveryMs = Date.now() - t;
+    console.log(`▶ discovery: RepoModel reusado (${repoModel.routes.length} rutas, ${repoModel.signals.length} señales) · sin re-escanear`);
+  } else if (repoPath) {
     const t = Date.now();
     repoModel = await discoverRepo(path.resolve(repoPath), { commit: arg('commit') });
     discoveryMs = Date.now() - t;

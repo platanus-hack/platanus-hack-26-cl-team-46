@@ -11,6 +11,7 @@ import { AuthService, type AuthUser } from '../../auth/auth.service.js';
 import { CurrentUser, SessionGuard } from '../../auth/session.guard.js';
 import type { SimulationRecord } from '../simulation.types.js';
 import { SimulationsService } from '../simulations.service.js';
+import { computeBenchmark } from './benchmark.js';
 import { ReportAgent } from './report.agent.js';
 
 /**
@@ -83,6 +84,32 @@ export class ReportsController {
       error: r.status === 'failed' ? (r.error ?? null) : null,
       result: r.result ?? null,
     };
+  }
+
+  /**
+   * Benchmark: tu reporte contra las demás corridas listas y con análisis (las de todos
+   * los usuarios). Solo agregados anónimos: nunca sale un repo, un usuario ni un reporte
+   * ajeno. Se calcula al leer, así que mejora con cada simulación nueva.
+   */
+  @Get('simulations/:id/benchmark')
+  benchmark(@Param('id') id: string, @CurrentUser() user: AuthUser | null) {
+    const s = this.owned(id, user);
+    const you = s.report?.status === 'ready' ? s.report.result : undefined;
+    if (!you) throw new NotFoundException('El reporte todavía no está listo');
+    const runs = this.sims
+      .records()
+      .filter(
+        (o) =>
+          o.sim_id !== s.sim_id &&
+          o.report?.status === 'ready' &&
+          !o.report.degraded &&
+          o.report.result,
+      )
+      .map((o) => ({
+        result: o.report!.result!,
+        owner: this.owner(o)?.login,
+      }));
+    return computeBenchmark(you, runs);
   }
 
   /** Vuelve a generar el reporte (por ejemplo, si salió con el respaldo). */

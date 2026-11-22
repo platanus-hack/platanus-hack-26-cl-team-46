@@ -52,7 +52,7 @@ export function ResultDiagnostico({ result, index }: { result: SimulationResult;
         <p className="max-w-[60ch] text-[15px] leading-[22px] text-ink-muted">
           {result.mode === "examen"
             ? "Medido en modo examen: sin instructor ni pistas. Este es tu rango real."
-            : "Medido con instructor: Clicky te guió, así que el rango es de aprendizaje, no de examen."}
+            : "Medido con instructor: Hinty te guió, así que el rango es de aprendizaje, no de examen."}
         </p>
       </section>
     </div>

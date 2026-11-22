@@ -16,7 +16,16 @@ import { BlockList, isIP } from 'node:net';
  */
 
 export type FrameCheck =
-  | { embeddable: true }
+  | {
+      embeddable: true;
+      /**
+       * false cuando la URL no tiene una página que mostrar: responde un error
+       * (4xx/5xx) que no es HTML, típico de un backend que es solo API y no
+       * tiene nada en `/`. En el iframe eso se ve como una página en blanco.
+       */
+      page: boolean;
+      status: number;
+    }
   | {
       embeddable: false;
       reason: 'blocked' | 'unreachable' | 'invalid' | 'private';
@@ -87,6 +96,13 @@ export function embeddableFromHeaders(
     }
     return src.replace(/\/$/, '') === origin;
   });
+}
+
+/** ¿La respuesta es algo que valga la pena mostrar en el iframe? Ver FrameCheck. */
+export function hasPage(res: { status: number; headers: Headers }): boolean {
+  if (res.status < 400) return true;
+  const type = res.headers.get('content-type') ?? '';
+  return /text\/html|application\/xhtml/i.test(type);
 }
 
 async function assertPublic(url: URL): Promise<FrameCheck | null> {
@@ -165,9 +181,9 @@ export async function checkFrame(
       }
       continue;
     }
-    return embeddableFromHeaders(res.headers, origin)
-      ? { embeddable: true }
-      : { embeddable: false, reason: 'blocked' };
+    if (!embeddableFromHeaders(res.headers, origin))
+      return { embeddable: false, reason: 'blocked' };
+    return { embeddable: true, page: hasPage(res), status: res.status };
   }
   return { embeddable: false, reason: 'unreachable', detail: 'redirects' };
 }

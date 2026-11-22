@@ -101,6 +101,29 @@ body {
 .md-bar-in { animation: md-bar-in .2s cubic-bezier(.2,.8,.2,1) both; }
 @media (prefers-reduced-motion: reduce) { .md-bar-in { animation: none; } }
 
+/* Panel del agente de deploy (AgentPanel): barrido de luz lento mientras trabaja, pulso del punto
+   de estado, barra del paso en curso que va y viene, y líneas que entran. Es movimiento, no luz. */
+@keyframes md-agent-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.md-agent-sweep::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, #2EE6FF12 50%, transparent 70%);
+  animation: md-agent-sweep 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes md-agent-ping { from { transform: scale(1); opacity: .6; } to { transform: scale(2.6); opacity: 0; } }
+.md-agent-ping { animation: md-agent-ping 1.8s cubic-bezier(0, 0, .2, 1) infinite; }
+@keyframes md-agent-progress { from { left: -33%; } to { left: 100%; } }
+.md-agent-progress { animation: md-agent-progress 1.6s ease-in-out infinite; }
+@keyframes md-agent-line { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.md-agent-line { animation: md-agent-line .35s cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .md-agent-sweep::before, .md-agent-ping, .md-agent-line { animation: none; }
+  .md-agent-ping { display: none; }
+  .md-agent-progress { animation: none; left: 0; width: 50%; opacity: .6; }
+}
+
 /* Historial de sucesos: luz de encendido. Un pixel cian que parpadea y la etiqueta ON, como el led de un equipo. */
 .md-power { display: inline-flex; align-items: center; gap: 8px; height: 16px; }
 .md-power i {

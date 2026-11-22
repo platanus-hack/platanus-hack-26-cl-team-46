@@ -2,13 +2,17 @@
 
 import { useRef, useState } from "react";
 import { ButtonLink, PixelTransition, StatusChip } from "@/components/mayday";
+import { ResultAiUsage } from "./ResultAiUsage";
+import { ResultBenchmark } from "./ResultBenchmark";
 import { ResultDiagnostico } from "./ResultDiagnostico";
 import { ResultFixes } from "./ResultFixes";
+import { ResultHinty } from "./ResultHinty";
 import { ResultRecomendaciones } from "./ResultRecomendaciones";
+import { ResultReplay } from "./ResultReplay";
 import { ResultSkills } from "./ResultSkills";
 import { ResultTabs, type ResultTab } from "./ResultTabs";
-import { hudReadings, TabHeading } from "./shared";
-import type { SimulationResult } from "./types";
+import { hudReadings } from "./shared";
+import type { Benchmark, SimulationResult } from "./types";
 
 /**
  * Pantalla de Resultado: lo último que ve el usuario al terminar el simulacro.
@@ -16,18 +20,30 @@ import type { SimulationResult } from "./types";
  * tabs a la izquierda y contenido a la derecha. Entra con PixelTransition a pantalla completa;
  * cambiar de tab hace la transición dentro del panel (pixel-lg: el panel es casi pantalla completa; con celdas chicas serían miles de nodos animados).
  */
-const ALL_TABS: (ResultTab & { instructorOnly?: boolean; soon?: string })[] = [
+const ALL_TABS: (ResultTab & { instructorOnly?: boolean })[] = [
   { id: "diagnostico", label: "Diagnóstico", ready: true },
   { id: "skills", label: "Skills", ready: true },
-  { id: "replay", label: "Replay", ready: false, soon: "El incidente paso a paso: cada ataque, lo que hiciste y si llegó a tiempo." },
+  { id: "replay", label: "Replay", ready: true },
   { id: "recomendaciones", label: "Recomendaciones", ready: true },
-  { id: "ia", label: "Uso de IA", ready: false, soon: "Cuánto le pediste a tu agente, cuánto le hiciste caso y qué resolviste a mano." },
-  { id: "clicky", label: "Uso de Clicky", ready: false, instructorOnly: true, soon: "Qué le preguntaste al instructor y qué pistas seguiste." },
+  { id: "ia", label: "Uso de IA", ready: true },
+  { id: "hinty", label: "Uso de Hinty", ready: true, instructorOnly: true },
   { id: "fixes", label: "Qué arreglar", ready: true },
-  { id: "benchmark", label: "Benchmark", ready: false, soon: "Cómo te fue contra otros devs que enfrentaron los mismos vectores." },
+  { id: "benchmark", label: "Benchmark", ready: true },
 ];
 
-export function ResultDashboard({ result }: { result: SimulationResult }) {
+/**
+ * `simId`: la simulación real (el replay en detalle y el benchmark se piden al backend).
+ * Sin `simId` (demo) el benchmark usa `sampleBenchmark`.
+ */
+export function ResultDashboard({
+  result,
+  simId,
+  sampleBenchmark,
+}: {
+  result: SimulationResult;
+  simId?: string;
+  sampleBenchmark?: Benchmark;
+}) {
   const tabs = ALL_TABS.filter((t) => !t.instructorOnly || result.mode === "instructor");
 
   // Entrada: la pantalla arranca tapada y se revela en el punto medio de la transición.
@@ -60,10 +76,11 @@ export function ResultDashboard({ result }: { result: SimulationResult }) {
     <>
       <PixelTransition runKey={1} cell="lg" fixed duration={700} onCovered={() => setRevealed(true)} />
 
-      <main className={`flex h-[calc(100svh-56px)] min-h-0 flex-col bg-bg-000 ${revealed ? "" : "invisible"}`}>
+      {/* Desktop: alto de la ventana menos la barra superior (56 px), con scroll interno. Mobile: la página scrollea. */}
+      <main className={`flex min-h-[calc(100svh-56px)] flex-col bg-bg-000 md:h-[calc(100svh-56px)] md:min-h-0 ${revealed ? "" : "invisible"}`}>
         {/* Header: veredicto + HUD final */}
-        <header className="flex flex-wrap items-center gap-x-8 gap-y-4 border-b border-line px-8 py-5">
-          <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <header className="flex flex-wrap items-center gap-x-8 gap-y-4 border-b border-line px-5 py-5 md:px-8">
+          <div className="flex w-full min-w-0 flex-col gap-1 md:w-auto md:flex-1">
             <span className="md-index">RESULTADO · {result.repo.toUpperCase()}</span>
             <div className="flex flex-wrap items-center gap-3">
               <h1
@@ -93,26 +110,31 @@ export function ResultDashboard({ result }: { result: SimulationResult }) {
           <ButtonLink href="/start">Repite el simulacro</ButtonLink>
         </header>
 
-        <div className="grid min-h-0 flex-1 grid-cols-[240px_1fr]">
-          <aside className="overflow-y-auto border-r border-line px-4 py-6">
+        <div className="grid flex-1 grid-cols-1 md:min-h-0 md:grid-cols-[240px_1fr]">
+          <aside className="border-b border-line px-4 py-3 md:overflow-y-auto md:border-r md:border-b-0 md:py-6">
             <ResultTabs tabs={tabs} active={selected} onSelect={select} />
           </aside>
 
-          <div className="relative min-h-0">
+          <div className="relative md:min-h-0">
             <div
               ref={scroller}
               id="result-panel"
               role="tabpanel"
               aria-labelledby={`tab-${tab.id}`}
               tabIndex={0}
-              className="h-full overflow-y-auto px-12 py-10 focus-visible:outline-offset-[-2px]"
+              className="px-5 py-8 focus-visible:outline-offset-[-2px] md:h-full md:overflow-y-auto md:px-12 md:py-10"
             >
               <div key={tab.id} className="mx-auto max-w-[1080px]">
                 {tab.id === "diagnostico" && <ResultDiagnostico result={result} index={index} />}
                 {tab.id === "skills" && <ResultSkills result={result} index={index} />}
+                {tab.id === "replay" && <ResultReplay result={result} index={index} simId={simId} />}
                 {tab.id === "recomendaciones" && <ResultRecomendaciones result={result} index={index} />}
+                {tab.id === "ia" && <ResultAiUsage result={result} index={index} />}
+                {tab.id === "hinty" && <ResultHinty result={result} index={index} />}
                 {tab.id === "fixes" && <ResultFixes fixes={result.fixes} index={index} />}
-                {!tab.ready && <ComingSoon index={index} title={tab.label} text={ALL_TABS.find((t) => t.id === tab.id)?.soon} />}
+                {tab.id === "benchmark" && (
+                  <ResultBenchmark result={result} index={index} simId={simId} sample={sampleBenchmark} />
+                )}
               </div>
             </div>
             <PixelTransition
@@ -131,15 +153,3 @@ export function ResultDashboard({ result }: { result: SimulationResult }) {
   );
 }
 
-function ComingSoon({ index, title, text }: { index: string; title: string; text?: string }) {
-  return (
-    <div className="flex flex-col gap-8">
-      <TabHeading index={index} title={title}>
-        <StatusChip>Próximamente</StatusChip>
-      </TabHeading>
-      <div className="flex min-h-[320px] flex-col items-start justify-center gap-3 rounded-md border border-dashed border-line-strong px-10">
-        <p className="max-w-[52ch] text-[18px] leading-7 text-ink-muted">{text}</p>
-      </div>
-    </div>
-  );
-}

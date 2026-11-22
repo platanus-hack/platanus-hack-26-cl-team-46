@@ -113,8 +113,17 @@ const OUTPUT: ReportOutput = {
       attack: 'Entra con qwerty123',
       userAction: 'Cambió la contraseña',
       result: 'tarde',
+      seq: null,
+      vuln_id: null,
     },
-    { t: 40, attack: 'Login exitoso', userAction: 'Nada', result: 'empeora' },
+    {
+      t: 40,
+      attack: 'Login exitoso',
+      userAction: 'Nada',
+      result: 'empeora',
+      seq: null,
+      vuln_id: null,
+    },
   ],
   recommendations: {
     summary: 'Bien.',
@@ -123,6 +132,8 @@ const OUTPUT: ReportOutput = {
   },
   min_steps: 1,
   ai_followed: 50,
+  ai_moments: [],
+  hinty_note: '',
   fixes: [
     {
       title: 'Rate limit',
@@ -176,7 +187,9 @@ describe('armado del reporte', () => {
     expect(r.hud).toEqual({ time: 300, steps: 2, minSteps: 1, contained: 1 });
     expect(r.skills.reaccion).toBe(100);
     expect(r.skills.integridad).toBe(0);
-    expect(r.aiUsage).toEqual({ prompts: 1, followed: 1, manual: 1 });
+    expect(r.aiUsage).toMatchObject({ prompts: 1, followed: 1, manual: 1 });
+    expect(r.mode).toBe('examen');
+    expect(r).not.toHaveProperty('clickyUsage');
     expect(r.timeline.map((e) => e.t)).toEqual([40, 300]); // ordenado y dentro del incidente
     expect(r.fixes[0]).not.toHaveProperty('file');
     expect(r.vectors).toEqual([

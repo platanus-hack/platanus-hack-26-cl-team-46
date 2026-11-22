@@ -26,6 +26,7 @@ import fnmatch
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -82,6 +83,29 @@ api_image = (
 
 app = modal.App(APP_NAME)
 
+# Caché de discovery por (repo, commit). El RepoModel que produce discoverRepo es
+# DETERMINISTA para un commit inmutable, así que se calcula una vez y se reutiliza
+# en corridas repetidas del mismo commit (primera pasada + cada verify), en vez de
+# re-descubrirlo en cada contenedor desechable. Persistente entre contenedores.
+discovery_cache = modal.Dict.from_name("hack26-engine-discovery", create_if_missing=True)
+
+
+def _discovery_cache_key(spec: dict) -> str | None:
+    """Clave `f"{repo}@{commit}"` SOLO si el commit es un sha inmutable.
+
+    Si no hay repo/commit, o el commit es volátil (una rama como `main`, o
+    `working-tree`), devuelve None: el RepoModel podría cambiar entre corridas,
+    así que se cae al camino normal (re-descubrir, sin cachear)."""
+    repo = spec.get("repo")
+    commit = spec.get("commit")
+    if not repo or not commit:
+        return None
+    commit = str(commit)
+    # Un sha de git es hex de 7..40 chars; ramas/tags/working-tree no cachean.
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", commit):
+        return None
+    return f"{repo}@{commit}"
+
 
 # ───────────────────────── validación del pedido ─────────────────────────
 
@@ -127,13 +151,24 @@ def validate_spec(spec: dict) -> dict:
     if profile not in PROFILES:
         raise SpecError(f"perfil desconocido: {profile}")
     if spec.get("destructive") and os.environ.get("ENGINE_ALLOW_DESTRUCTIVE") != "1":
-        raise SpecError("modo destructivo deshabilitado (ENGINE_ALLOW_DESTRUCTIVE=1 en el secret)")
+        # El agresivo es el modo por defecto del producto; el daño real solo se
+        # habilita con el flag de ops. Sin él, degradamos a no-destructivo en vez
+        # de abortar la corrida: la simulación corre igual, solo sin DoS/SSRF.
+        # Es el único sentido de degradación (nunca sube la agresividad), así que
+        # es seguro para disponibilidad sin tocar el scope guard de hosts.
+        print("[engine] destructive solicitado sin ENGINE_ALLOW_DESTRUCTIVE=1: se degrada a no-destructivo")
+        spec["destructive"] = False
 
     repo = spec.get("repo")
     if repo is not None:
         r = urlparse(str(repo))
         if r.scheme != "https" or not r.hostname:
             raise SpecError("repo debe ser una URL https de git (p. ej. https://github.com/org/repo)")
+    # RepoModel ya calculado (--repo-model): reusa el discovery de una corrida previa
+    # y salta el escaneo estático. Útil para re-verificar una vuln sin re-descubrir.
+    repo_model = spec.get("repo_model")
+    if repo_model is not None and not isinstance(repo_model, dict):
+        raise SpecError("repo_model debe ser un objeto (RepoModel serializado)")
     progress = spec.get("progress")
     if progress is not None:
         pu = urlparse(str((progress or {}).get("url", "")))
@@ -145,7 +180,7 @@ def validate_spec(spec: dict) -> dict:
     return spec
 
 
-def _cli_args(spec: dict, out_dir: str, repo_dir: str | None) -> list[str]:
+def _cli_args(spec: dict, out_dir: str, repo_dir: str | None, repo_model_path: str | None = None) -> list[str]:
     args = ["node", "src/cli/run.ts", "--url", spec["url"], "--out", out_dir]
     args += ["--plugin", spec.get("plugin", "auto"), "--profile", spec.get("profile", "fast")]
     if spec.get("seed"):
@@ -162,6 +197,10 @@ def _cli_args(spec: dict, out_dir: str, repo_dir: str | None) -> list[str]:
     for key, flag in (("read_only", "--read-only"), ("destructive", "--destructive"), ("no_recon", "--no-recon")):
         if spec.get(key):
             args.append(flag)
+    # RepoModel precomputado: salta el discovery estático (y, si no se clonó el
+    # repo, también el clon). Vive aparte de --repo para poder combinarse con él.
+    if repo_model_path:
+        args += ["--repo-model", repo_model_path]
     if repo_dir:
         args += ["--repo", repo_dir]
         if spec.get("semgrep", True):
@@ -274,10 +313,41 @@ def _execute(spec: dict, repo_dir: str | None = None) -> dict:
             repo_dir = os.path.join(work, "repo")
             _clone(str(spec["repo"]), spec.get("commit"), repo_dir)
         out_dir = os.path.join(work, "out")
+
+        # RepoModel servido al CLI (--repo-model) para que salte el discovery estático.
+        # Precedencia: (1) el que trae el spec explícitamente —p. ej. un verify reusa
+        # el de la primera pasada—; (2) la caché de discovery por (repo, commit).
+        repo_model_path = None
+        served_from_cache = False
+        cache_key = _discovery_cache_key(spec) if repo_dir else None
+        if spec.get("repo_model"):
+            repo_model_path = os.path.join(work, "repo-model.json")
+            with open(repo_model_path, "w") as f:
+                json.dump(spec["repo_model"], f)
+        elif cache_key is not None:
+            cached_model = None
+            try:
+                cached_model = discovery_cache.get(cache_key)
+            except Exception as e:  # noqa: BLE001 — el caché nunca tumba la corrida
+                print(f"caché de discovery no leído: {e}", flush=True)
+            if cached_model:
+                repo_model_path = os.path.join(work, "repo-model.json")
+                pathlib.Path(repo_model_path).write_text(json.dumps(cached_model))
+                served_from_cache = True
+
+        args = _cli_args(spec, out_dir, repo_dir, repo_model_path)
+
         reporter = _ProgressReporter(spec.get("progress"))
-        reporter.add("▶ repo clonado" if repo_dir else "▶ sin repo: solo ataque")
+        if repo_dir:
+            reporter.add("▶ repo clonado")
+        elif repo_model_path:
+            reporter.add("▶ RepoModel reusado: sin re-descubrir")
+        else:
+            reporter.add("▶ sin repo: solo ataque")
+        if served_from_cache:
+            reporter.add(f"▶ discovery servido de caché ({cache_key})")
         proc = subprocess.Popen(
-            _cli_args(spec, out_dir, repo_dir),
+            args,
             cwd=REMOTE_ENGINE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # una sola tubería: sin riesgo de bloqueo por stderr lleno
@@ -295,13 +365,25 @@ def _execute(spec: dict, repo_dir: str | None = None) -> dict:
         code = proc.wait()
         reporter.flush(force=True)
         log = "".join(lines)
+        artifacts = _read_artifacts(out_dir) if os.path.isdir(out_dir) else {}
+
+        # Tras la primera corrida de este commit, guarda el RepoModel para que las
+        # siguientes (verify) no re-descubran. Idempotente: si ya estaba, no toca.
+        if cache_key is not None and repo_model_path is None and code == 0:
+            model = artifacts.get("repo_model")
+            if model:
+                try:
+                    discovery_cache[cache_key] = model
+                except Exception as e:  # noqa: BLE001 — el caché nunca tumba la corrida
+                    print(f"caché de discovery no escrito: {e}", flush=True)
+
         return {
             "ok": code == 0,
             "exit_code": code,
             "duration_s": round(time.time() - started, 1),
             "log": log[-20000:],
             "stderr": "" if code == 0 else log[-5000:],
-            "artifacts": _read_artifacts(out_dir) if os.path.isdir(out_dir) else {},
+            "artifacts": artifacts,
         }
     finally:
         shutil.rmtree(work, ignore_errors=True)

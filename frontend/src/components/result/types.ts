@@ -1,7 +1,7 @@
 /**
- * Resultado del simulacro (lo que ve el usuario al terminar el Desktop).
- * Hoy se construye contra `mockResult`; después lo arma el backend a partir del debrief
- * del observer (`sim.finished`) y del timeline.
+ * Resultado del simulacro (lo que ve el usuario al terminar el Desktop). Lo arma el agente
+ * de reportes del backend (backend/src/simulations/report/report.types.ts): si cambia uno,
+ * hay que cambiar el otro. Los campos opcionales no existen en reportes viejos.
  */
 
 /** instructor = con Clicky guiando y resaltando la pantalla; examen = solo, sin ayuda. */
@@ -35,11 +35,55 @@ export interface ResultVector {
 }
 
 export interface ResultTimelineEntry {
-  /** Segundos desde T+00:00. */
+  /** Segundos de incidente desde T+00:00 (sin las pausas por Hinty). */
   t: number;
   attack: string;
   userAction: string;
   result: "ok" | "tarde" | "empeora";
+  /** Vuln del momento, si aplica. */
+  vulnId?: string;
+  /** seq del evento del timeline que ancla el momento (el replay en detalle parte de ahí). */
+  seq?: number;
+}
+
+/** Un pedido al agente de código y qué pasó con lo que propuso. */
+export interface ResultAiMoment {
+  t: number;
+  seq: number;
+  prompt: string;
+  outcome: "seguida" | "parcial" | "ignorada" | "sin_respuesta";
+  note: string;
+}
+
+export interface ResultAiUsage {
+  /** Mensajes al agente de código. */
+  prompts: number;
+  /** Sugerencias del agente que siguió. */
+  followed: number;
+  /** Acciones rápidas (botones). */
+  manual: number;
+  /** Cambios reales que hizo el agente en la app. */
+  changes?: { commits: number; env: number; db: number; restarts: number; deploys: number; failed: number };
+  /** Segundos hasta el primer mensaje al agente (null: nunca le escribió). */
+  firstPrompt?: number | null;
+  /** Segundos promedio que tardó el agente en responder. */
+  avgReply?: number | null;
+  moments?: ResultAiMoment[];
+}
+
+export interface ResultClickyUsage {
+  /** Preguntas (sin contar los pasos de una guía). */
+  questions: number;
+  /** Marcas que Hinty dibujó en la pantalla. */
+  highlights: number;
+  /** Pasos de una guía que completó. */
+  hintsFollowed: number;
+  /** Veces que abrió Hinty (cada una pausa el incidente). */
+  sessions?: number;
+  pausedSeconds?: number;
+  moments?: { t: number; question: string; guided: boolean }[];
+  /** Lectura del agente de reportes. */
+  note?: string;
 }
 
 export interface ResultRecommendations {
@@ -78,8 +122,32 @@ export interface SimulationResult {
   vectors: ResultVector[];
   timeline: ResultTimelineEntry[];
   recommendations: ResultRecommendations;
-  aiUsage: { prompts: number; followed: number; manual: number };
+  aiUsage: ResultAiUsage;
   /** Solo si mode === "instructor". */
-  clickyUsage?: { questions: number; highlights: number; hintsFollowed: number };
+  clickyUsage?: ResultClickyUsage;
   fixes: ResultFix[];
+}
+
+/** Una lectura comparada: tú contra las demás corridas (GET /simulations/:id/benchmark). */
+export interface BenchmarkMetric {
+  you: number;
+  median: number | null;
+  /** 0-100: a cuántas corridas les ganaste (null si hay pocos datos). */
+  percentile: number | null;
+  runs: number;
+  better: "higher" | "lower";
+}
+
+export interface Benchmark {
+  runs: number;
+  devs: number;
+  min_sample: number;
+  overall: {
+    score: BenchmarkMetric;
+    time: BenchmarkMetric;
+    steps: BenchmarkMetric;
+    contained_rate: number | null;
+  };
+  skills: ResultSkills | null;
+  vectors: { id: string; name: string; family: VectorFamily; score: BenchmarkMetric }[];
 }

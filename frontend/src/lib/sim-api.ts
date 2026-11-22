@@ -1,5 +1,5 @@
 /** Cliente de /simulations (orquestación multi-agente). Tipos alineados con backend/src/simulations. */
-import type { ResultRank, ResultVerdict, SimulationResult } from "@/components/result/types";
+import type { Benchmark, ResultRank, ResultVerdict, SimulationResult } from "@/components/result/types";
 import { API_URL, authedEventSource, goToLogin } from "./api";
 
 export type SimStatus = "starting" | "ready" | "running" | "paused" | "finished" | "failed" | "stopped";
@@ -164,6 +164,13 @@ export const simApi = {
   reports: () => request<ReportSummary[]>("/reports"),
   report: (id: string) => request<ReportView>(`/simulations/${id}/report`),
   regenerateReport: (id: string) => post<{ sim_id: string; status: ReportStatus }>(`/simulations/${id}/report`),
+  /** Tu reporte contra las demás corridas (solo agregados anónimos). */
+  benchmark: (id: string) => request<Benchmark>(`/simulations/${id}/benchmark`),
+  /** Timeline guardado. Con la simulación cerrada, view=all ya no regala nada. */
+  timeline: (id: string, view: "user" | "all" = "all", types?: string[]) =>
+    request<TimelineEvent[]>(
+      `/simulations/${id}/timeline?view=${view}${types?.length ? `&types=${encodeURIComponent(types.join(","))}` : ""}`,
+    ),
   /** SSE del timeline. view=user: lo que ve el developer. view=all: también lo interno. */
   subscribe(id: string, view: "user" | "all", onEvent: (e: TimelineEvent) => void): () => void {
     const es = authedEventSource(`${API_URL}/simulations/${id}/stream?view=${view}`);
