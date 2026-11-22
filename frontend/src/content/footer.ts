@@ -44,8 +44,7 @@ export const FOOTER = {
   project: {
     title: "Proyecto",
     links: [
-      // TODO(clemente): link al repo público cuando quede en el GitHub de Platanus (hoy rmena1/hack-26 es privado).
-      { label: "Repositorio en GitHub" },
+      { label: "Repositorio en GitHub", href: "https://github.com/platanus-hack/platanus-hack-26-cl-team-46", external: true },
       { label: "Equipo", href: "/como-funciona#equipo" },
       { label: "Contacto", href: "https://www.instagram.com/presion.y.vida/", external: true },
     ],

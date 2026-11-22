@@ -1,6 +1,16 @@
-# Simulador de hacks para developers
+# Mayday — team-46 Platanus Hack 26: Santiago ft. Buk
 
-> Platanus Hack 26 · Track Simulaciones · https://mayday.rip
+<img src="./project-logo.png" alt="Mayday" width="200" />
+
+**Simulador de hackeos para developers** · Track: 🌐 Simulations · https://mayday.rip
+
+team-46
+
+- Clemente Bobillier Ruff ([@clementebobillier07](https://github.com/clementebobillier07))
+- Benjamin Lillo Soto ([@benjaminlillo](https://github.com/benjaminlillo))
+- Sebastian Andres Mira Pacheco ([@seamira](https://github.com/seamira))
+- Raimundo Mena ([@rmena1](https://github.com/rmena1))
+- Daniel Andres Toribio Montupil ([@Hellonston](https://github.com/Hellonston))
 
 El developer entrega el repo de GitHub de un proyecto suyo. Lo desplegamos en un sandbox en Render, una IA encuentra sus vulnerabilidades, un agente lo hackea y el developer vive el incidente en tiempo real: le llegan notificaciones (correos de clientes, alertas de Sentry, Datadog…) y responde conversando con su agente de código. Sus acciones cambian la app desplegada de verdad. Si cambia la contraseña robada pero no rota `JWT_SECRET`, el atacante sigue adentro. Al final recibe un debrief con lo que pasó, dónde estaba el error y la comparación con un caso real.
 
@@ -72,7 +82,7 @@ pnpm dev                                  # backend :3001 + frontend :3000
 | `hack26-frontend` | https://mayday.rip (también https://hack26-frontend.onrender.com) | Docker, `frontend/Dockerfile` (contexto: raíz) |
 | `hack26-backend` | https://api.mayday.rip (también https://hack26-backend.onrender.com) | Docker, `backend/Dockerfile` (contexto: raíz) |
 
-- Los dos despliegan automáticamente con cada push a `main`.
+- **Se despliegan desde este repo** (`platanus-hack/platanus-hack-26-cl-team-46`, rama `main`). Render no puede conectarse a repos de la organización `platanus-hack`, así que los servicios usan la URL pública del repo y Render solo los despliega a pedido. El deploy automático lo hace el backend (`backend/src/deploy-watcher`): cada minuto lee la punta de `main` con `git ls-remote` y, si cambió, le pide a Render el deploy de ese commit en los dos servicios (`SELF_DEPLOY_REPO_URL` y `SELF_DEPLOY_SERVICE_IDS`). Un push a `main` queda en producción en unos 5 minutos.
 - Dominio: `mayday.rip` en Cloudflare, con CNAME "DNS only" hacia los servicios de Render (`@` y `www` → frontend, `api` → backend). Render emite los certificados.
 - El backend guarda el estado en la base `hack26_backend` de la instancia compartida `hack26-shared-pg` (`DATABASE_URL`), porque el disco de Render es efímero.
 - Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, a la que llaman los agentes. Conductor crea las VMs de los agentes desde `main` (se puede cambiar con `CONDUCTOR_PROJECT_BRANCH`).
@@ -147,9 +157,3 @@ Si el repo lo trae, el deploy es directo:
 ```
 
 Opcionales: `root_dir`, `dockerfile_path`, `build_command` y `start_command` (estos dos para `runtime: node`). La app tiene que escuchar en `$PORT` e inicializar su base de datos al arrancar, porque en free tier no hay pre-deploy.
-
-## Equipo
-
-- **Despliegue e integración:** Raimundo Mena
-- **Motor de hacking:** Daniel Toribio, Sebastián Mira
-- **Producto:** Clemente, Benjamín Lillo
