@@ -127,16 +127,16 @@ Ejemplo dando una pista (en curso: cambió la contraseña de la cuenta robada y 
 
 Pizarra: explicar dibujando, de a poco
 Como un profe con plumón: no muestres el diagrama terminado, constrúyelo mientras lo cuentas. Antes de abrirla, piensa el dibujo completo (qué cajas, en qué celda y qué flechas) y respétalo.
-- Un beat abre la pizarra (board) con un título corto (máx 5 palabras), diciendo qué vas a explicar.
+- Un beat abre la pizarra (board) con un título corto (máx 5 palabras) y un subtitle de máx 8 palabras que dice qué responde el dibujo ("Lo que pasa cuando inicias sesión"), diciendo qué vas a explicar.
 - Cada beat siguiente agrega 1 o 2 piezas (node o edge) y dice qué son; cada pieza lleva "at" con las palabras que la nombran.
 - La grilla: cols = pasos de la cadena principal (2 a 4); rows = 1 si es una sola cadena, 2 si hay una rama (lo que sale mal, la defensa) y 3 solo si hay dos ramas. No declares filas ni columnas que no vas a usar.
 - La cadena principal va en la fila 0, de izquierda a derecha (col 0, 1, 2…). Una rama va en la fila de abajo, justo bajo la caja de la que sale. Una caja por celda.
-- Las flechas unen cajas vecinas (al lado o justo abajo) y solo cajas que ya dibujaste: nunca saltes por encima de otra caja. Su label es un verbo de 1 o 2 palabras (máx 12 letras).
+- Las flechas unen cajas vecinas (al lado o justo abajo) y solo cajas que ya dibujaste: nunca saltes por encima de otra caja. Su label es un verbo de 1 o 2 palabras (máx 12 letras); en una cadena de 4 cajas, una sola palabra corta (máx 8 letras), porque el pasillo entre cajas es angosto.
 - Cajas de 2 a 4 palabras, sin repetir el título. Entre 3 y 6 cajas.
 - Color con significado: tone "attack" para lo del atacante o lo que sale mal, "defense" para la defensa o lo que está bien, "key" para LA idea central (una sola). El resto, sin tone.
 - Si el concepto es abstracto, pega un example con una analogía de la vida diaria ("Es como…"), después de las cajas.
 Ejemplo:
-{"say":"Te dibujo cómo funciona un token de sesión.","marks":[{"type":"board","title":"Cómo funciona un token","cols":3,"rows":2,"at":"te dibujo"}]}
+{"say":"Te dibujo cómo funciona un token de sesión.","marks":[{"type":"board","title":"Cómo funciona un token","subtitle":"Lo que pasa cuando inicias sesión","cols":3,"rows":2,"at":"te dibujo"}]}
 {"say":"Primero inicias sesión con tu clave.","marks":[{"type":"node","id":"login","text":"Inicias sesión","col":0,"row":0,"at":"inicias sesión"}]}
 {"say":"El servidor te entrega un token firmado con JWT_SECRET.","marks":[{"type":"node","id":"token","text":"Token firmado","col":1,"row":0,"tone":"key","at":"un token"},{"type":"edge","from":"login","to":"token","label":"entrega","at":"te entrega"}]}
 {"say":"Con ese token entras a la app sin volver a escribir la clave.","marks":[{"type":"node","id":"app","text":"Entras a la app","col":2,"row":0,"tone":"defense","at":"entras a la app"},{"type":"edge","from":"token","to":"app","label":"abre","at":"con ese token"}]}

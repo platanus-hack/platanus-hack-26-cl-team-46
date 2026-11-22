@@ -52,41 +52,56 @@
 .clicky-board {
   overflow: hidden;
   background-color: var(--hinty-board);
-  background-image: linear-gradient(var(--hinty-grid) 1px, transparent 1px), linear-gradient(90deg, var(--hinty-grid) 1px, transparent 1px);
-  background-size: 24px 24px;
+  /* la grilla apenas se ve (como el papel cuadriculado de HeyClicky) y una luz suave baja desde la barra */
+  background-image:
+    radial-gradient(120% 70% at 50% 0%, #0D1E25 0%, transparent 62%),
+    linear-gradient(#0E1C23 1px, transparent 1px), linear-gradient(90deg, #0E1C23 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px, 24px 24px;
+  background-position: 0 0, -1px 35px, -1px 35px;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-window);
+  box-shadow: var(--shadow-window), inset 0 1px 0 #ffffff08;
+  transition: height .25s var(--ease-in), top .25s var(--ease-in);
 }
 .clicky-board svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.clicky-board .hd { position: absolute; left: 24px; right: 24px; top: 20px; }
-.clicky-board .kicker { display: flex; align-items: center; gap: 8px; font: 500 11px/16px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
-.clicky-board .kicker svg { position: static; width: 16px; height: 16px; flex: none; }
-.clicky-board .ttl { margin-top: 8px; font: 600 20px/28px var(--f-ui); letter-spacing: -.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clicky-board .sub { font: 400 14px/20px var(--f-ui); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* la barra de la ventana */
+.clicky-board .bar { position: absolute; left: 0; right: 0; top: 0; height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: #0A171D; border-bottom: 1px solid var(--line); font: 500 11px/16px var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
+.clicky-board .bar svg { position: static; width: 16px; height: 16px; flex: none; }
+.clicky-board .hd { position: absolute; left: 24px; right: 24px; top: 52px; }
+.clicky-board .ttl { font: 600 22px/28px var(--f-ui); letter-spacing: -.015em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clicky-board .sub { margin-top: 2px; font: 400 15px/22px var(--f-ui); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.clicky-node { position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 8px 12px; text-align: center; color: var(--ink); font: 500 15px/20px var(--f-ui); hyphens: auto; overflow-wrap: break-word; animation: clicky-fade .22s var(--ease-in) both; }
-.clicky-node span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+/* Cajas: texto claro y firme en todas (el color lo pone la caja y su línea de tono) */
+.clicky-node { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 8px 12px; text-align: center; color: var(--ink); font: 600 15px/20px var(--f-ui); letter-spacing: -.005em; hyphens: manual; overflow-wrap: normal; animation: clicky-fade .22s var(--ease-in) both; }
+.clicky-node span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; max-width: 100%; }
+.clicky-node .tag { font: 500 10px/12px var(--f-mono); font-style: normal; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+.clicky-node.key .tag { color: var(--defense-strong); }
+.clicky-node.defense .tag { color: var(--defense); }
+.clicky-node.attack .tag { color: var(--attack); }
+.clicky-node.narrow { padding-left: 8px; padding-right: 8px; }
 .clicky-node.small { padding: 6px 8px; font-size: 13px; line-height: 17px; }
 .clicky-node.tiny { padding: 4px 6px; font-size: 12px; line-height: 15px; }
-.clicky-node.attack { color: var(--attack-strong); }
-.clicky-node.measuring { hyphens: manual; overflow-wrap: normal; }
+.clicky-node.notag .tag { display: none; }
+/* solo si ni el tamaño más chico alcanza, se parte una palabra larga con guion */
+.clicky-node.hyph { hyphens: auto; overflow-wrap: break-word; }
 .clicky-node.measuring span { display: block; overflow: visible; -webkit-line-clamp: unset; }
-.clicky-box.key { filter: drop-shadow(0 0 6px #2EE6FF66); }
-.clicky-box.attack { filter: drop-shadow(0 0 6px #FF8A0040); }
+.clicky-box.key { filter: drop-shadow(0 0 8px #2EE6FF59); }
+.clicky-box.attack { filter: drop-shadow(0 0 6px #FF8A0033); }
+.clicky-tip { shape-rendering: geometricPrecision; }
 @keyframes clicky-fade { from { opacity: 0; } to { opacity: 1; } }
-/* example: un ejemplo de la vida diaria, en la pizarra o en la columna de tarjetas */
+
 .clicky-example { box-sizing: border-box; padding: 10px 14px 12px; background: var(--bg-200); border: 1px solid var(--line-strong); border-left: 3px solid var(--defense); border-radius: var(--radius-md); color: var(--ink); }
 .clicky-example.on-board { position: absolute; box-shadow: var(--shadow-window); }
+.clicky-example.below { box-shadow: 0 1px 0 #ffffff06 inset; background: #0E1A21; }
 .clicky-example .k { display: block; margin-bottom: 4px; font: 500 11px/16px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--defense); }
 .clicky-example p { margin: 0; font: 400 14px/20px var(--f-ui); color: var(--ink); }
 @keyframes clicky-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 /* chart: barras horizontales */
-.clicky-chart { position: absolute; left: 24px; right: 24px; display: flex; flex-direction: column; gap: 12px; }
-.clicky-chart .row { display: grid; grid-template-columns: minmax(72px, 30%) 1fr minmax(48px, auto); align-items: center; gap: 12px; }
+.clicky-chart { position: absolute; left: 24px; right: 24px; display: flex; flex-direction: column; gap: 14px; }
+.clicky-chart .row { display: grid; grid-template-columns: minmax(64px, min(30%, 160px)) 1fr minmax(48px, auto); align-items: center; gap: 14px; min-height: 22px; }
 .clicky-chart .lbl { font: 400 14px/20px var(--f-ui); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clicky-chart .track { position: relative; height: 16px; background: var(--bg-300); }
+.clicky-chart .track { position: relative; height: 18px; background: var(--bg-300); border-radius: 2px; overflow: hidden; }
 .clicky-chart .track i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--line-strong); }
 .clicky-chart .val { font: 500 13px/20px var(--f-mono); color: var(--ink-muted); text-align: right; white-space: nowrap; }
 .clicky-chart .val em { font: 500 11px/16px var(--f-mono); font-style: normal; letter-spacing: .12em; text-transform: uppercase; color: var(--defense); }

@@ -5,11 +5,12 @@ import { headsetSvg, checkSvg } from './icons.js';
 // Paneles en espacio libre (DESIGN.md › Hinty › 6, 7 y 11): la pizarra (board/node/edge y chart)
 // y una columna para la card de conclusión, las notas y los botones de la siguiente pregunta.
 // La página marca ese espacio con data-clicky-region:
-//   "stage"      → donde va la pizarra (en /simulate, la ventana de Chrome), centrada, máx 720×440.
+//   "stage"      → donde va la pizarra (en /simulate, la ventana de Chrome), centrada, máx 720×560.
 //   "stage-side" → la columna de tarjetas (320 px pegada al borde derecho de Chrome).
 //   "board" / "side" → regiones antiguas, de respaldo.
 // Ninguna región cae sobre el panel del Agente.
-const BOARD_MAX = { w: 720, h: 440 }, GAP = 16, GRID = 24;
+// el alto es un tope: la pizarra se ajusta a su diagrama (y crece si llega un ejemplo)
+const BOARD_MAX = { w: 720, h: 560 }, GAP = 16, GRID = 24;
 const snap = v => Math.round(v / GRID) * GRID;
 
 export function createCards(ctx) {
@@ -44,7 +45,8 @@ export function createCards(ctx) {
   function sideRegion() {
     const { stage, side } = regions();
     if (stage && stage.w < STACK_BELOW) {
-      const b = boardRegion(), y = b.y + b.h + GAP, h = stage.y + stage.h - y - GAP;
+      // bajo la pizarra que está dibujada (se ajusta a su dibujo, así que puede ser más baja que su región)
+      const b = ctx.board?.isConnected ? rectOf(ctx.board) : boardRegion(), y = b.y + b.h + GAP, h = stage.y + stage.h - y - GAP;
       if (h >= 160) return { x: stage.x + GAP, y, w: Math.min(360, stage.w - 2 * GAP), h };
     }
     return side || belowIsland(regionRect('side')) || { x: innerWidth - 360, y: 120, w: 320, h: innerHeight - 160 };
@@ -76,17 +78,59 @@ export function createCards(ctx) {
   }
   const advance = el => { ctx.sideY += el.offsetHeight + 12; };
 
-  // La pantalla del radar: fondo hinty-board con grilla de 24 px y encabezado "PIZARRA".
+  // La pizarra es una ventana, como las tarjetas de HeyClicky: barra con el auricular de Hinty y
+  // "PIZARRA", el título grande con su bajada en gris y la hoja con una grilla apenas visible.
   function board(title, sub) {
     ctx.board?.classList.add('clicky-out');
     const r = boardRegion();
     const el = panel('clicky-board', r);
-    el.innerHTML = `<div class="hd"><div class="kicker">${headsetSvg(16)}<span>Pizarra</span></div><div class="ttl">${esc(title || '')}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>`;
+    el.innerHTML = `<div class="bar">${headsetSvg(16)}<span>Pizarra</span></div><div class="hd"><div class="ttl">${esc(title || '')}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>`;
     const svg = svgEl('svg', {}, el);
     ctx.board = el;
     const hd = el.querySelector('.hd');
-    const top = Math.ceil((hd.offsetTop + hd.offsetHeight + 12) / GRID) * GRID;
-    return { el, svg, r, W: r.w, H: r.h, top };
+    const top = hd.offsetTop + hd.offsetHeight + 8;
+    return { el, svg, r: { ...r }, W: r.w, H: r.h, top, region: r };
+  }
+
+  // Como la ventana de HeyClicky crece a lo que tiene dibujado, la pizarra queda del alto de su
+  // diagrama (sin una franja vacía arriba y abajo) y centrada donde iba.
+  function shrinkBoard(B, want) {
+    want = Math.ceil(want);
+    if (want >= B.H - 16) return false;
+    const { stage } = regions();
+    B.H = want;
+    B.r.h = want;
+    if (!(stage && stage.w < STACK_BELOW)) B.r.y = Math.round(B.region.y + (B.region.h - want) / 2);
+    Object.assign(B.el.style, { height: want + 'px', top: B.r.y + 'px' });
+    return true;
+  }
+  function fitBoard(B, L) {
+    const gridH = L.r * L.h + (L.r - 1) * L.gy;
+    if (!shrinkBoard(B, L.top + gridH + Math.max(32, L.gy / 2 + 12))) return L;
+    return planLayout({ W: B.W, H: B.H, top: B.top }, L.transposed ? L.r : L.c, L.transposed ? L.c : L.r);
+  }
+
+  async function growWithExample(F, html, s) {
+    const { B, L } = F;
+    const gridW = L.c * L.w + (L.c - 1) * L.gx, gridBottom = L.y0 + L.r * L.h + (L.r - 1) * L.gy;
+    const linesBottom = F.lines.reduce((m, b) => Math.max(m, b.y + b.h), 0);
+    const y = Math.ceil(Math.max(gridBottom + 18, linesBottom + 10));
+    const w = Math.min(gridW, 460);
+    const el = htmlEl('div', 'clicky-example on-board below clicky-pop', B.el, html);
+    Object.assign(el.style, { width: w + 'px', left: Math.round(L.x0 + (gridW - w) / 2) + 'px', top: y + 'px' });
+    const want = y + el.offsetHeight + 22;
+    if (want > B.region.h) { el.remove(); return false; }
+    if (want > B.H) {
+      const { stage } = regions();
+      B.H = want;
+      B.r.h = want;
+      if (!(stage && stage.w < STACK_BELOW)) B.r.y = Math.round(B.region.y + (B.region.h - want) / 2);
+      Object.assign(B.el.style, { height: want + 'px', top: B.r.y + 'px' });
+      await sleep(260);
+    }
+    await pen.travel(B.r.x + parseFloat(el.style.left) + 12, B.r.y + y + 12);
+    await sleep(500 * s);
+    return true;
   }
 
   function text(svg, x, y, t, style) {
@@ -101,7 +145,9 @@ export function createCards(ctx) {
       const B = board(title, subtitle);
       await sleep(160 * s);
       const list = htmlEl('div', 'clicky-chart', B.el);
-      list.style.top = B.top + 'px';
+      list.style.top = B.top + 8 + 'px';
+      // la ventana del alto de sus barras (fila de 22 px y 14 de aire entre filas)
+      shrinkBoard(B, B.top + 8 + bars.length * 22 + (bars.length - 1) * 14 + 28);
       const max = Math.max(...bars.map(b => b.value), 0) || 1;
       for (const { label, value } of bars) {
         const hot = label === highlight;
@@ -126,7 +172,7 @@ export function createCards(ctx) {
     // final; una flecha es primero el trazo y después la punta, y su etiqueta llega cuando la punta está.
     async board({ title, subtitle, cols = 3, rows = 2 }, s = 1) {
       const B = board(title, subtitle);
-      const L = planLayout({ W: B.W, H: B.H, top: B.top }, cols, rows);
+      const L = fitBoard(B, planLayout({ W: B.W, H: B.H, top: B.top }, cols, rows));
       const under = svgEl('g', { class: 'clicky-flow-lines' }, B.svg), over = svgEl('g', { class: 'clicky-flow-boxes' }, B.svg);
       ctx.flow = { B, L, under, over, pos: {}, occupied: new Set(), used: {}, labels: [], lines: [], active: null };
       await sleep(200 * s);
@@ -141,21 +187,33 @@ export function createCards(ctx) {
       F.occupied.add(`${R.c},${R.r}`);
       const kind = NODE_KINDS.includes(tone) ? tone : hot ? 'key' : 'plain';
       const st = nodeStyle(kind, t);
-      const fill = svgEl('rect', { x: R.x, y: R.y, width: R.w, height: R.h, rx: 8, fill: st.fill, opacity: 0 }, F.over);
-      const edge = svgEl('path', { d: boxPath(R, 8), fill: 'none', stroke: st.stroke, 'stroke-width': st.width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', class: `clicky-box ${kind}` }, F.over);
+      const fill = svgEl('rect', { x: R.x, y: R.y, width: R.w, height: R.h, rx: 10, fill: st.fill, opacity: 0 }, F.over);
+      const edge = svgEl('path', { d: boxPath(R, 10), fill: 'none', stroke: st.stroke, 'stroke-width': st.width, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', class: `clicky-box ${kind}` }, F.over);
       if (st.dash) edge.dataset.dash = st.dash;
       // el relleno aparece en 0,35 s, 0,18 s después de que el lápiz empieza el borde (como HeyClicky)
       await pen.draw(edge, s, B.r.x, B.r.y, { onStart: () => sleep(180).then(() => animate(0.35, u => fill.setAttribute('opacity', u))) });
-      const el = htmlEl('div', `clicky-node ${kind}`, B.el, `<span>${esc(label)}</span>`);
+      // las cajas con color dicen qué son (ataque, defensa, la idea clave) en una línea chica arriba,
+      // así el color se lee sin leyenda; si la caja es baja, el color basta
+      const tag = TAGS[kind] && R.h >= 60 ? `<i class="tag">${TAGS[kind]}</i>` : '';
+      const el = htmlEl('div', `clicky-node ${kind}`, B.el, `${tag}<span>${esc(label)}</span>`);
       Object.assign(el.style, { left: R.x + 'px', top: R.y + 'px', width: R.w + 'px', height: R.h + 'px' });
       // el texto se achica antes de cortarse: se mide sin cortar palabras ni límite de líneas, y solo si
-      // ni el tamaño más chico alcanza se deja partir palabras con guion
+      // ni el tamaño más chico alcanza se deja partir palabras con guion (y se suelta la línea del tono)
       el.classList.add('measuring');
-      const fits = () => el.firstChild.scrollHeight <= R.h - 6 && el.firstChild.scrollWidth <= el.firstChild.clientWidth + 1;
-      for (const size of ['', 'small', 'tiny']) {
+      if (R.w < 132) el.classList.add('narrow');
+      const words = el.querySelector('span'), tagEl = el.querySelector('.tag');
+      // alto real del contenido (centrado en una caja flex, lo que sobra no aparece en scrollHeight)
+      const fits = () => {
+        const cs = getComputedStyle(el), padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+        const tagH = tagEl && getComputedStyle(tagEl).display !== 'none' ? tagEl.offsetHeight + 3 : 0;
+        return words.offsetHeight + tagH + padY <= R.h + 1 && words.scrollWidth <= words.clientWidth + 1;
+      };
+      let ok = false;
+      for (const size of ['', 'small', 'tiny', 'notag']) {
         if (size) el.classList.add(size);
-        if (fits()) break;
+        if ((ok = fits())) break;
       }
+      if (!ok) el.classList.add('hyph');
       el.classList.remove('measuring');
       await sleep(160 * Math.min(1, s));
     },
@@ -177,22 +235,22 @@ export function createCards(ctx) {
       await pen.draw(p, s, B.r.x, B.r.y);
       // la punta, después del trazo
       const end = pts[pts.length - 1];
-      const tip = svgEl('path', { d: tipD({ x: end[0], y: end[1] }, endDir(pts), 8), fill: color, class: 'clicky-tip' }, F.under);
+      const tip = svgEl('path', { d: tipD({ x: end[0], y: end[1] }, endDir(pts), 9), fill: color, class: 'clicky-tip' }, F.under);
       if (!attack) F.active = { p, tip };
       F.lines.push(...segmentBoxes(pts, 3));
       if (!label) return sleep(120 * s);
-      const e = text(B.svg, 0, 0, label, `font: 500 12px var(--f-mono); fill: var(--ink-muted); paint-order: stroke; stroke: ${t.board}; stroke-width: 6px; stroke-linejoin: round;`);
+      const e = text(B.svg, 0, 0, label, `font: 500 13px var(--f-ui); letter-spacing: .01em; fill: ${attack ? 'var(--attack-strong)' : 'var(--ink-muted)'}; paint-order: stroke; stroke: ${t.board}; stroke-width: 6px; stroke-linejoin: round;`);
       e.setAttribute('opacity', 0);
-      let w = label.length * 7.2;
+      let w = label.length * 7;
       try { w = e.getBBox().width || w; } catch { /* sin layout todavía */ }
       const boxes = Object.values(F.pos).map(r => ({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 8 }));
-      const spot = placeLabel(pts, { w: w + 10, h: 18 }, {
+      const spot = placeLabel(pts, { w: w + 10, h: 19 }, {
         obstacles: [...boxes, ...F.labels, ...F.lines],
         bounds: { x: 4, y: B.top - 8, w: B.W - 8, h: B.H - B.top + 4 },
       });
       F.labels.push(spot);
       e.setAttribute('x', spot.x + spot.w / 2);
-      e.setAttribute('y', spot.y + 13);
+      e.setAttribute('y', spot.y + 14);
       animate(0.3, u => e.setAttribute('opacity', u));
       await sleep(180 * s);
     },
@@ -215,6 +273,9 @@ export function createCards(ctx) {
           }
           el.remove();
         }
+        // sin una celda libre, la pizarra crece hacia abajo para llevarlo bajo el diagrama, como la
+        // ventana de HeyClicky crece a lo que se dibuja en ella
+        if (await growWithExample(F, html, s)) return;
       }
       const el = sidePanel('clicky-example');
       el.innerHTML = html;
@@ -258,12 +319,16 @@ export function createCards(ctx) {
 // Estilo de cada caja según lo que significa (DESIGN.md › Hinty: cian para lo de Hinty, ámbar
 // punteado solo para lo del atacante).
 const NODE_KINDS = ['key', 'defense', 'attack'];
+const TAGS = { key: 'Idea clave', defense: 'Defensa', attack: 'Ataque' };
+// Como las cajas de HeyClicky (rellenas de su color, con el borde del mismo tono más intenso), en la
+// paleta de Mayday: la clave llena de cian profundo, la defensa con un velo cian, el ataque con un velo
+// ámbar y su borde punteado; un paso neutro, una hoja apenas más clara que la pizarra.
 function nodeStyle(kind, t) {
   switch (kind) {
     case 'key': return { stroke: t.hot, fill: '#0A3540', width: 2 };
-    case 'defense': return { stroke: t.mark, fill: '#2EE6FF14', width: 1.5 };
-    case 'attack': return { stroke: t.attack, fill: '#3A1F00', width: 2, dash: '6 5' };
-    default: return { stroke: t.line, fill: '#111C22', width: 1.5 };
+    case 'defense': return { stroke: t.mark, fill: '#2EE6FF17', width: 1.5 };
+    case 'attack': return { stroke: t.attack, fill: '#FF8A0019', width: 2, dash: '7 5' };
+    default: return { stroke: t.line, fill: '#13222B', width: 1.5 };
   }
 }
 

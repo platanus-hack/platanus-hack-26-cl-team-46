@@ -17,20 +17,27 @@ export function planLayout({ W, H, top }, cols, rows) {
   // aire bajo el título: el pasillo de arriba de la primera fila también lleva flechas
   const y0min = top + 12;
   const innerW = W - 2 * pad, innerH = H - y0min - pad;
-  const fit = (c, r, tight) => {
-    // el pasillo entre columnas lleva la etiqueta de la flecha (hasta 12 letras): mientras haya ancho, que quepa
-    const gx = tight ? 36 : clamp(Math.round(innerW * 0.15), 48, 104);
-    const gy = tight ? 30 : clamp(Math.round(innerH * 0.14), 40, 64);
+  // El pasillo entre columnas lleva la etiqueta de la flecha (hasta 12 letras): mientras haya ancho,
+  // que quepa entera al lado de su flecha. Si no hay, se angosta de a poco antes de achicar las cajas
+  // (una caja de menos de 104 px ya no se lee).
+  const fit = (c, r, gxWant) => {
+    const gx = gxWant ?? clamp(Math.round(innerW * 0.15), 48, 104);
+    const gy = gxWant === 36 ? 30 : clamp(Math.round(innerH * 0.14), 40, 64);
     const w = Math.min(184, Math.floor((innerW - (c - 1) * gx) / c));
     const h = Math.min(80, Math.floor((innerH - (r - 1) * gy) / r));
     return { c, r, gx, gy, w, h };
   };
-  let L = fit(cols, rows), transposed = false;
-  if (L.w < 112 && rows !== cols) {
-    const T = fit(rows, cols);
+  const best = (c, r) => {
+    let L = fit(c, r);
+    for (const gx of [72, 60, 48]) if (L.w < 104 && gx < L.gx) L = fit(c, r, gx);
+    return L;
+  };
+  let L = best(cols, rows), transposed = false;
+  if (L.w < 104 && rows !== cols) {
+    const T = best(rows, cols);
     if (T.w >= L.w * 1.3 && T.h >= 44) { L = T; transposed = true; }
   }
-  if (L.w < 96 || L.h < 48) L = fit(L.c, L.r, true);
+  if (L.w < 96 || L.h < 48) L = fit(L.c, L.r, 36);
   const x0 = Math.round(pad + (innerW - (L.c * L.w + (L.c - 1) * L.gx)) / 2);
   const y0 = Math.round(y0min + (innerH - (L.r * L.h + (L.r - 1) * L.gy)) / 2);
   return { ...L, x0, y0, transposed, W, H, top: y0min, pad };
