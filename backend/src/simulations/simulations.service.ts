@@ -87,12 +87,49 @@ export class SimulationsService implements OnModuleInit {
   ) {}
 
   onModuleInit() {
+    // La limpieza de sandboxes pregunta acá si un sandbox está en uso.
+    this.sandboxes.registerUsage({
+      usage: (sandboxId) => this.sandboxUsage(sandboxId),
+      release: async (sandboxId) => {
+        for (const s of this.store.list()) {
+          if (s.sandbox_id === sandboxId && ACTIVE.includes(s.status)) {
+            await this.stop(s.sim_id);
+          }
+        }
+      },
+    });
     for (const s of this.store.list()) {
       if (!ACTIVE.includes(s.status)) continue;
       this.bridgeSandbox(s);
       // Simulaciones creadas antes de la detección determinista.
       if (s.deploy_ready_at && !s.tools_detected) void this.scanTools(s.sim_id);
     }
+  }
+
+  /**
+   * Uso de un sandbox desde sus simulaciones: si hay una activa y la última
+   * acción del developer (crearla, mensajes, acciones). Las actualizaciones
+   * automáticas del backend no cuentan como uso.
+   */
+  private sandboxUsage(sandboxId: string) {
+    let activeSimulation = false;
+    let last = 0;
+    for (const s of this.store.list()) {
+      if (s.sandbox_id !== sandboxId) continue;
+      if (ACTIVE.includes(s.status)) activeSimulation = true;
+      last = Math.max(last, Date.parse(s.created_at) || 0);
+      for (let i = s.timeline.length - 1; i >= 0; i--) {
+        const e = s.timeline[i];
+        if (e.actor === 'user') {
+          last = Math.max(last, Date.parse(e.t) || 0);
+          break;
+        }
+      }
+    }
+    return {
+      activeSimulation,
+      lastUserActivity: last ? new Date(last).toISOString() : undefined,
+    };
   }
 
   // ------------------------------------------------------------ consultas
@@ -215,7 +252,7 @@ export class SimulationsService implements OnModuleInit {
 
   // -------------------------------------------------------------- crear
 
-  create(input: CreateSimulationInput) {
+  async create(input: CreateSimulationInput) {
     const problems = agentConfigProblems({
       AGENT_API_SECRET: this.config.get('AGENT_API_SECRET', { infer: true }),
       PUBLIC_BACKEND_URL: this.config.get('PUBLIC_BACKEND_URL', {
@@ -248,16 +285,19 @@ export class SimulationsService implements OnModuleInit {
           });
       if (reusable) {
         sandboxId = reusable.sandbox_id;
+        this.sandboxes.touch(sandboxId);
         this.logger.log(
           `Reusando sandbox ${sandboxId} para ${repoUrl} (sin re-desplegar)`,
         );
       } else {
-        sandboxId = this.sandboxes.create({
-          repo_url: repoUrl,
-          mode: 'auto',
-          owner: input.owner,
-          private_repo: input.private_repo,
-        }).sandbox_id;
+        sandboxId = (
+          await this.sandboxes.create({
+            repo_url: repoUrl,
+            mode: 'auto',
+            owner: input.owner,
+            private_repo: input.private_repo,
+          })
+        ).sandbox_id;
       }
     } else {
       throw new BadRequestException('Indica repo_url o sandbox_id');

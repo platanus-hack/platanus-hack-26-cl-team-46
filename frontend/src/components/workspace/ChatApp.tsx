@@ -65,15 +65,27 @@ export function ChatApp({
         </div>
         <SidebarGroup label="Canales">
           {CHANNELS.filter((c) => c.kind === "channel").map((c) => (
-            <SidebarItem key={c.id} active={active === c.id} unread={unread(c.id)} onClick={() => open(c.id)}>
-              <span className="text-sim-ink-faint">#</span> {c.name}
+            <SidebarItem
+              key={c.id}
+              icon={<span className="text-sim-ink-faint">#</span>}
+              active={active === c.id}
+              unread={unread(c.id)}
+              onClick={() => open(c.id)}
+            >
+              {c.name}
             </SidebarItem>
           ))}
         </SidebarGroup>
         <SidebarGroup label="Mensajes directos">
           {CHANNELS.filter((c) => c.kind === "dm").map((c) => (
-            <SidebarItem key={c.id} active={active === c.id} unread={unread(c.id)} onClick={() => open(c.id)}>
-              <span className="inline-block size-2 rounded-full bg-sim-ink-faint align-middle" /> {c.name}
+            <SidebarItem
+              key={c.id}
+              icon={<span className="size-2 -translate-y-px rounded-full bg-sim-ink-faint" />}
+              active={active === c.id}
+              unread={unread(c.id)}
+              onClick={() => open(c.id)}
+            >
+              {c.name}
             </SidebarItem>
           ))}
         </SidebarGroup>
@@ -126,11 +138,14 @@ function SidebarGroup({ label, children }: { label: string; children: React.Reac
 }
 
 function SidebarItem({
+  icon,
   active,
   unread,
   onClick,
   children,
 }: {
+  /** "#" de canal o el punto de presencia del DM: misma columna fija, así los nombres quedan alineados. */
+  icon: React.ReactNode;
   active: boolean;
   unread: number;
   onClick: () => void;
@@ -140,10 +155,13 @@ function SidebarItem({
     <button
       type="button"
       onClick={onClick}
-      className={`mx-1 flex w-[calc(100%-8px)] items-center gap-1 rounded-md px-2 py-1 text-left ${
+      className={`mx-1 flex w-[calc(100%-8px)] items-center gap-1.5 rounded-md px-2 py-1 text-left ${
         active ? "bg-sim-300 text-sim-ink" : unread ? "font-semibold text-sim-ink" : "text-sim-ink-muted hover:bg-sim-200"
       }`}
     >
+      <span className="flex w-3 shrink-0 items-center justify-center" aria-hidden>
+        {icon}
+      </span>
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {unread > 0 && !active && (
         <span className="rounded-full bg-sim-ink px-1.5 text-[10px] font-semibold leading-4 text-sim-000">{unread}</span>

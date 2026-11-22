@@ -255,7 +255,7 @@ export function Landing() {
           </div>
 
           {/* Con sesión de GitHub: atajo a la app arriba a la derecha (donde la intro tenía "Saltar").
-              En mobile ahí está el panel de arriba: va bajo "Baja para empezar" (HeroSplit › cta). */}
+              En mobile ahí está el panel de arriba: va bajo el titular (HeroSplit › cta). */}
           <div className="absolute top-4 right-4 z-30 max-md:hidden">
             <LandingEnterButton />
           </div>
@@ -334,7 +334,8 @@ export function Landing() {
               disclaimer={RESULT.disclaimer}
               ctaTitle={RESULT.ctaTitle}
               ctaLine={RESULT.ctaLine}
-              cta={<StartCta />}
+              // En mobile el botón ocupa todo el ancho.
+              cta={<StartCta className="max-md:w-full max-md:justify-center" />}
             >
               <p>{ok ? RESULT.ok.why : RESULT.fail.why[answer.option.id]}</p>
               {/* En mobile sobra: el CTA queda justo abajo. */}

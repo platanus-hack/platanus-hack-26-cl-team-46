@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { StatusChip, useReducedMotion } from "@/components/mayday";
+import { Button, StatusChip, useReducedMotion } from "@/components/mayday";
 import type { Simulation } from "@/lib/sim-api";
 
 /**
@@ -231,30 +231,28 @@ function Elapsed() {
 // ---------------------------------------------------------------- todo listo
 
 /**
- * Todos los agentes listos: un solo botón grande al centro. No mostramos qué vulnerabilidades
+ * Todos los agentes listos: el título y el botón primario al centro. No mostramos qué vulnerabilidades
  * encontró el atacante: eso lo descubre el developer en el simulacro y lo ve en el reporte.
  */
 function ReadyGate({ onStart }: { sim: Simulation; onStart: StartFn }) {
   const [starting, setStarting] = useState(false);
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-14 px-6 py-12 text-center">
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-6 py-12 text-center">
       <h2 className="text-[44px] font-semibold leading-[1.08] tracking-[-0.035em] text-ink">Todos los sistemas están listos</h2>
-      <div className="md-arcade-glow">
-        <button
-          type="button"
-          disabled={starting}
-          onClick={(e) => {
-            setStarting(true);
-            // Los pixeles de la transición salen desde el centro del botón.
-            const r = e.currentTarget.getBoundingClientRect();
-            // Si falla, el error se muestra arriba y el botón vuelve a quedar disponible.
-            void onStart({ x: r.left + r.width / 2, y: r.top + r.height / 2 }).finally(() => setStarting(false));
-          }}
-          className="md-arcade"
-        >
-          {starting ? "Iniciando…" : "Iniciar simulación"}
-        </button>
-      </div>
+      <Button
+        variant="primary"
+        size="lg"
+        disabled={starting}
+        onClick={(e) => {
+          setStarting(true);
+          // Los pixeles de la transición salen desde el centro del botón.
+          const r = e.currentTarget.getBoundingClientRect();
+          // Si falla, el error se muestra arriba y el botón vuelve a quedar disponible.
+          void onStart({ x: r.left + r.width / 2, y: r.top + r.height / 2 }).finally(() => setStarting(false));
+        }}
+      >
+        {starting ? "Iniciando…" : "Iniciar simulación"}
+      </Button>
     </div>
   );
 }

@@ -386,136 +386,140 @@ function SelectionPanel({
   const sent = send.status === "sent" ? send : null;
   return (
     // El CTA va pegado abajo: al fondo del panel y, si el panel es más alto que la pantalla, al borde inferior de ella.
+    // En desktop el panel acompaña el scroll de la lista, pero nunca pasa del alto de la pantalla: si no cabe,
+    // el contenido scrollea por dentro y el CTA queda visible debajo (si no, el CTA tapaba el final y no había cómo verlo).
     <aside
       ref={ref}
       className={`flex scroll-mt-14 flex-col border-t border-line bg-bg-100 px-5 pt-8 md:px-12 md:pt-12 lg:border-t-0 lg:border-l lg:px-8 ${selected ? "" : "pb-8 md:pb-12"}`}
     >
-      <div className="flex flex-col gap-6 pb-6 lg:sticky lg:top-[104px]" aria-live="polite">
-        <div className="flex min-h-10 items-center justify-between gap-3">
-          <h2 className="md-index">TU SANDBOX</h2>
-          {sent && (
-            <div className="flex items-center gap-2">
-              {/* .md-chip trae align-self: flex-start; el span lo deja centrado con la X. */}
-              <span className="flex">
-                <StatusChip tone="defense">Repo enviado</StatusChip>
-              </span>
-              <button
-                type="button"
-                aria-label="Envía otro repo"
-                title="Envía otro repo"
-                onClick={onReset}
-                className="-mr-2 flex size-10 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-bg-200 hover:text-ink"
-              >
-                <X className="size-5" strokeWidth={1.5} aria-hidden="true" />
-              </button>
-            </div>
+      <div className="flex flex-1 flex-col lg:sticky lg:top-[104px] lg:max-h-[calc(100dvh-104px)] lg:flex-none">
+        <div className="flex flex-col gap-6 pb-6 lg:-mx-3 lg:min-h-0 lg:overflow-y-auto lg:px-3" aria-live="polite">
+          <div className="flex min-h-10 items-center justify-between gap-3">
+            <h2 className="md-index">TU SANDBOX</h2>
+            {sent && (
+              <div className="flex items-center gap-2">
+                {/* .md-chip trae align-self: flex-start; el span lo deja centrado con la X. */}
+                <span className="flex">
+                  <StatusChip tone="defense">Repo enviado</StatusChip>
+                </span>
+                <button
+                  type="button"
+                  aria-label="Envía otro repo"
+                  title="Envía otro repo"
+                  onClick={onReset}
+                  className="-mr-2 flex size-10 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-bg-200 hover:text-ink"
+                >
+                  <X className="size-5" strokeWidth={1.5} aria-hidden="true" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {!selected ? (
+            <p className="text-[15px] leading-[22px] text-ink-faint">
+              Elige un repo de la lista. Si no tienes uno a mano, usa Apuntes: viene listo para que lo hackeen.
+            </p>
+          ) : (
+            <>
+              <div className="flex flex-col gap-2">
+                <span className="font-mono text-[17px] leading-6 break-all md:text-[20px] md:leading-7">{selected.full_name}</span>
+                <a
+                  href={selected.html_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="self-start text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline"
+                >
+                  Ver en GitHub ↗
+                </a>
+              </div>
+
+              {sent ? (
+                <div className="flex flex-col gap-5">
+                  <p className="text-[15px] leading-[22px] text-ink-muted">
+                    <span className="text-ink">Estamos preparando tu sandbox y pronto estará listo para el simulacro.</span>{" "}
+                    Tarda entre 1 y 5 minutos.
+                  </p>
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[13px]">
+                    <dt className="text-ink-faint">SANDBOX</dt>
+                    <dd className="text-ink">{sent.name}</dd>
+                  </dl>
+                </div>
+              ) : (
+                <>
+                  <ul className="flex flex-col gap-3 text-[14px] leading-[22px] text-ink-muted md:text-[15px]">
+                    <li className="flex gap-3">
+                      <span className="mt-2 size-1.5 shrink-0 bg-defense" aria-hidden="true" />
+                      Copiamos el repo a un espacio privado nuestro. El tuyo no se toca.
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="mt-2 size-1.5 shrink-0 bg-defense" aria-hidden="true" />
+                      Una IA lo prepara y lo despliega en un sandbox aislado, con su propia base de datos.
+                    </li>
+                    <li className="flex gap-3">
+                      <span className="mt-2 size-1.5 shrink-0 bg-defense" aria-hidden="true" />
+                      Solo atacamos esa copia. Nunca tu producción.
+                    </li>
+                  </ul>
+
+                  <label className="flex flex-col gap-2">
+                    <span className="md-index">NOMBRE DEL SANDBOX</span>
+                    <input
+                      value={name}
+                      maxLength={80}
+                      disabled={send.status === "sending"}
+                      placeholder={selected.full_name}
+                      onChange={(e) => onName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") onSend();
+                      }}
+                      className="h-12 rounded-md border border-line-strong bg-bg-200 px-4 text-[16px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] sm:h-10 sm:text-[15px]"
+                    />
+                    <span className="text-[13px] text-ink-faint">Opcional. Si lo dejas vacío, se llama {selected.full_name}.</span>
+                  </label>
+
+                  {selected.private && (
+                    <p className="rounded-md border border-line-strong p-3 text-[13px] leading-5 text-ink-muted">
+                      <span className="text-ink">Es un repo privado.</span> Su código se copia a un repo privado de Mayday
+                      y lo leen agentes de IA para desplegarlo y simular el ataque. Nadie más que tú ve el sandbox.
+                    </p>
+                  )}
+
+                  {send.status === "error" && <TypedLog text={send.message} />}
+                </>
+              )}
+            </>
           )}
         </div>
 
-        {!selected ? (
-          <p className="text-[15px] leading-[22px] text-ink-faint">
-            Elige un repo de la lista. Si no tienes uno a mano, usa Apuntes: viene listo para que lo hackeen.
-          </p>
-        ) : (
-          <>
-            <div className="flex flex-col gap-2">
-              <span className="font-mono text-[17px] leading-6 break-all md:text-[20px] md:leading-7">{selected.full_name}</span>
-              <a
-                href={selected.html_url}
-                target="_blank"
-                rel="noreferrer"
-                className="self-start text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline"
-              >
-                Ver en GitHub ↗
-              </a>
-            </div>
-
+        {selected && (
+          <div className="sticky bottom-0 mt-auto flex shrink-0 flex-col gap-3 bg-bg-100 pt-4 pb-[max(32px,env(safe-area-inset-bottom))] md:pb-12">
             {sent ? (
-              <div className="flex flex-col gap-5">
-                <p className="text-[15px] leading-[22px] text-ink-muted">
-                  <span className="text-ink">Estamos preparando tu sandbox y pronto estará listo para el simulacro.</span>{" "}
-                  Tarda entre 1 y 5 minutos.
-                </p>
-                <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[13px]">
-                  <dt className="text-ink-faint">SANDBOX</dt>
-                  <dd className="text-ink">{sent.name}</dd>
-                </dl>
-              </div>
-            ) : (
               <>
-                <ul className="flex flex-col gap-3 text-[14px] leading-[22px] text-ink-muted md:text-[15px]">
-                  <li className="flex gap-3">
-                    <span className="mt-2 size-1.5 shrink-0 bg-defense" aria-hidden="true" />
-                    Copiamos el repo a un espacio privado nuestro. El tuyo no se toca.
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="mt-2 size-1.5 shrink-0 bg-defense" aria-hidden="true" />
-                    Una IA lo prepara y lo despliega en un sandbox aislado, con su propia base de datos.
-                  </li>
-                  <li className="flex gap-3">
-                    <span className="mt-2 size-1.5 shrink-0 bg-defense" aria-hidden="true" />
-                    Solo atacamos esa copia. Nunca tu producción.
-                  </li>
-                </ul>
-
-                <label className="flex flex-col gap-2">
-                  <span className="md-index">NOMBRE DEL SANDBOX</span>
-                  <input
-                    value={name}
-                    maxLength={80}
-                    disabled={send.status === "sending"}
-                    placeholder={selected.full_name}
-                    onChange={(e) => onName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") onSend();
-                    }}
-                    className="h-12 rounded-md border border-line-strong bg-bg-200 px-4 text-[16px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] sm:h-10 sm:text-[15px]"
-                  />
-                  <span className="text-[13px] text-ink-faint">Opcional. Si lo dejas vacío, se llama {selected.full_name}.</span>
-                </label>
-
-                {selected.private && (
-                  <p className="rounded-md border border-line-strong p-3 text-[13px] leading-5 text-ink-muted">
-                    <span className="text-ink">Es un repo privado.</span> Su código se copia a un repo privado de Mayday
-                    y lo leen agentes de IA para desplegarlo y simular el ataque. Nadie más que tú ve el sandbox.
-                  </p>
-                )}
-
-                {send.status === "error" && <TypedLog text={send.message} />}
+                {/* El simulacro muestra el avance del deploy y parte solo cuando la app está arriba. */}
+                <ButtonLink href={`/simulate?sandbox=${sent.sandboxId}`} variant="primary" size="lg" className="w-full justify-center">
+                  Ir al simulacro
+                </ButtonLink>
+                <Link
+                  href={`/deploy?sandbox=${sent.sandboxId}`}
+                  className="self-center py-1 text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline"
+                >
+                  Ver el deploy
+                </Link>
               </>
+            ) : (
+              <Button
+                variant="primary"
+                size="lg"
+                onClick={onSend}
+                disabled={send.status === "sending"}
+                className="w-full justify-center"
+              >
+                {send.status === "sending" ? "Enviando…" : "Despliega este repo"}
+              </Button>
             )}
-          </>
+          </div>
         )}
       </div>
-
-      {selected && (
-        <div className="sticky bottom-0 mt-auto flex flex-col gap-3 bg-bg-100 pt-4 pb-[max(32px,env(safe-area-inset-bottom))] md:pb-12">
-          {sent ? (
-            <>
-              {/* El simulacro muestra el avance del deploy y parte solo cuando la app está arriba. */}
-              <ButtonLink href={`/simulate?sandbox=${sent.sandboxId}`} variant="primary" size="lg" className="w-full justify-center">
-                Ir al simulacro
-              </ButtonLink>
-              <Link
-                href={`/deploy?sandbox=${sent.sandboxId}`}
-                className="self-center py-1 text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline"
-              >
-                Ver el deploy
-              </Link>
-            </>
-          ) : (
-            <Button
-              variant="primary"
-              size="lg"
-              onClick={onSend}
-              disabled={send.status === "sending"}
-              className="w-full justify-center"
-            >
-              {send.status === "sending" ? "Enviando…" : "Despliega este repo"}
-            </Button>
-          )}
-        </div>
-      )}
     </aside>
   );
 }

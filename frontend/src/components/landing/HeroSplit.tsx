@@ -55,22 +55,26 @@ export function HeroSplit({
         ref={overlayRef}
         className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-4 text-center md:justify-start md:gap-6 md:pt-[9svh]"
       >
-        <Logo height={28} priority />
+        {/* En mobile el logo va un poco más separado del titular. */}
+        <div className="max-md:mb-5">
+          <Logo height={28} priority />
+        </div>
         {/* El lector de pantalla lee la frase completa con el remate; la rotación es solo visual. */}
         <h1
           aria-label={`${HERO.titlePrefix} ${HERO.titlePhrases[HERO.titlePhrases.length - 1]}`}
-          className="max-w-[12ch] text-[clamp(36px,min(6.6vw,8.4svh),104px)] leading-[0.95] font-semibold tracking-[-0.045em] text-ink md:max-w-[17ch]"
+          className="max-w-[17ch] text-[clamp(36px,min(6.6vw,8.4svh),104px)] leading-[0.95] font-semibold tracking-[-0.045em] text-ink max-md:text-[clamp(26px,7.6vw,32px)]"
         >
           <span aria-hidden="true" className="block text-balance">
             {HERO.titlePrefix}
           </span>
           <PixelRotator phrases={HERO.titlePhrases} className="w-full text-attack-strong" />
         </h1>
-        {/* Botón: la capa del hero no recibe clics, así que va con pointer-events-auto. */}
+        {/* Botón: la capa del hero no recibe clics, así que va con pointer-events-auto. Solo desktop:
+            en mobile el titular queda centrado entre las dos pastillas y se baja con el dedo. */}
         <button
           type="button"
           onClick={onScrollHint}
-          className="md-index group pointer-events-auto mt-6 flex cursor-pointer items-center gap-2 rounded-full border border-line-strong bg-bg-100/70 px-4 py-2 text-ink-muted backdrop-blur-sm transition-colors hover:border-defense hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-defense md:mt-12"
+          className="md-index group pointer-events-auto mt-6 flex max-md:hidden cursor-pointer items-center gap-2 rounded-full border border-line-strong bg-bg-100/70 px-4 py-2 text-ink-muted backdrop-blur-sm transition-colors hover:border-defense hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-defense md:mt-12"
         >
           {HERO.scrollHint}
           <span aria-hidden="true" className="transition-transform group-hover:translate-y-0.5">
@@ -78,7 +82,7 @@ export function HeroSplit({
           </span>
         </button>
         {/* La capa del hero no recibe clics; el botón sí. */}
-        {cta && <div className="pointer-events-auto md:hidden">{cta}</div>}
+        {cta && <div className="pointer-events-auto mt-2 md:hidden">{cta}</div>}
       </div>
     </>
   );
@@ -152,8 +156,8 @@ function ProjectPanel({
   return (
     // Mobile: ancho completo pero bajo (HUD, estado y feed compactos) para no chocar con el titular.
     <div className="flex w-full max-w-[480px] flex-col gap-1.5 md:gap-3">
-      {/* Mobile: pastilla centrada, hacia el titular (debajo del panel de arriba, encima del de abajo). */}
-      <div className={`flex items-center gap-3 max-md:justify-center ${attack ? "flex-row-reverse" : "max-md:order-last"}`}>
+      {/* Mobile: pastilla a la izquierda, hacia el titular (debajo del panel de arriba, encima del de abajo). */}
+      <div className={`flex items-center gap-3 ${attack ? "md:flex-row-reverse" : "max-md:order-last"}`}>
         <StatusChip tone={tone}>{chip}</StatusChip>
         <span className="text-[13px] leading-5 text-ink-muted max-md:hidden">{caption}</span>
       </div>
