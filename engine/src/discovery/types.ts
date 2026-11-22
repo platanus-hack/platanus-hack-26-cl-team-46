@@ -19,7 +19,7 @@ export interface RouteDef {
   auth?: string;
   /** Parámetros de path detectados (:id, {id}). */
   params?: string[];
-  source: 'express' | 'flask' | 'openapi';
+  source: 'express' | 'flask' | 'openapi' | 'nest' | 'fastapi' | 'next';
 }
 
 export type SignalKind =
@@ -44,6 +44,8 @@ export interface RepoModel {
   stack: Array<{ language: string; framework?: string; db?: string }>;
   routes: RouteDef[];
   signals: SignalDef[];
+  /** Prefijos de montaje (setGlobalPrefix, app.use('/api', …)) para resolver rutas en vivo. */
+  prefixes?: string[];
   manifests: {
     packageJson?: { name?: string; dependencies?: string[] };
     dockerfiles: FileRef[];

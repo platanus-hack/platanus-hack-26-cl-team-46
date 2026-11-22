@@ -5,9 +5,10 @@ vulnerabilidades existen con **ataques reales** (no emulados), captura el paso a
 paso de cada uno (telemetría), y produce la guía del hackeo + escenarios
 preconfigurados para el simulador.
 
-> **Estado honesto:** hoy es un **núcleo reutilizable** con **plugins/fixtures
-> específicos de la app víctima "Apuntes"**. NO es todavía "sirve con cualquier
-> app/repositorio": ver [Reutilizable vs específico](#reutilizable-vs-específico-de-apuntes).
+> **Cualquier app:** con `--plugin auto` (default en Modal y en el backend) el motor
+> usa el plugin propio si el repo es una víctima conocida (Apuntes, Tasks) y si no,
+> el **plugin genérico**, que ataca apps HTTP desconocidas. Ver
+> [Plugin genérico](#plugin-genérico-cualquier-app).
 
 ## Uso
 
@@ -115,6 +116,11 @@ src/
     events.ts         contrato attack.plan / attack.* del backend
     report.ts         guía del hackeo
     types.ts          contratos: Attack, EnginePlugin, VulnMeta, …
+  plugins/generic/    CUALQUIER app HTTP: superficie desde el repo y la app en vivo
+    surface.ts        rutas reales, prefijos, fallback de SPA, login/registro/sesión
+    attacks.ts        11 ataques con evidencia real
+    catalog.ts        enseñanza (CWE/OWASP/ATT&CK, caso real, arreglos)
+  plugins/detect.ts   auto: plugin propio o genérico según el repo
   plugins/apuntes/    ESPECÍFICO de la app víctima "Apuntes"
     index.ts          ensambla el EnginePlugin
     catalog.ts        ATT&CK/ATLAS, D3FEND, caso real, fixes (de ANSWER_KEY.md)
@@ -123,6 +129,42 @@ src/
     storylines.ts     beats de storytelling
 test/   fixture.ts (app víctima local en memoria) + *.test.ts (node:test)
 ```
+
+## Plugin genérico (cualquier app)
+
+Para apps sin plugin propio. Arma la superficie de ataque así:
+
+1. **Rutas del repo** (`discovery/`): Express, Flask, NestJS (`@Controller` + `@Get`,
+   guards), FastAPI, Next.js (`app/api/**/route.ts`, `pages/api`) y OpenAPI.
+2. **Rutas publicadas por la app**: `/openapi.json`, `/api-json` (Nest), `/swagger.json`…
+3. **Prefijo real** en vivo: `setGlobalPrefix`, `app.use('/api/x', router)`, `url_prefix`.
+   Por archivo, gana la respuesta más "de API" (JSON o 401/403 > HTML).
+4. **Fallback de SPA**: una ruta inventada marca cómo responde el frontend a todo;
+   un 200 HTML igual no cuenta como hallazgo.
+5. **Sesión**: la credencial conocida (`weak_login`/seed) o una cuenta desechable;
+   login con `email` o `username`, token en JSON o cookie.
+
+| vuln_id | Cómo se confirma |
+|---|---|
+| `exposed-sensitive-files` | `/.env`, `/.git/config`, dumps SQL con contenido real (no el HTML de la SPA). Los valores no se guardan. |
+| `sql-injection` | Bypass del login con `' OR '1'='1' --`, error SQL con comilla y sin ella no, o comillas balanceadas (`'` rompe y `''` no). |
+| `jwt-forgery` | `alg: none` aceptado, o firma verificada offline con un secreto filtrado, escrito en el repo o de diccionario; luego un token forjado. |
+| `mass-assignment` | Registro o edición del propio perfil con `role: admin` que deja la cuenta como admin. |
+| `admin-endpoint-no-authz` | Rutas `/admin`, `/export`… que devuelven datos a un usuario sin rol admin. |
+| `unauthenticated-data-access` | Datos con PII (o protegidos en el código) sin sesión. |
+| `idor` | Recursos `/:id` cuyo dueño (`userId`, `ownerId`…) no es el atacante. |
+| `cors-misconfiguration` | Origin ajeno reflejado con `Allow-Credentials: true`. |
+| `weak-password-no-rate-limit` | 12 contraseñas comunes sin 429 ni bloqueo, y el login válido sigue entrando. |
+| `user-enumeration` | Status o mensaje distinto para usuario existente vs inexistente. |
+| `verbose-errors` | Stack trace en la respuesta a un request malformado. |
+
+Probado contra una app vulnerable y su versión endurecida (`test/generic.test.ts`):
+11/11 y 0/11 (sin falsos positivos). Contra un sandbox real de Apuntes, sin usar su
+plugin, confirma 6 (IDOR, SQLi, mass assignment, export de admin, fuerza bruta y
+errores verbosos), todas con archivo y línea.
+
+**Límites:** no ataca WebSockets/socket.io, GraphQL ni XSS almacenado; una app sin API
+HTTP (p. ej. un juego en tiempo real por sockets) da 0 confirmadas.
 
 ## Reutilizable vs específico de Apuntes
 
@@ -154,4 +196,5 @@ shapes y tablas exactas), el payload SQLi (esquema Postgres), `catalog.ts`
 - [x] **M5** — 2º target "Tasks" (plugin+fixture) con vulns solapadas/no solapadas → generalización del core.
 - [x] **M6** — providers (interfaz + tier Haiku/Sonnet/Opus) + **gate** de artefactos generados + **provenance** de fuentes externas (`semgrep`/`nuclei`/ARTEX **no aprobadas hasta review supervisado**; LLM real inerte hasta habilitar).
 - [x] **M8** — modo agresivo/destructivo (`--destructive`): DoS acotado, SSRF→secrets+lateral, prompt-injection (ATLAS), phishing (open-redirect, entrega simulada) + análisis de deploy/CICD; cascada LLM Sonnet 4.5→DeepSeek→GLM; despliegue del motor (Dockerfile + render.yaml + modal_app.py, server `/run`).
+- [x] **M9** — plugin genérico (`plugins/generic/`) + `--plugin auto`: 11 ataques sobre apps desconocidas; discovery NestJS/FastAPI/Next.js y prefijos de montaje.
 - [ ] **M7** — Render (pendiente de créditos) + ejecución live de providers LLM, ARTEX/scanners y corridas destructivas (checkpoints supervisados; ahora bloqueados por key LLM ausente / Docker daemon / reset del sandbox).

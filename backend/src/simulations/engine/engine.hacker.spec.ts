@@ -32,6 +32,7 @@ const FIRST_PASS: EngineRunResult = {
     attack_plan: {
       raw: {
         target: 'https://sbx-1.onrender.com',
+        plugin: 'generic',
         findings: [
           { vuln_id: 'idor', title: 'IDOR', severity: 'high', order: 3, confirmed: true, repo_ref: { file: 'src/routes/notes.ts', line: 4 } },
           { vuln_id: 'jwt-not-invalidated-on-password-change', title: 'JWT', severity: 'high', order: 2, confirmed: true, location: '.env.example:2' },
@@ -251,7 +252,15 @@ describe('EngineHacker', () => {
     });
     const verify = t.append('observer', { type: 'control.verify', raw: { vuln_id: 'jwt-not-invalidated-on-password-change' } });
     await vi.waitFor(() => expect(t.client.start).toHaveBeenCalledTimes(2));
-    expect(t.client.start.mock.calls[1][0]).toMatchObject({ only: ['jwt-not-invalidated-on-password-change'], no_recon: true, seed: `sim-1-verify-${verify.seq}` });
+    // Mismo plugin que la primera pasada y el repo en el commit desplegado (con el arreglo).
+    expect(t.client.start.mock.calls[1][0]).toMatchObject({
+      only: ['jwt-not-invalidated-on-password-change'],
+      no_recon: true,
+      seed: `sim-1-verify-${verify.seq}`,
+      plugin: 'generic',
+      repo: 'https://github.com/mayday-sbx/sbx-1',
+      commit: 'abc1234',
+    });
     await vi.waitFor(() => expect(t.sim().engine!.verifies[0].call_id).toBe('fc-verify'));
     await t.tick();
     const v = t.sim().timeline.find((e) => e.type === 'attack.verify')!;

@@ -450,6 +450,8 @@ export interface EngineVerify {
  * reloj humano y cada control.verify vuelve a atacar de verdad esa vuln.
  */
 export interface EngineRecord {
+  /** Plugin que usó la primera pasada (auto → apuntes | tasks | generic). */
+  plugin?: string;
   status: 'running' | 'done' | 'failed';
   call_id?: string;
   started_at: string;

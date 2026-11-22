@@ -6,6 +6,7 @@
 import { readManifests } from './manifests.ts';
 import { extractOpenapiRoutes } from './openapi.ts';
 import { extractExpressRoutes, extractFlaskRoutes } from './routes.ts';
+import { extractFastapiRoutes, extractMountPrefixes, extractNestRoutes, extractNextRoutes } from './frameworks.ts';
 import { scanRepo } from './scan.ts';
 import { extractSignals } from './signals.ts';
 import type { RepoModel } from './types.ts';
@@ -22,7 +23,11 @@ export async function discoverRepo(root: string, opts: { commit?: string } = {})
     ...extractExpressRoutes(files, commit),
     ...extractFlaskRoutes(files, commit),
     ...extractOpenapiRoutes(files, manifests.openapi, commit),
+    ...extractNestRoutes(files, commit),
+    ...extractFastapiRoutes(files, commit),
+    ...extractNextRoutes(files, commit),
   ];
+  const prefixes = extractMountPrefixes(files);
 
   const signals = extractSignals(files, commit);
 
@@ -38,5 +43,5 @@ export async function discoverRepo(root: string, opts: { commit?: string } = {})
   }
   if (files.length === 0) notes.push('el repo no tiene archivos legibles (¿ruta correcta?)');
 
-  return { schemaVersion: '1', root, commit, stack, routes, signals, manifests, notes };
+  return { schemaVersion: '1', root, commit, stack, routes, signals, prefixes, manifests, notes };
 }
