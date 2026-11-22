@@ -65,10 +65,21 @@
 .clicky-board .ttl { margin-top: 8px; font: 600 20px/28px var(--f-ui); letter-spacing: -.01em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .clicky-board .sub { font: 400 14px/20px var(--f-ui); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.clicky-node { position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 10px 14px; text-align: center; background: var(--bg-200); border: 1px solid var(--line-strong); border-radius: var(--radius-md); color: var(--ink); font: 500 15px/20px var(--f-ui); animation: clicky-rise .24s var(--ease-in) both; }
+.clicky-node { position: absolute; box-sizing: border-box; display: flex; align-items: center; justify-content: center; padding: 8px 12px; text-align: center; color: var(--ink); font: 500 15px/20px var(--f-ui); hyphens: auto; overflow-wrap: break-word; animation: clicky-fade .22s var(--ease-in) both; }
 .clicky-node span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-.clicky-node.small { padding: 6px 10px; font-size: 13px; line-height: 17px; }
-.clicky-node.hot { background: var(--defense-deep); border: 2px solid var(--defense); box-shadow: var(--glow-defense); }
+.clicky-node.small { padding: 6px 8px; font-size: 13px; line-height: 17px; }
+.clicky-node.tiny { padding: 4px 6px; font-size: 12px; line-height: 15px; }
+.clicky-node.attack { color: var(--attack-strong); }
+.clicky-node.measuring { hyphens: manual; overflow-wrap: normal; }
+.clicky-node.measuring span { display: block; overflow: visible; -webkit-line-clamp: unset; }
+.clicky-box.key { filter: drop-shadow(0 0 6px #2EE6FF66); }
+.clicky-box.attack { filter: drop-shadow(0 0 6px #FF8A0040); }
+@keyframes clicky-fade { from { opacity: 0; } to { opacity: 1; } }
+/* example: un ejemplo de la vida diaria, en la pizarra o en la columna de tarjetas */
+.clicky-example { box-sizing: border-box; padding: 10px 14px 12px; background: var(--bg-200); border: 1px solid var(--line-strong); border-left: 3px solid var(--defense); border-radius: var(--radius-md); color: var(--ink); }
+.clicky-example.on-board { position: absolute; box-shadow: var(--shadow-window); }
+.clicky-example .k { display: block; margin-bottom: 4px; font: 500 11px/16px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--defense); }
+.clicky-example p { margin: 0; font: 400 14px/20px var(--f-ui); color: var(--ink); }
 @keyframes clicky-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 /* chart: barras horizontales */

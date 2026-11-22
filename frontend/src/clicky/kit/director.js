@@ -9,7 +9,7 @@ const COST = {
   point: 0.9, step: 0.8, click: 0.9, scroll: 0.5, type: m => 0.5 + Math.min(1.2, 0.03 * (m.value?.length || 0)),
   card: m => 0.5 + 0.6 * (m.items?.length || 0),
   chart: m => 1 + 0.55 * (m.bars?.length || 0) + (m.note ? 0.6 : 0),
-  board: 0.5, node: 0.9, edge: m => (m.label ? 0.75 : 0.55),
+  board: 0.5, node: 0.9, edge: m => (m.label ? 0.8 : 0.6), example: 0.8,
 };
 const cost = m => (typeof COST[m.type] === 'function' ? COST[m.type](m) : COST[m.type] || 0.5);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -37,7 +37,8 @@ export function createDirector({ draw, island, voice, onBeat }) {
         const after = order[next];
         // Time until the next mark is due (or the line ends); once the line is over, draw quickly.
         const room = over ? 0 : (after ? times[after.word] ?? duration : duration) - (times[item.word] ?? 0);
-        const s = over ? 0.45 : clamp(room / cost(item.m), 0.45, 1.35);
+        // el ritmo de HeyClicky: entre 0,8 y 1,4 (apurado se ve nervioso; lento, aburrido)
+        const s = over ? 0.45 : clamp(room / cost(item.m), 0.8, 1.4);
         drawing = drawing.then(() => id === run && draw(item.m, s)).catch(e => console.warn('[clicky] mark skipped', item.m, e));
       }
     };

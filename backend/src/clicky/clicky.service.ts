@@ -724,7 +724,7 @@ export function mockPlan({
           text: 'Tokens falsos',
           col: 1,
           row: 1,
-          hot: true,
+          tone: 'attack',
           at: 'tokens falsos',
         },
         {
@@ -732,7 +732,18 @@ export function mockPlan({
           from: 'token',
           to: 'robo',
           label: 'si filtran',
+          tone: 'attack',
           at: 'roba el secreto',
+        },
+      ],
+    },
+    {
+      say: 'Es como una pulsera de un festival: quien la tenga, entra.',
+      marks: [
+        {
+          type: 'example',
+          text: 'Es como la pulsera de un festival: el guardia mira la pulsera, no tu cara.',
+          at: 'una pulsera',
         },
       ],
     },

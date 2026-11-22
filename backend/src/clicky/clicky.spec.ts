@@ -306,6 +306,80 @@ describe('pizarra por piezas', () => {
     ]);
     expect(second).toEqual([]);
   });
+
+  it('cajas con tono (ataque, defensa, clave) y flechas de ataque; `hot` vale como clave', () => {
+    const [, boxes, arrows] = marks([
+      { say: 'abro', marks: [{ type: 'board', title: 't', cols: 3, rows: 2 }] },
+      {
+        say: 'las cajas',
+        marks: [
+          {
+            type: 'node',
+            id: 'a',
+            text: 'Atacante',
+            col: 0,
+            row: 0,
+            tone: 'attack',
+          },
+          { type: 'node', id: 'b', text: 'Token', col: 1, row: 0, hot: true },
+          {
+            type: 'node',
+            id: 'c',
+            text: 'Defensa',
+            col: 2,
+            row: 0,
+            tone: 'defense',
+          },
+          {
+            type: 'node',
+            id: 'd',
+            text: 'Raro',
+            col: 0,
+            row: 1,
+            tone: 'purple',
+          },
+        ],
+      },
+      {
+        say: 'las flechas',
+        marks: [
+          { type: 'edge', from: 'a', to: 'b', label: 'roba', tone: 'problem' },
+          { type: 'edge', from: 'b', to: 'c', label: 'abre', tone: 'calm' },
+        ],
+      },
+    ]);
+    const tones = (ms: unknown[]) =>
+      ms.map((m) => (m as { tone?: string }).tone);
+    expect(tones(boxes)).toEqual(['attack', 'key', 'defense', undefined]);
+    expect(tones(arrows)).toEqual(['attack', undefined]);
+  });
+
+  it('un solo ejemplo de la vida diaria por respuesta, con el texto acotado', () => {
+    const [first, second] = marks([
+      {
+        say: 'Es como una pulsera de festival',
+        marks: [
+          {
+            type: 'example',
+            text: 'Es como la pulsera de un festival: quien la tenga, entra. '.repeat(
+              4,
+            ),
+          },
+          { type: 'example' },
+        ],
+      },
+      {
+        say: 'otro',
+        marks: [{ type: 'example', text: 'Rotar es cambiar la chapa' }],
+      },
+    ]);
+    expect(first).toHaveLength(1);
+    expect(first[0]).toMatchObject({ type: 'example' });
+    expect(
+      (first[0] as unknown as { text: string }).text.length,
+    ).toBeLessThanOrEqual(110);
+    expect(second).toEqual([]);
+  });
 });
 
 describe('anchorWord', () => {
@@ -585,7 +659,7 @@ describe('ClickyService.lesson (ensayo)', () => {
     ))
       events.push(e);
     expect(events.map((e) => e.type)).toEqual([
-      ...Array(9).fill('beat'),
+      ...Array(10).fill('beat'),
       'done',
     ]);
     const second = events[1] as Extract<LessonEvent, { type: 'beat' }>;
