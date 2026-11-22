@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Button, StatusChip } from "@/components/mayday";
+import { Button, StatusChip, useReducedMotion } from "@/components/mayday";
 import type { EngineFinding, Simulation } from "@/lib/sim-api";
 
 /**
@@ -103,24 +103,10 @@ export function EnginePrep({ sim }: { sim: Simulation }) {
             ? (engine?.error ?? sim.error ?? "Revisa el deploy y parte un simulacro nuevo.")
             : "Antes del simulacro, el motor prueba cada vulnerabilidad contra tu app desplegada. Solo toca tu sandbox. Tarda uno o dos minutos."}
         </p>
-        <ol className="mt-8 flex max-w-xl flex-col">
+        {/* Como un log de Claude Code: la fase en curso gira, brilla y muestra en vivo lo último que hizo el motor. */}
+        <ol className="mt-8 flex max-w-xl flex-col gap-3 font-mono text-[14px] leading-6" aria-live="polite">
           {phases.map((p) => (
-            <li key={p.label} className="grid grid-cols-[28px_1fr_auto] items-center gap-3 border-b border-line py-3.5">
-              <span
-                aria-hidden="true"
-                className={`size-3 border-[1.5px] ${
-                  p.state === "done"
-                    ? "border-defense bg-defense"
-                    : p.state === "run"
-                      ? "border-attack bg-attack shadow-[0_0_0_1px_#FF8A0080,0_0_28px_#FF8A0040]"
-                      : "border-line-strong"
-                }`}
-              />
-              <span className={p.state === "todo" || p.state === "skip" ? "text-ink-faint" : "text-ink"}>{p.label}</span>
-              <span className={`font-mono text-xs ${p.state === "run" ? "text-attack" : "text-ink-faint"}`}>
-                {p.state === "skip" ? "sin repo" : (p.detail ?? (p.state === "run" ? "en curso" : "—"))}
-              </span>
-            </li>
+            <PhaseLine key={p.label} phase={p} live={lines.at(-1)} />
           ))}
         </ol>
       </div>
@@ -146,6 +132,61 @@ export function EnginePrep({ sim }: { sim: Simulation }) {
       </div>
     </div>
   );
+}
+
+/** Una fase del log. Lista: pixel cian + resultado. En curso: spinner, brillo, segundos y la última línea del motor. */
+function PhaseLine({ phase: p, live }: { phase: Phase; live?: string }) {
+  const running = p.state === "run";
+  const result = p.state === "skip" ? "sin repo" : p.state === "done" ? p.detail : running ? (live ?? "Esperando que el sandbox quede desplegado…") : undefined;
+  return (
+    <li className="flex flex-col">
+      <span className="flex items-center gap-3">
+        <span aria-hidden="true" className="grid w-4 shrink-0 place-items-center">
+          {running ? (
+            <Spinner />
+          ) : (
+            <span className={`size-2.5 border-[1.5px] ${p.state === "done" ? "border-defense bg-defense" : "border-line-strong"}`} />
+          )}
+        </span>
+        <span className={running ? "md-shimmer" : p.state === "done" ? "text-ink" : "text-ink-faint"}>
+          {p.label}
+          {running && "…"}
+        </span>
+        {running && <Elapsed />}
+      </span>
+      {result && (
+        <span className={`flex min-w-0 gap-2 pl-7 text-[12.5px] ${running ? "text-ink-muted" : "text-ink-faint"}`}>
+          <span aria-hidden="true">⎿</span>
+          <span className="truncate" title={result}>
+            {result}
+          </span>
+        </span>
+      )}
+    </li>
+  );
+}
+
+/** Spinner de estrellas, como el de Claude Code. Con movimiento reducido queda fijo. */
+const SPINNER = ["·", "✢", "✳", "✶", "✻", "✽", "✻", "✶", "✳", "✢"];
+function Spinner() {
+  const reduced = useReducedMotion();
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (reduced) return;
+    const t = setInterval(() => setI((n) => (n + 1) % SPINNER.length), 120);
+    return () => clearInterval(t);
+  }, [reduced]);
+  return <span className="text-[15px] leading-none text-attack">{reduced ? "✻" : SPINNER[i]}</span>;
+}
+
+/** Segundos desde que se montó: se monta solo mientras la fase corre, así parte de cero en cada fase. */
+function Elapsed() {
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSeconds((n) => n + 1), 1000);
+    return () => clearInterval(t);
+  }, []);
+  return <span className="text-[12px] text-ink-faint tabular-nums">({seconds}s)</span>;
 }
 
 // ---------------------------------------------------------------- informe
