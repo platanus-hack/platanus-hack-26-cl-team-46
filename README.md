@@ -1,4 +1,4 @@
-# team-46 Platanus Hack 26: Santiago ft. Buk Project
+# Mayday — team-46 Platanus Hack 26: Santiago ft. Buk
 
 **Current project logo:** project-logo.png
 
