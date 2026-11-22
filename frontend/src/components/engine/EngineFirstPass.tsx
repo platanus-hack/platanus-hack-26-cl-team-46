@@ -355,13 +355,9 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: Start
   return (
     <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-10 overflow-y-auto px-10 py-8">
       <div className="min-w-0">
-        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Lo que confirmó el motor</span>
-        <h2 className="mt-2 text-[40px] font-semibold tracking-[-0.035em]">
+        <h2 className="text-[40px] font-semibold tracking-[-0.035em]">
           Tu app tiene {confirmed.length} {confirmed.length === 1 ? "puerta abierta" : "puertas abiertas"}.
         </h2>
-        <p className="mt-1 max-w-2xl text-[16px] leading-relaxed text-ink-muted">
-          Cada una se probó con tráfico real contra tu sandbox. Van en el orden en que un atacante las usaría.
-        </p>
         <div className="my-6 flex items-end gap-10">
           <Stat label="Confirmadas" value={`${s?.confirmed ?? confirmed.length}/${s?.total ?? engine.findings.length}`} attack />
           <Stat label="Críticas" value={String(critical)} />
@@ -383,7 +379,7 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: Start
           {picked.length} {picked.length === 1 ? "incidente" : "incidentes"}
         </h3>
         <p className="mt-1 text-sm leading-relaxed text-ink-muted">
-          Elige hasta {MAX_INCIDENTS}, en el orden en que quieres vivirlos. El atacante repite lo que hizo de verdad, paso a paso.
+          Elige hasta {MAX_INCIDENTS}, en el orden en que quieres vivirlos.
         </p>
         <div className="my-4 flex flex-col gap-2">
           {confirmed.map((f) => {
