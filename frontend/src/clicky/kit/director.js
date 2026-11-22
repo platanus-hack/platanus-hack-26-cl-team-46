@@ -5,10 +5,11 @@ import { prepareAudio, speak } from './voice.js';
 // time it has before the next mark's word, as HeyClicky paces its strokes to the line being said.
 const COST = {
   ring: 1.3, frame: 1.4, highlight: 0.6, underline: 0.7, num: 0.5, arrow: 1.1, target: 0.7, spotlight: 0.4,
-  note: 0.5, button: 0.2,
+  note: 0.5, button: 0.2, scribble: 0.9, cross: 0.6, check: 0.45, question: 0.5,
+  point: 0.9, step: 0.8, click: 0.9, scroll: 0.5, type: m => 0.5 + Math.min(1.2, 0.03 * (m.value?.length || 0)),
   card: m => 0.5 + 0.6 * (m.items?.length || 0),
   chart: m => 1 + 0.55 * (m.bars?.length || 0) + (m.note ? 0.6 : 0),
-  diagram: m => 0.4 + 0.5 * (m.nodes?.length || 0) + 0.5 * (m.edges?.length || 0),
+  board: 0.5, node: 0.9, edge: m => (m.label ? 0.75 : 0.55),
 };
 const cost = m => (typeof COST[m.type] === 'function' ? COST[m.type](m) : COST[m.type] || 0.5);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -20,10 +21,11 @@ const LEAD = 0.3;
 // one spoken line; each of its marks carries `word`, the word of the line at which it appears.
 // Marks are released when the voice reaches their word (from the audio clock), never before.
 export function createDirector({ draw, island, voice, onBeat }) {
-  let run = 0, wakeCurrent = () => {};
+  let run = 0, wakeCurrent = () => {}, saying = '';
 
   async function playBeat(beat, id) {
     onBeat?.(beat);
+    saying = beat.say;
     island.caption(beat.say, { dim: true });
     island.state('speaking');
     const order = beat.marks.map((m, k) => ({ m, k, word: Number.isInteger(m.word) ? m.word : 0 })).sort((a, b) => a.word - b.word || a.k - b.k);
@@ -65,7 +67,7 @@ export function createDirector({ draw, island, voice, onBeat }) {
     };
     const done = (async () => {
       for (let beat = await next(); beat; beat = await next()) await playBeat(beat, id);
-      if (id === run) island.state('idle');
+      if (id === run) { saying = ''; island.state('idle'); }
     })();
     return {
       push(beat) {
@@ -79,5 +81,6 @@ export function createDirector({ draw, island, voice, onBeat }) {
     };
   }
 
-  return { start, stop() { run++; wakeCurrent(); } };
+  // `saying`: la frase que suena ahora (si el usuario interrumpe, el modelo sabe dónde quedó).
+  return { start, stop() { run++; saying = ''; wakeCurrent(); }, get saying() { return saying; } };
 }

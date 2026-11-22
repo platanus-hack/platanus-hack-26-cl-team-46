@@ -1,15 +1,15 @@
 "use client";
 
 import { ButtonLink, GitHubIcon } from "@/components/mayday";
-import { useGitHubConnection } from "@/lib/onboarding";
+import { useSession } from "@/lib/onboarding";
 
-/** CTA de la bienvenida: si ya hay sesión, salta directo a elegir el repo. */
+/** CTA de la bienvenida (y del cierre de la landing): con sesión, salta directo a elegir el repo. */
 export function StartCta() {
-  const { connection } = useGitHubConnection();
-  if (connection) {
+  const { user } = useSession();
+  if (user) {
     return (
       <ButtonLink href="/start/repos" variant="primary" size="lg" icon={<GitHubIcon />}>
-        Continúa como @{connection.login}
+        Continúa como @{user.login}
       </ButtonLink>
     );
   }

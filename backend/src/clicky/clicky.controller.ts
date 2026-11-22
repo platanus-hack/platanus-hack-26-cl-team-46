@@ -18,7 +18,7 @@ import { ClickyService } from './clicky.service.js';
 
 /**
  * Copiloto en pantalla del simulador. Todas las rutas exigen `x-sim-id` de una
- * simulación en curso (ClickyAccessGuard).
+ * simulación en curso o terminada (ClickyAccessGuard).
  *
  * - POST /clicky/lesson (Content-Type application/vnd.clicky+json): pregunta, elementos
  *   visibles y captura → NDJSON, una línea por beat (lo que dice, lo que marca, en qué
@@ -44,7 +44,11 @@ export class ClickyController {
           .map((i) => `${i.path.join('.')}: ${i.message}`)
           .join('; '),
       );
-    yield* this.clicky.lesson(req.clickySimId, parsed.data);
+    yield* this.clicky.lesson(
+      req.clickySimId,
+      parsed.data,
+      req.clickySimStatus,
+    );
   }
 
   @Post('stt-session')
@@ -71,6 +75,8 @@ function parseBody(raw: unknown): unknown {
   try {
     return JSON.parse(raw.toString('utf8'));
   } catch {
-    throw new BadRequestException(`Cuerpo inválido: se esperaba ${CLICKY_JSON}`);
+    throw new BadRequestException(
+      `Cuerpo inválido: se esperaba ${CLICKY_JSON}`,
+    );
   }
 }

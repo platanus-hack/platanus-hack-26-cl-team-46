@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
+import { Button, Select, type SelectOption } from "@/components/mayday";
 import { api, type Sandbox, type SandboxMode, type SimEvent } from "@/lib/api";
 import { simApi, type SimStatus, type Simulation } from "@/lib/sim-api";
 
@@ -16,6 +17,12 @@ export default function DeployConsolePage() {
     </Suspense>
   );
 }
+
+const MODE_OPTIONS: SelectOption<SandboxMode>[] = [
+  { value: "agent", label: "IA (recomendado)", description: "Un agente analiza el repo y lo despliega" },
+  { value: "manifest", label: "Solo manifest, sin IA", description: "Usa .sandbox/manifest.json tal cual" },
+  { value: "auto", label: "Determinista → IA", description: "Intenta sin IA y, si falla, entra el agente" },
+];
 
 function DeployConsole() {
   const searchParams = useSearchParams();
@@ -93,25 +100,16 @@ function DeployConsole() {
         }}
       >
         <input
-          className="flex-1 rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-3 py-2"
+          className="h-10 min-w-0 flex-1 rounded-md border border-line-strong bg-bg-100 px-4 text-[13px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33]"
           placeholder="https://github.com/usuario/repo"
           value={repoUrl}
           onChange={(e) => setRepoUrl(e.target.value)}
           required
         />
-        <select
-          className="rounded-md border border-line-strong bg-bg-100 text-ink placeholder:text-ink-faint px-2 py-2 text-sm"
-          value={mode}
-          onChange={(e) => setMode(e.target.value as SandboxMode)}
-          title="IA: un agente analiza el repo y lo despliega"
-        >
-          <option value="agent">IA (recomendado)</option>
-          <option value="manifest">solo manifest, sin IA</option>
-          <option value="auto">determinista → IA</option>
-        </select>
-        <button className="rounded-md bg-defense font-medium text-on-defense hover:bg-defense-strong disabled:opacity-50 px-4 py-2" disabled={busy}>
+        <Select aria-label="Modo de deploy" value={mode} options={MODE_OPTIONS} onChange={setMode} className="w-[300px]" />
+        <Button type="submit" variant="primary" disabled={busy} className="disabled:cursor-not-allowed disabled:opacity-50">
           Desplegar
-        </button>
+        </Button>
       </form>
 
       {error && <p className="mb-4 rounded-md border border-attack bg-attack-soft p-3 text-sm text-attack-strong">{error}</p>}

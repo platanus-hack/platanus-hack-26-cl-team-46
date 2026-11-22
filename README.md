@@ -27,8 +27,9 @@ repo del developer ──▶ Servicio de deploy ──▶ sandbox en Render (sbx
                           └─ agente de IA en una VM de Conductor: analiza, despliega,
                              verifica (tablas, rutas, usuarios de prueba) y corrige
                                               │
-Simulación: 1 workspace de Conductor con 5 threads ── se coordinan por un timeline en el backend
-  infra · hacker · observer · generator · coder
+Simulación: 5 roles que se coordinan por un timeline en el backend
+  hacker · coder              → threads en un workspace de Conductor
+  infra · observer · generator → en el backend, con la API de Claude
                                               │ SSE
 UI: feed de notificaciones + chat con el agente de código ──▶ acciones que cambian la app real
 ```
@@ -59,6 +60,7 @@ pnpm dev                                  # backend :3001 + frontend :3000
 - Tests del backend: `pnpm --filter backend test` y `pnpm --filter backend test:e2e`.
 - Lint: `pnpm --filter backend lint` y `pnpm --filter frontend lint`.
 - Sin `DATABASE_URL`, el estado se guarda en `backend/.data/`.
+- **Roles de la simulación en el backend:** `ANTHROPIC_API_KEY` activa infra, observer y generator por API (modelos en `docs/simulation.md`). Sin ella, los 5 roles corren en Conductor. `pnpm --filter backend replay` compara modelos sobre una simulación real.
 - **Agentes (deploy y simulación):** sus VMs llaman al backend, así que necesita una URL pública. Local: `cloudflared tunnel --url http://localhost:3001` y poner esa URL en `PUBLIC_BACKEND_URL`. También hacen falta `AGENT_API_SECRET`, `CONDUCTOR_API_KEY` y el token de GitHub de la org. Si falta alguna, el backend lo avisa al arrancar y solo acepta sandboxes con `mode: "manifest"`.
 - En las VMs de Conductor el puerto 3000 está ocupado: levanta el frontend en otro (`pnpm --filter frontend dev -- -p 3100`).
 - App víctima local: `cd victim-app && docker compose up --build` (ver [`docs/victim/README.md`](docs/victim/README.md)).
@@ -75,7 +77,7 @@ pnpm dev                                  # backend :3001 + frontend :3000
 - El backend guarda el estado en la base `hack26_backend` de la instancia compartida `hack26-shared-pg` (`DATABASE_URL`), porque el disco de Render es efímero.
 - Las variables del backend se configuran en Render (ver `backend/.env.example`). `PUBLIC_BACKEND_URL` es la URL del propio backend, a la que llaman los agentes. Conductor crea las VMs de los agentes desde `main` (se puede cambiar con `CONDUCTOR_PROJECT_BRANCH`).
 - El frontend recibe `NEXT_PUBLIC_API_URL` al buildear. Si cambia, hay que redesplegarlo.
-- **Clicky** (copiloto en pantalla, `backend/src/clicky`): `OPENAI_API_KEY` y `ELEVENLABS_API_KEY` van en `hack26-backend`, nunca en el frontend. Solo responde con una simulación en curso y tiene topes por IP y por simulación (ver `backend/.env.example`). Pon además un tope de gasto en los paneles de OpenAI y ElevenLabs.
+- **Clicky** (copiloto en pantalla, `backend/src/clicky`): `OPENAI_API_KEY` y `ELEVENLABS_API_KEY` van en `hack26-backend`, nunca en el frontend. Solo responde con una simulación en curso o terminada y tiene topes por IP y por simulación (ver `backend/.env.example`). Pon además un tope de gasto en los paneles de OpenAI y ElevenLabs.
 - **Plan free:** los servicios se duermen tras 15 minutos sin tráfico y tardan ~1 minuto en despertar. Antes del demo, ábrelos (frontend, backend y el sandbox), o pasa a `starter` cuando lleguen los créditos.
 
 ## API
@@ -103,9 +105,10 @@ El motor de hacking real se conecta por `/sim/:id/*` con el token que entrega `h
 
 | Método | Ruta | Body | Qué hace |
 |---|---|---|---|
-| `POST` | `/sandboxes` | `{ repo_url, ref?, env?, mode? }` | Crea el sandbox y lo despliega (`mode`: `agent` (default) \| `manifest` \| `auto`) |
+| `POST` | `/sandboxes` | `{ repo_url, ref?, env?, mode?, name? }` | Crea el sandbox y lo despliega (`mode`: `agent` (default) \| `manifest` \| `auto`) |
 | `GET` | `/sandboxes` | | Lista de sandboxes |
 | `GET` | `/sandboxes/:id` | | Estado (contrato Deploy → Motor) |
+| `PATCH` | `/sandboxes/:id` | `{ name }` | Renombra el sandbox (solo el nombre para mostrar). Vacío = vuelve a `owner/repo` |
 | `GET` | `/sandboxes/:id/events` | | SSE `event: deploy`; incluye el historial (persistido: sobrevive a reinicios del backend) |
 | `POST` | `/sandboxes/:id/redeploy` | `{ patch?, files?, message?, clear_cache? }` | Aplica un diff o archivos al mirror, commitea y redespliega |
 | `PUT` | `/sandboxes/:id/env` | `{ env?, generate?, unset?, deploy? }` | Cambia env vars y redespliega. `generate: ["JWT_SECRET"]` rota el secreto (invalida todas las sesiones) |

@@ -1,7 +1,7 @@
 import {
   Injectable,
   Logger,
-  OnModuleDestroy,
+  OnApplicationShutdown,
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -27,7 +27,9 @@ const FILE_FLUSH_MS = 1_000;
  * servicio se reinicia en cada deploy y al despertar.
  */
 @Injectable()
-export class SandboxEventsService implements OnModuleInit, OnModuleDestroy {
+export class SandboxEventsService
+  implements OnModuleInit, OnApplicationShutdown
+{
   private readonly logger = new Logger(SandboxEventsService.name);
   private readonly history = new Map<string, SandboxEvent[]>();
   private readonly listeners = new Map<string, Set<Listener>>();
@@ -93,7 +95,8 @@ export class SandboxEventsService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async onModuleDestroy() {
+  /** Al final del apagado: durante el drenaje se siguen emitiendo eventos. */
+  async onApplicationShutdown() {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer);
       this.flushFile();

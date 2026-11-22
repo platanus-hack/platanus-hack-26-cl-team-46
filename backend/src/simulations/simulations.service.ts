@@ -8,6 +8,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { previewUrl } from '../preview/preview-proxy.js';
 import { randomBytes } from 'node:crypto';
 import pg from 'pg';
 import { agentConfigProblems, type Env } from '../config/env.js';
@@ -15,6 +16,8 @@ import { ConductorClient } from '../conductor/conductor.client.js';
 import { DatabaseProvisioner } from '../sandboxes/database.provisioner.js';
 import { SandboxEventsService } from '../sandboxes/sandbox-events.service.js';
 import { SandboxesService } from '../sandboxes/sandboxes.service.js';
+import { sandboxDisplayName } from '../sandboxes/sandbox.types.js';
+import { nextBlockedReason } from './brain/facts.js';
 import { buildSimPrompt } from './sim-prompts.js';
 import { signSimToken } from './sim-token.js';
 import { detectTools } from './tools-detector.js';
@@ -42,6 +45,9 @@ export interface CreateSimulationInput {
   repo_url?: string;
   sandbox_id?: string;
   hacker?: 'emulated' | 'external';
+  /** Con repo_url: dueño del sandbox nuevo y si el repo es privado (ver src/auth). */
+  owner?: { github_id: number; login: string };
+  private_repo?: boolean;
 }
 
 export interface QuickActionInput {
@@ -90,6 +96,19 @@ export class SimulationsService implements OnModuleInit {
     return this.store.list().map((s) => this.toView(s));
   }
 
+  /** Dueño de la simulación = dueño de su sandbox (undefined si no tiene). */
+  ownerOf(s: SimulationRecord) {
+    try {
+      return this.sandboxes.get(s.sandbox_id).owner;
+    } catch {
+      return undefined;
+    }
+  }
+
+  records(): SimulationRecord[] {
+    return this.store.list();
+  }
+
   get(id: string): SimulationRecord {
     const s = this.store.get(id);
     if (!s) throw new NotFoundException(`Simulación ${id} no existe`);
@@ -112,6 +131,9 @@ export class SimulationsService implements OnModuleInit {
     const sbx = this.sandboxes
       .list()
       .find((x) => x.sandbox_id === s.sandbox_id);
+    const previewTemplate = this.config.get('PREVIEW_URL_TEMPLATE', {
+      infer: true,
+    });
     return {
       sim_id: s.sim_id,
       status: s.status,
@@ -120,15 +142,23 @@ export class SimulationsService implements OnModuleInit {
       sandbox: sbx
         ? {
             sandbox_id: sbx.sandbox_id,
+            name: sandboxDisplayName(sbx),
             status: sbx.status,
             deployed_url: sbx.render?.url ?? null,
+            /** La misma app servida por el proxy de preview (embebible con cookies). */
+            preview_url:
+              previewTemplate && sbx.render?.url
+                ? previewUrl(previewTemplate, sbx.sandbox_id)
+                : null,
             commit_sha: sbx.commit_sha ?? null,
             seed_users: sbx.manifest?.seed_users ?? [],
           }
         : {
             sandbox_id: s.sandbox_id,
+            name: sandboxDisplayName({ repo_url: s.repo_url }),
             status: 'unknown',
             deployed_url: null,
+            preview_url: null,
             commit_sha: null,
             seed_users: [],
           },
@@ -144,6 +174,9 @@ export class SimulationsService implements OnModuleInit {
           wakes,
           cursor,
           create_error,
+          model,
+          last_ms,
+          last_error,
         }) => ({
           role,
           mode,
@@ -152,6 +185,9 @@ export class SimulationsService implements OnModuleInit {
           wakes,
           cursor,
           create_error: create_error ?? null,
+          model: model ?? null,
+          last_ms: last_ms ?? null,
+          last_error: last_error ?? null,
         }),
       ),
       channels: this.channels(s),
@@ -194,6 +230,8 @@ export class SimulationsService implements OnModuleInit {
       sandboxId = this.sandboxes.create({
         repo_url: repoUrl,
         mode: 'auto',
+        owner: input.owner,
+        private_repo: input.private_repo,
       }).sandbox_id;
     } else {
       throw new BadRequestException('Indica repo_url o sandbox_id');
@@ -214,7 +252,9 @@ export class SimulationsService implements OnModuleInit {
         mode:
           role === 'hacker' && hackerMode === 'external'
             ? 'external'
-            : 'conductor',
+            : this.apiRoles().includes(role)
+              ? 'api'
+              : 'conductor',
         cursor: 0,
         wakes: 0,
       })),
@@ -245,15 +285,13 @@ export class SimulationsService implements OnModuleInit {
     this.launching.add(simId);
     try {
       const s = this.get(simId);
-      if (!s.workspace_id) {
+      // La VM nace con la primera sesión de Conductor (infra, o hacker si infra corre en la API).
+      const first = s.threads.find((t) => t.mode === 'conductor');
+      if (!s.workspace_id && first) {
         const ws = await this.conductor.createWorkspace({
           name: `sim ${simId}`,
-          sessionName: 'infra',
-          message: buildSimPrompt({
-            simId,
-            repoUrl: s.repo_url,
-            role: 'infra',
-          }),
+          sessionName: first.role,
+          message: buildSimPrompt(this.promptVars(s, first.role)),
           env: {
             SIM_ID: simId,
             SIM_URL: this.publicUrl(),
@@ -264,7 +302,7 @@ export class SimulationsService implements OnModuleInit {
           r.workspace_id = ws.workspaceId;
           delete r.error; // un intento anterior pudo haber fallado
           r.workspace_link = ws.deepLink.replace(/&session=.*$/, '');
-          const t = r.threads.find((x) => x.role === 'infra')!;
+          const t = r.threads.find((x) => x.role === first.role)!;
           t.session_id = ws.sessionId;
           t.deep_link = ws.deepLink;
         });
@@ -296,7 +334,7 @@ export class SimulationsService implements OnModuleInit {
         const session = await this.conductor.createSession({
           workspaceId: s.workspace_id,
           name: t.role,
-          message: buildSimPrompt({ simId, repoUrl: s.repo_url, role: t.role }),
+          message: buildSimPrompt(this.promptVars(s, t.role)),
         });
         this.store.update(simId, (r) => {
           const x = r.threads.find((y) => y.role === t.role)!;
@@ -312,6 +350,28 @@ export class SimulationsService implements OnModuleInit {
         });
       }
     }
+  }
+
+  /** Roles que corren en el backend con la API de Claude (solo si hay ANTHROPIC_API_KEY). */
+  apiRoles(): SimRole[] {
+    if (!this.config.get('ANTHROPIC_API_KEY', { infer: true })) return [];
+    const allowed: SimRole[] = ['infra', 'observer', 'generator'];
+    return this.config
+      .get('SIM_API_ROLES', { infer: true })
+      .split(',')
+      .map((r) => r.trim() as SimRole)
+      .filter((r) => allowed.includes(r));
+  }
+
+  private promptVars(s: SimulationRecord, role: SimRole) {
+    return {
+      simId: s.sim_id,
+      repoUrl: s.repo_url,
+      role,
+      conductorRoles: s.threads
+        .filter((t) => t.mode === 'conductor')
+        .map((t) => t.role),
+    };
   }
 
   get launchingIds(): ReadonlySet<string> {
@@ -349,6 +409,10 @@ export class SimulationsService implements OnModuleInit {
     const s = this.get(id);
     if (!['running', 'paused'].includes(s.status))
       throw new ConflictException(`La simulación está ${s.status}`);
+    if (action === 'next') {
+      const blocked = nextBlockedReason(s);
+      if (blocked) throw new ConflictException(blocked);
+    }
     this.post(id, 'user', {
       type: `control.${action}`,
       title: `${action}${vulnId ? ` ${vulnId}` : ''} (developer)`,
@@ -449,7 +513,16 @@ export class SimulationsService implements OnModuleInit {
       sim_id: s.sim_id,
       status: s.status,
       repo_url: s.repo_url,
-      app: view.sandbox,
+      // El coder no ve las contraseñas de los usuarios: las citaba y adelantaba la vuln de clave débil.
+      app:
+        role === 'coder'
+          ? {
+              ...view.sandbox,
+              seed_users: view.sandbox.seed_users.map(
+                ({ password: _omit, ...u }) => u,
+              ),
+            }
+          : view.sandbox,
       channels: view.channels,
       context: view.context,
       // El agente de código solo sabe lo que sabe el developer.

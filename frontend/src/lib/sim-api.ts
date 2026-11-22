@@ -1,5 +1,5 @@
 /** Cliente de /simulations (orquestación multi-agente). Tipos alineados con backend/src/simulations. */
-import { API_URL } from "./api";
+import { API_URL, authedEventSource, goToLogin } from "./api";
 
 export type SimStatus = "starting" | "ready" | "running" | "paused" | "finished" | "failed" | "stopped";
 export type SimRole = "infra" | "hacker" | "observer" | "generator" | "coder";
@@ -24,10 +24,31 @@ export interface Simulation {
   status: SimStatus;
   error: string | null;
   repo_url: string;
-  sandbox: { sandbox_id: string; status: string; deployed_url: string | null; seed_users: unknown[] };
+  sandbox: {
+    sandbox_id: string;
+    /** Nombre para mostrar del sandbox (custom o `owner/repo`). */
+    name?: string;
+    status: string;
+    deployed_url: string | null;
+    /** La app servida por el proxy de preview (mismo site que mayday.rip: las cookies funcionan en el iframe). */
+    preview_url?: string | null;
+    seed_users: unknown[];
+  };
   workspace_link: string | null;
-  threads: { role: SimRole; session_id: string | null; deep_link: string | null; wakes: number }[];
+  threads: {
+    role: SimRole;
+    /** conductor: thread en la VM · api: corre en el backend con la API de Claude · external: motor externo */
+    mode: "conductor" | "api" | "external";
+    session_id: string | null;
+    deep_link: string | null;
+    wakes: number;
+    model?: string | null;
+    last_ms?: number | null;
+    last_error?: string | null;
+  }[];
   channels: string[];
+  /** Herramientas de monitoreo detectadas en el código (null = aún no se revisa). */
+  tools_detected: string[] | null;
   context: Record<string, unknown> | null;
   attack_plan: { findings?: { vuln_id: string; file: string; line?: number; severity: string }[] } | null;
   state: {
@@ -44,8 +65,10 @@ export interface Simulation {
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...init,
+    credentials: "include",
     headers: { "content-type": "application/json", ...init?.headers },
   });
+  if (res.status === 401) goToLogin();
   const text = await res.text();
   const body = text ? JSON.parse(text) : undefined;
   if (!res.ok) throw new Error(body?.message ?? `${res.status}`);
@@ -67,7 +90,7 @@ export const simApi = {
   stop: (id: string) => post<Simulation>(`/simulations/${id}/stop`, {}),
   /** SSE del timeline. view=user: lo que ve el developer. view=all: también lo interno. */
   subscribe(id: string, view: "user" | "all", onEvent: (e: TimelineEvent) => void): () => void {
-    const es = new EventSource(`${API_URL}/simulations/${id}/stream?view=${view}`);
+    const es = authedEventSource(`${API_URL}/simulations/${id}/stream?view=${view}`);
     // Cada evento llega con `event: <tipo>`, así que hay que escuchar tipo por tipo.
     const types = [
       "sim.status", "deploy.progress", "deploy.ready", "deploy.failed", "control.start", "control.next", "control.pause",

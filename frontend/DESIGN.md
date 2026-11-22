@@ -6,7 +6,7 @@
 
 **Ataque vs. defensa.** Todo en Mayday es de uno de los dos lados:
 
-- **Cian (`defense`) = tú.** Tu defensa, tu agente, tus acciones correctas, el CTA, las pistas de Mayday. Si es cian, es tuyo o está a salvo.
+- **Cian (`defense`) = tú.** Tu defensa, el agente que te ayuda, tus acciones correctas, el CTA, las pistas de Mayday. Si es cian, es tuyo o está a salvo.
 - **Ámbar (`attack`) = el atacante.** La alerta MAYDAY, cada evento del ataque, la evidencia que dejó y las respuestas incorrectas. Si es ámbar, algo te está pasando.
 
 El ámbar viene del "master caution" de las cabinas de avión. Cian y ámbar también se distinguen bien con daltonismo, porque difieren en luminosidad y no solo en tono.
@@ -22,7 +22,7 @@ Nunca hay un tercer color de acento. No hay rojo ni verde para error y éxito: e
 | Capa | Qué es | Colores |
 |---|---|---|
 | **Mayday** | Lo nuestro: header del escenario, HUD, pistas, marcas de evidencia, alerta, transiciones | Azul-negros de marca (`bg-*`, `ink*`) + `defense` / `attack` |
-| **Simulada** | Las apps falsas del escritorio: Chrome, el panel de Claude, los logs, las notificaciones del sistema | Grises neutros `sim-*`. Tienen que verse como apps reales |
+| **Simulada** | Las apps falsas del escritorio: Chrome, el panel del agente, los logs, las notificaciones del sistema | Grises neutros `sim-*`. Tienen que verse como apps reales |
 
 La capa simulada no usa colores de marca, salvo para marcar algo del ataque (ámbar) o una acción tuya que funcionó (cian), y siempre de forma mínima: una barra de 3px, un contorno o un fondo al 12%. La única app con contenido real es la pestaña de Chrome con la repo que conectó el usuario.
 
@@ -65,12 +65,15 @@ Escala: `display-xl` 120 / `display-lg` 72 / `heading-1` 48 / `heading-2` 32 / `
 - **Caída** (`md-drop`, 350 ms) = algo nuevo que llega: una notificación o una pista.
 - Easing de entrada: `cubic-bezier(.2,.8,.2,1)`. Sin rebotes ni escalas exageradas.
 - Todo se apaga con `prefers-reduced-motion`.
+- Seguridad fotosensible: nada parpadea más de 3 veces por segundo y no hay destellos de pantalla completa en colores fuertes. Si algo "tiembla", es movimiento (`transform`), no luz.
 - Ningún efecto va solo: cada efecto visual del ataque viene con un cambio de texto y una fila en los logs.
 
 ## Iconografía e imágenes
 
-- Íconos de línea de 1.5px, cuadrados, del set Lucide (ya viene con shadcn). En la capa simulada, favicons genéricos con una letra sobre `sim-300`.
-- Sin logos de terceros reales dentro del escritorio, salvo el de GitHub en el botón de login. El panel del agente dice "Claude" con un ícono genérico.
+- Íconos de línea de 1.5px, cuadrados, del set Lucide (ya viene con shadcn), en la capa Mayday.
+- **En la capa simulada, las apps de terceros llevan su logo real**, para que el escritorio se sienta como el de un developer de verdad: Gmail (correo), Slack (chat del equipo), Claude (panel del agente), Zendesk (soporte), teléfono (llamadas), Sentry, Datadog, PostHog, Render y GitHub (integraciones) y Google Calendar (remitente de correo). Los archivos están en `public/sim-icons/` y el mapa en `src/components/workspace/sim-icons.ts`; los avatares de las integraciones se arman en `BotAvatar`. Lo que no es una app real (la app del developer, pestañas sin URL, personas) va con una letra sobre `sim-300`.
+- Los logos se usan tal cual (sin recolorear ni deformar). Si un glifo no se lee sobre gris oscuro, va en blanco sobre el color de su marca, como los avatares de `BotAvatar`.
+- En la capa Mayday, los logos de terceros son el de GitHub en el botón de login y la fila de apps del simulacro (`AppLogos`, en la landing y en /como-funciona), que muestra por dónde te llega el incidente.
 - Sin fotos, ilustraciones 3D, emojis decorativos ni gradientes de color. La única imagen grande es el fondo de pantalla del avión (Assets › Fondos).
 
 ## Voz y copy
@@ -85,6 +88,7 @@ Español de Chile neutro, con los términos técnicos en inglés como los dice u
 
 ## La landing, escena por escena
 
+0. **Intro "te están hackeando"** (~2,5 s al abrir, una vez por sesión; `/#intro` la fuerza): en computador se abren ventanas de la capa simulada con el ataque y un cursor fantasma ámbar; en teléfono aparecen alertas de permisos del sistema (contraseñas, contactos, fotos, Face ID) que se aprietan solas con un dedo fantasma ámbar, mientras detrás se encienden esos permisos en ámbar, y bajan notificaciones. Termina con la transición de pixeles y deja el hero. Siempre con chip "Simulacro" y botón "Saltar" (clic, toque o Esc). Sin intro con `prefers-reduced-motion`.
 1. **Llegada:** arranca el simulacro. MaydayAlert sólida en marquesina, el logo y el cronómetro T+00:00 que empieza a correr. Titular en `display-xl`.
 2. **Scroll:** transición de pixeles a pantalla completa. Se abre la pregunta (QuestionCard) con el AttackTerminal corriendo infinito detrás.
 3. **Respuesta:** eliges entre 3 opciones. Pixeles sobre el panel (`pixel-sm`) y se revela qué estaba bien (cian) y qué no (ámbar).
@@ -94,7 +98,7 @@ El scroll maneja las escenas (pinned sections con GSAP ScrollTrigger o Framer Mo
 
 ## El escritorio (MVP)
 
-Header del escenario arriba. Debajo, Chrome (Google + la pestaña de tu repo) a la izquierda, los logs tipo panel de deploy debajo de Chrome y el panel de Claude a la derecha, de alto completo. Las notificaciones bajan arriba a la derecha. Las pistas cian y las marcas ámbar flotan encima. Ver Desktop.
+Header del escenario arriba. Debajo, Chrome (Google + la pestaña de tu repo) a la izquierda, los logs tipo panel de deploy debajo de Chrome y el panel del agente a la derecha, de alto completo. Las notificaciones bajan arriba a la derecha. Las pistas cian y las marcas ámbar flotan encima. Ver Desktop.
 
 Los eventos del timeline (contrato 2) se pintan siempre en dos lugares: una fila ATTACK en los logs y su efecto en la app que corresponda, según la familia:
 
@@ -152,6 +156,13 @@ Acción del usuario. El primario es cian sólido (`defense`) con texto `on-defen
 - Verbo primero, en español, con mayúscula solo inicial: "Entra con GitHub", "Revoca la key".
 - Tamaños: 40px (escritorio, paneles) y 52px `md-btn--lg` (landing).
 - Hover del primario: `defense-strong` + `glow-defense`. Foco: anillo `focus-ring`.
+
+### BackButton
+
+Volver al paso anterior en la landing. Es sutil a propósito: label mono en `ink-faint` (`ink` al pasar el mouse), flecha Lucide, sin borde ni relleno, para no competir con el único primario.
+
+- Verbo primero y corto: "Vuelve al inicio" (en la pregunta, dentro del panel junto al label) y "Revisa la pregunta" (arriba del resultado).
+- Vuelve con scroll suave (las cortinas se cierran solas); con `prefers-reduced-motion`, salto directo.
 
 ### StatusChip
 
@@ -249,18 +260,19 @@ Capa simulada. Un navegador tipo Chrome en modo oscuro: semáforo de macOS, pest
 - Grises neutros `sim-*`, nunca los azul-negros de la marca. Tiene que parecer Chrome, no Mayday.
 - Pestañas: "Google" (decorativa) + la pestaña de la repo, activa, con la ruta real del archivo. Se pueden sumar pestañas que el escenario necesite (el dashboard del proveedor, el correo), siempre simples.
 - La línea comprometida se marca con fondo `attack-soft` y una barra ámbar de 3px en el número de línea. El resto del código se ve como en GitHub.
-- Sin logos de terceros reales: favicons genéricos (`sim-300`) con una letra.
+- Pestañas de apps de terceros con su logo real (Gmail, Slack); las demás, una letra sobre `sim-300`.
 - Cuando el atacante toca el navegador: `is-compromised` (glow ámbar), más un cambio de contenido que lo explique.
 
 ### AgentPanel
 
-Capa simulada. El chat con el agente del usuario (su Claude), a la derecha del escritorio, de alto completo. El usuario le escribe para que lo ayude o resuelve a mano en el navegador.
+Capa simulada. El chat con el agente de respuesta a incidentes, a la derecha del escritorio, de alto completo. El usuario le escribe para que lo ayude o resuelve a mano en el navegador.
 
-- Grises `sim-*`. Header con ícono genérico, el nombre "Claude" y el contexto ("Respuesta a incidente").
+- **La IA viene integrada en Mayday.** El usuario no conecta su propio Claude ni ninguna cuenta de IA: el agente ya está en el simulacro. No lo digas de otra forma en ningún copy ("conecta tu Claude", "tu agente de código", etc.).
+- Grises `sim-*`. Header con la mascota pixel animada de Claude Code, el nombre "Claude" y el contexto (el nombre del proyecto). El logo de Claude va en el estado vacío del chat.
 - Mensajes del usuario en burbuja `sim-200` a la derecha. Las respuestas del agente van sin burbuja: texto plano con negritas, secciones en mono mayúscula ("AHORA · PRIMEROS 5 MINUTOS") y pasos numerados.
 - No uses colores de marca adentro. Si el agente sugiere algo correcto, se nota en los logs (fila OK), no en el chat.
-- Composer abajo, con placeholder "Responde a Claude…" y botón de enviar.
-- No uses el logo oficial de Anthropic salvo que tengan permiso: va el ícono genérico.
+- Composer abajo, con placeholder "Escríbele a Claude…" y botón de enviar.
+- El logo de Claude es el único color de marca permitido en el panel; los mensajes siguen en grises `sim-*`.
 
 ### DeployLogs
 
@@ -303,7 +315,7 @@ La composición completa del MVP: un escritorio lo más normal posible, con el f
 ```
 ┌──────────────────────────── ScenarioHeader (capa Mayday) ────────────────────────────┐
 ├───────────────────────────────────────────────────────┬──────────────────────────────┤
-│ Browser (Chrome: Google + pestaña de TU repo)         │ AgentPanel (tu Claude)        │
+│ Browser (Chrome: Google + pestaña de TU repo)         │ AgentPanel (agente integrado) │
 │                                                       │                              │
 ├───────────────────────────────────────────────────────┤                              │
 │ DeployLogs (ataque, hints, progreso)                  │                              │
@@ -315,3 +327,224 @@ La composición completa del MVP: un escritorio lo más normal posible, con el f
 - Las ventanas no se mueven ni se redimensionan en la demo: es teatro guiado, no un sistema operativo.
 - El fondo de pantalla se ve en los bordes y entre ventanas; nunca se le pone nada encima.
 - Pantalla objetivo: 1440 × 900 (proyector). Bajo 1280 px de ancho, el agente pasa abajo de los logs.
+
+## Hinty
+
+Hinty es el profesor dentro del simulacro: te explica hablando y dibujando sobre la pantalla, y al final te entrega el reporte. Su figura es **la torre de control**: Mayday es tu llamada de auxilio y Hinty es quien te contesta y te guía hasta aterrizar.
+
+Esta sección solo cambia el diseño. La funcionalidad, el protocolo, las rutas `/clicky/*`, las clases `clicky-*` y los atributos `data-clicky` no se tocan.
+
+### 1. Identidad
+
+- **Capa:** Hinty vive en la **capa Mayday**: fondos `bg-*`, texto `ink*`, acento `defense` (cian) y Geist / Geist Mono. Nunca usa los grises `sim-*`; eso es lo que lo separa del panel del Agente.
+- **Color:** cian `defense` #2EE6FF. Hinty es ayuda, y la ayuda en Mayday es cian.
+- **Ícono:** un audífono de torre de control en pixel art de 16×16. Reemplaza al avión de papel de `PixelPlane.tsx`, con la misma forma de mapa de letras:
+
+```ts
+// Audífono de Hinty: mismo formato que PixelPlane.tsx
+const HINTY_HEADSET = [
+  '................',
+  '.....HHHHHH.....',
+  '...CCCCCCCCCC...',
+  '..CCC......CCC..',
+  '..CC........CC..',
+  '.CC..........CC.',
+  'HCCC........HCCC',
+  'CCCC........CCCC',
+  'CCCC........CCCC',
+  'CCCC........CCCC',
+  '.CCC........CCC.',
+  '..C.............',
+  '..C.............',
+  '..CC............',
+  '...CCCCC........',
+  '.......MMM......',
+];
+const HINTY_PALETTE = {
+  C: '#2EE6FF', // cuerpo (defense)
+  H: '#7FF0FF', // borde de luz (defense-strong)
+  M: '#2EE6FF', // punta del micrófono: pasa a #7FF0FF + glow cuando Hinty habla
+};
+// Sobre un fondo cian (tile), todas las letras van en #021216 (on-defense).
+```
+
+- Se dibuja siempre a escala entera (16, 32 o 48 px) con `shape-rendering: crispEdges` o `image-rendering: pixelated`. Nunca 24 px: queda borroso.
+- Archivos: `hinty-headset.svg` (cian) y `hinty-headset-dark.svg` (para el tile cian).
+
+### 2. Botón del dock
+
+Un tile cuadrado de **56×56 px**, `radius-md` (8 px), con el ícono a 32 px (2 px por pixel) al centro. Al lado tiene una etiqueta de texto que aparece en hover, en el foco o en la primera visita.
+
+| Estado | Fondo | Borde | Ícono | Pixel de estado | Etiqueta |
+|---|---|---|---|---|---|
+| Apagado | `bg-100` | 1 px `line-strong` | cian | — | "¿Te trabaste? Pregúntale a Hinty" |
+| Hover | `bg-200` | 1 px cian al 60% | cian | — | "Activa a Hinty: te explica lo que ves en pantalla" |
+| Active (presionado) | `bg-300` | 1 px cian | cian, `translateY(1px)` | — | — |
+| Focus | igual al estado actual | + `focus-ring` (2 px de separación, 2 px cian) | — | — | — |
+| Activando | `bg-100` | 1 px cian | cian; una línea de escaneo de 2 px cian baja por el tile (600 ms, en loop) | — | "Conectando con Hinty…" |
+| Encendido, ve la pantalla | `defense-deep` | 2 px cian + `glow-defense` | cian | cuadrado de 6×6 cian **lleno**, fijo, en la esquina superior derecha | "Hinty ve tu pantalla" |
+| Encendido, solo texto | `defense-deep` | 2 px cian | cian | cuadrado de 6×6 **vacío** (borde de 1,5 px cian), fijo | "Hinty lee solo el texto" |
+| Simulación terminada | `bg-100` | 1 px cian | cian | — | "Repasa el simulacro con Hinty" |
+
+- **Luz verde y ámbar:** se reemplazan por el pixel de estado. La diferencia está en la forma (lleno o vacío), no en el color: no hay verde y el ámbar es del atacante.
+- **Sombra:** `shadow-toast`. Nada de sombra dura de 4 px.
+- **Al encenderse:** en vez de la estela, sale **un solo pulso de radio**: un cuadrado de borde cian de 1 px que crece desde el tile hasta 1,15× y se desvanece en 400 ms. Se reproduce una vez, no en loop.
+- **Etiqueta:** Geist 13 px, `ink`, sobre `bg-100`, con borde 1 px `line` y `radius-sm`. Sale Silkscreen.
+- **Ubicación:** abajo a la derecha de la **columna principal** (Chrome + logs), a 16 px del borde del panel de logs. Nunca encima del panel del Agente (ver punto 11).
+
+### 3. Isla de arriba
+
+- **Forma:** rectángulo `radius-lg` (12 px). No es una píldora. Mide 48 px de alto cerrado y crece hacia abajo cuando hay subtítulo o input. El ancho va de 360 a 560 px.
+- **Fondo:** `bg-100` al 96%, con borde 1 px `line` y `shadow-toast`.
+- **Avatar:** un tile cuadrado de 32 px, `defense-deep` y `radius-sm`, con el audífono a 16 px. Reemplaza al círculo con triángulo.
+- **Escuchando:** 5 barras cuadradas de 4 px de ancho con 2 px de separación. Las alturas van en pasos de 4 px (de 4 a 20) según el nivel del micrófono. Van en color `ink`, porque eres tú hablando.
+- **Hablando:** las mismas 5 barras, en cian, animadas con `steps(4)` a unos 8 fps. La punta del micrófono del avatar se enciende (#7FF0FF + glow).
+- **Pensando:** 3 pixeles cuadrados de 4×4 en fila que se encienden en cian uno tras otro, en un ciclo de 900 ms (cada pixel prende 1 vez por ciclo). Reemplazan a los puntitos redondos.
+- **Subtítulo palabra por palabra:** Geist 16 px. La palabra que se acaba de encender va en cian y pasa a `ink` cuando llega la siguiente. Las palabras que faltan no se muestran.
+- **Input:** fondo `bg-200`, borde 1 px `line-strong`, `radius-sm`, Geist 16 px y placeholder en `ink-faint`. En foco, borde cian.
+- **Atajo:** una tecla dibujada como `kbd` (borde 1 px `line-strong`, `radius-sm`, Geist Mono 11 px en mayúsculas) + texto: "ESPACIO" / "Mantén apretado para hablar".
+- **Error:** borde 1 px `attack`, un pixel de 6×6 `attack` a la izquierda y el texto en `attack-strong`. El mensaje siempre empieza con "No pude…" para que se lea como un error de Hinty y no como un ataque.
+- **Ubicación:** arriba al centro de la columna principal, 12 px debajo del ScenarioHeader, sin taparlo.
+
+### 4. Lápiz
+
+Deja de ser un triángulo y pasa a ser **el blip del radar**: un cuadrado cian de 10×10 px con borde de 1 px `bg-000` y `glow-defense`. Mientras viaja deja el trazo detrás. Es el mismo pixel del logo Mayday, así que se lee como "la torre marcando en el radar".
+
+### 5. Marcas sobre la pantalla
+
+Todas las marcas de Hinty son **cian, rectas (wobble 0) y de 3 px**. Es una torre de control marcando un radar, no un plumón tembloroso: la precisión es parte de la confianza.
+
+| Marca | Cómo se ve |
+|---|---|
+| `ring` | Rectángulo de 3 px cian con `radius-sm`, 6 px por fuera del elemento. No es un óvalo. |
+| `frame` | Tinte cian al 12% (`defense-soft`) + borde punteado de 2 px cian (6 px de trazo, 6 px de espacio). |
+| `highlight` | Cian al 25% en modo `screen` (sobre fondo oscuro, `multiply` ensucia). |
+| `underline` | Línea recta de 3 px cian, 4 px debajo de la línea base. |
+| `num` | Cuadrado de 24×24 px, relleno cian, número en Geist Mono 13 px / 600 en `on-defense`. Sin radio. |
+| `arrow` | Línea recta de 3 px cian con codos a 90° y una punta triangular sólida de 10 px. |
+| `target` | Cuatro esquinas de mira (⌜ ⌝ ⌞ ⌟) de 3 px cian alrededor del elemento, como el "lock-on" de un HUD. Laten de 1 a 1,08× cada 1,2 s. Debajo va la etiqueta "Haz clic aquí". |
+| `spotlight` | Todo se oscurece con `bg-000` al 72%, salvo un hueco con `radius-md` y un borde de 2 px cian. |
+| Etiquetas (píldoras) | Rectángulos `radius-sm`, fondo cian, texto Geist 13 px / 500 en `on-defense`, 4×8 px de padding. Ya no son de 999 px. |
+
+**Cómo se distinguen de las otras marcas de Mayday:**
+- **`md-hint` pasa a ser parte de Hinty.** Las pistas numeradas en cian *son* el `num` + etiqueta de Hinty: un solo lenguaje, no dos. El nombre se ordena así: **Hinty** es el profesor y una **pista** (`md-hint`) es lo que Hinty deja en la pantalla.
+- **Máximo de 2:** cuenta para los pines numerados que quedan fijos en pantalla. Mientras Hinty está explicando, los dibujos de esa explicación no cuentan, pero hay **una sola explicación a la vez**, y al empezar una se ocultan las pistas fijas.
+- **`md-evidence`** (contorno ámbar sólido de 2 px) sigue siendo el rastro del atacante, y no lo dibuja Hinty.
+- **Cuándo Hinty usa ámbar:** solo para señalar algo del atacante (una línea comprometida, un log de ataque). En ese caso, `ring`, `frame` o `arrow` van en ámbar **punteado** (6/6), nunca relleno, y siempre con una etiqueta cian al lado que lo explique. Así no se confunde con `md-evidence`, que es sólido.
+
+### 6. Pizarra (`board` / `node` / `edge`) y `chart`
+
+La pizarra es **la pantalla del radar de la torre**: oscura, con grilla fina, donde Hinty arma el diagrama frente a ti.
+
+- **Fondo:** `hinty-board` (#071116) con una grilla de 24 px en `hinty-grid` (#12222A), borde 1 px `line`, `radius-lg` y `shadow-window`. Padding de 24 px.
+- **Encabezado:** a la izquierda, el audífono a 16 px + "PIZARRA" en Geist Mono 11 px, en mayúsculas y `ink-faint`. Debajo, el título en Geist 20 px / 600 (`ink`) y el subtítulo en Geist 14 px (`ink-muted`).
+- **Grilla de celdas:** hasta 4×3, con 24 px entre celdas, alineada a la grilla de fondo.
+- **`node` normal:** fondo `bg-200`, borde 1 px `line-strong`, `radius-md`, texto Geist 15 px / 500 `ink` y padding de 10×14 px.
+- **`node` `hot`:** fondo `defense-deep`, borde 2 px cian y `glow-defense`. El texto sigue en `ink`.
+- **`node` del atacante** (si el contenido lo pide): fondo `attack-deep`, borde 2 px `attack` punteado y texto `attack-strong`.
+- **`edge`:** líneas rectas con codos a 90°, de 2 px `line-strong`. El edge activo (el que se está explicando) va en cian, con una punta triangular de 8 px.
+- **Etiqueta del `edge`:** Geist Mono 12 px `ink-muted`, sobre un parche de `hinty-board` para que la línea no la cruce.
+- **Cómo se dibuja:** primero aparecen las cajas (rise de 8 px + fade, 240 ms, una tras otra cada 120 ms), después se trazan los edges a 600 px/s, y el blip (el lápiz) recorre cada trazo.
+- **`chart`:** barras horizontales, una fila cada una. La pista es `bg-300`, la barra normal `line-strong` y **la barra destacada va en cian**, con su valor en Geist Mono 16 px a la derecha. Una barra con datos del atacante va en ámbar. La etiqueta de cada fila va a la izquierda, en Geist 14 px `ink-muted`.
+
+### 7. `card`, `note` y `button`
+
+- **`card` (conclusión):** fondo `bg-100`, borde 1 px `line`, `radius-md` y padding de 20 px. Arriba, un check en pixel de 16×16 cian + "CONCLUSIÓN" en Geist Mono 11 px `ink-faint`. El texto en Geist 16 px `ink`. El ✓ de texto se reemplaza por el check en pixel.
+- **`note` (nota adhesiva → nota de bitácora):** fondo `defense-soft`, sin borde de color a la izquierda, `radius-sm` y padding de 14 px. Arriba "NOTA" en Geist Mono 11 px cian y el texto en Geist 15 px `ink`.
+- **`button` (siguiente pregunta):** el botón secundario de Mayday: transparente, borde 1 px `line-strong`, `radius-md`, 40 px de alto y Geist 13 px / 500. En hover, borde cian. El texto empieza con verbo ("Pregúntale por qué pasó").
+
+### 8. Tipografía
+
+**Todo en Geist y Geist Mono. No hay excepción de letra a mano.** La torre de control escribe como un instrumento, no como un plumón: eso es lo que hace que Hinty se sienta parte de Mayday y no un sticker encima. Salen Kalam, Caveat, Silkscreen, Inter, Archivo Black e Instrument Serif.
+
+- Textos y explicaciones: Geist. Etiquetas, atajos, nombres de piezas y números: Geist Mono.
+- **Cómo se carga:** si el kit corre en el mismo documento que la app, usa las variables `--font-geist-sans` y `--font-geist-mono` que ya pone el `layout`. Si el kit carga su propio CSS (iframe o shadow DOM), reemplaza el `@import` de Google Fonts por uno solo:
+  `@import url('https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap');`
+
+### 9. Movimiento
+
+- **Entrada de piezas** (en vez de `clicky-pop`): opacidad 0 → 1 + `translateY(8px)` → 0, en 200 ms con `cubic-bezier(.2,.8,.2,1)`. Sin escala ni rebote.
+- **Salida:** opacidad 1 → 0 + `translateY(4px)`, en 150 ms con `ease-in`.
+- **Trazo:** 600 px/s, con un mínimo de 250 ms y un máximo de 700 ms por marca.
+- **Onda:** `steps(4)` a unos 8 fps.
+- **Parpadeos:** el `target` late cada 1,2 s y los pixeles de "pensando" van en un ciclo de 900 ms. El pixel de estado del dock no parpadea. Nada supera **3 parpadeos por segundo**.
+- **`prefers-reduced-motion`:** las marcas aparecen completas sin trazo, el `target` y el pulso de radio no se animan, la onda queda fija a media altura y el subtítulo aparece entero.
+
+### 10. Copy
+
+| Hoy | Hinty |
+|---|---|
+| ¿Dudas? ¡Pregúntame! | ¿Te trabaste? Pregúntale a Hinty |
+| Activar Clicky: pregúntale a tu pantalla | Activa a Hinty: te explica lo que ves en pantalla |
+| Activando Clicky… | Conectando con Hinty… |
+| Apagar Clicky | Apagar Hinty |
+| Viendo tu pantalla | Hinty ve tu pantalla |
+| Solo texto | Hinty lee solo el texto |
+| espacio = hablar | ESPACIO · Mantén apretado para hablar |
+| Estoy viendo tu pantalla. ¿Qué quieres saber? | Veo tu pantalla. ¿En qué te ayudo? |
+| No veo tu pantalla, pero leo el texto. ¿Qué quieres saber? | No veo tu pantalla, pero leo el texto. ¿En qué te ayudo? |
+| Dejé de ver tu pantalla; sigo leyendo el texto | Dejé de ver tu pantalla. Sigo leyendo el texto. |
+| Escribe tu pregunta y presiona Enter | Escribe tu pregunta y aprieta Enter |
+| Pregúntame lo que quieras de tu pantalla | Pregúntame por lo que ves en pantalla |
+| Te escucho… | Te escucho… |
+| Mantén apretado mientras hablas | Mantén apretado espacio mientras hablas |
+| Transcribiendo… | Transcribiendo… |
+| No pude responder: … | No pude responder: … |
+| Sin micrófono: … | No tengo acceso al micrófono: … |
+| No pude transcribir: … | No pude transcribir lo que dijiste: … |
+| haz clic aquí | Haz clic aquí |
+
+### 11. Ubicación en `/simulate`
+
+La regla es que **Hinty nunca tapa el panel del Agente**. Son dos IA distintas, y si se superponen se confunden.
+
+- **Pizarra:** una región nueva, `data-clicky-region="stage"`, que es el rectángulo de la ventana de Chrome. La pizarra va centrada ahí, con un máximo de 720×440 px. Así explica encima de lo que estás mirando.
+- **Columna de tarjetas:** una región nueva, `data-clicky-region="stage-side"`, que es una columna de 320 px pegada al borde derecho de la ventana de Chrome, alineada arriba. Reemplaza a `side` (que hoy cae sobre el Agente). Si no se puede agregar la región, deja `side` pero apuntando a ese rectángulo.
+- **Dock:** abajo a la derecha de la columna principal (punto 2).
+- **Isla:** arriba al centro de la columna principal (punto 3).
+
+**Cómo se distinguen Hinty y el Agente a simple vista:**
+
+| | Hinty | Agente |
+|---|---|---|
+| Capa | Mayday | Simulada |
+| Colores | Azul-negros de marca + cian | Grises `sim-*` |
+| Dónde | Dock, isla y pizarra sobre la pantalla | Chat fijo a la derecha |
+| Ícono | Audífono de torre en pixel | Ícono genérico |
+| Formas | Cuadradas, con glow cian | Burbujas de chat neutras |
+
+### 12. Tokens nuevos
+
+Van en el sistema: `tokens.json` del sistema visual → `mayday-tokens.css`. Hinty es capa Mayday, así que sus colores son de la marca.
+
+| Token | Valor | Para qué |
+|---|---|---|
+| `hinty-board` | #071116 | Fondo de la pizarra |
+| `hinty-grid` | #12222A | Grilla de 24 px de la pizarra |
+| `hinty-highlight` | #2EE6FF40 | Destacador (cian al 25%) |
+| `hinty-spotlight` | #050A0DB8 | Oscurecido del spotlight (`bg-000` al 72%) |
+
+Todo lo demás usa tokens que ya existen (`defense`, `defense-deep`, `defense-soft`, `bg-*`, `line*`, `ink*`, `attack*`, `glow-defense`, `shadow-*`).
+
+### 13. Un tema único: `mayday`
+
+Se reemplazan `ink`, `platanus` y `sketch` por un solo tema, `mayday`, que queda como el activo en `config.ts`. Los otros tres se pueden borrar después; no estorban si no se usan. Valores con la forma de `theme.js` (si algún campo espera otro tipo, adáptalo manteniendo el valor):
+
+```js
+mayday: {
+  ink: '#DDF7FA',                       // texto sobre marcas y pizarra
+  mark: '#2EE6FF',                      // ring, frame, underline, target
+  arrow: '#2EE6FF',
+  zone: 'rgba(46, 230, 255, 0.12)',     // tinte del frame (defense-soft)
+  palette: ['#2EE6FF', '#7FF0FF', '#8FA6AE', '#50687A'], // series del chart; ámbar #FF8A00 solo para datos del atacante
+  hot: '#2EE6FF',                       // node hot y barra destacada
+  highlighter: 'rgba(46, 230, 255, 0.25)', // con mix-blend-mode: screen
+  pen: '#2EE6FF',                       // el blip
+  glow: '0 0 0 1px rgba(46, 230, 255, 0.4), 0 0 24px rgba(46, 230, 255, 0.2)',
+  width: 3,
+  wobble: 0,
+  hatch: false,
+  spotlight: 'rgba(5, 10, 13, 0.72)',
+  onDark: true,
+}
+```

@@ -51,9 +51,27 @@ export interface InputRequest {
 }
 
 /** Lo que guardamos internamente de cada sandbox. */
+/**
+ * Qué instancia del backend está trabajando en el sandbox. Render despliega sin
+ * downtime (dos instancias conviven unos segundos), así que una instancia nueva
+ * solo retoma un sandbox si su dueño dejó de renovar el heartbeat.
+ */
+export interface SandboxLease {
+  owner: string;
+  heartbeat_at: string;
+}
+
 export interface SandboxRecord {
+  /** Instancia del backend con una operación en curso (ver SandboxLease). */
+  lease?: SandboxLease;
   sandbox_id: string;
+  /** Nombre que le puso el usuario. Si no hay, se muestra `owner/repo` (sandboxDisplayName). */
+  name?: string;
   repo_url: string;
+  /** Usuario de GitHub que lo creó. Sin dueño (creado antes del login) solo lo ven los admins. */
+  owner?: { github_id: number; login: string };
+  /** Repo privado del dueño: se clona con su token de la GitHub App. */
+  private_repo?: boolean;
   ref?: string;
   mode: SandboxMode;
   status: SandboxStatus;
@@ -103,6 +121,8 @@ export interface SandboxEvent {
 /** Contrato Deploy → Motor (sección 6.2 del resumen). */
 export interface SandboxContract {
   sandbox_id: string;
+  /** Nombre para mostrar: el que eligió el usuario o `owner/repo`. */
+  name: string;
   repo_url: string;
   commit_sha: string | null;
   deployed_url: string | null;
@@ -127,4 +147,23 @@ export interface SandboxContract {
   pending_inputs: InputRequest[];
   created_at: string;
   updated_at: string;
+}
+
+/** `https://github.com/owner/repo` → `owner/repo` (o el último par de segmentos si no es GitHub). */
+export function repoShortName(repoUrl: string): string {
+  try {
+    const parts = new URL(repoUrl).pathname
+      .replace(/\.git$/, '')
+      .split('/')
+      .filter(Boolean);
+    return parts.slice(-2).join('/') || repoUrl;
+  } catch {
+    return repoUrl;
+  }
+}
+
+export function sandboxDisplayName(
+  s: Pick<SandboxRecord, 'name' | 'repo_url'>,
+): string {
+  return s.name?.trim() || repoShortName(s.repo_url);
 }

@@ -50,9 +50,13 @@ export const NOTIFY_CHANNELS = [
 ] as const;
 export type NotifyChannel = (typeof NOTIFY_CHANNELS)[number];
 
-/** Canales que siempre existen, aunque el repo no tenga ninguna herramienta. */
+/**
+ * Canales que siempre existen, aunque el repo no tenga ninguna herramienta.
+ * `slack` es el chat del equipo: todo developer tiene compañeros que escriben.
+ */
 export const BASE_CHANNELS: NotifyChannel[] = [
   'email',
+  'slack',
   'support',
   'phone',
   'render',
@@ -282,7 +286,8 @@ export const EVENT_TYPES: Record<string, EventTypeSpec> = {
   // ---- infra
   'context.ready': {
     by: ['infra'],
-    wakes: ['observer', 'generator', 'hacker'],
+    // El hacker no: arma su plan desde el código y despertarlo acá gastaba un turno sin hacer nada.
+    wakes: ['observer', 'generator'],
     visibility: 'internal',
     description: 'Paquete de contexto del repo (raw = SimContext)',
   },
@@ -343,10 +348,16 @@ export interface IncidentState {
   [k: string]: unknown;
 }
 
+/**
+ * conductor: thread (sesión de Claude Code) en el workspace de Conductor de la simulación.
+ * api: corre dentro del backend (SimulationBrain) con llamadas directas a la API de Claude.
+ * external: lo opera un servicio externo vía HTTP (motor de hacking real).
+ */
+export type SimThreadMode = 'conductor' | 'api' | 'external';
+
 export interface SimThread {
   role: SimRole;
-  /** emulated/real: corre en un thread de Conductor. external: lo opera un servicio externo vía HTTP. */
-  mode: 'conductor' | 'external';
+  mode: SimThreadMode;
   session_id?: string;
   deep_link?: string;
   /** Último seq entregado a este thread. */
@@ -354,6 +365,10 @@ export interface SimThread {
   last_wake_at?: string;
   wakes: number;
   create_error?: string;
+  /** Solo mode=api: modelo usado, duración y error de la última llamada. */
+  model?: string;
+  last_ms?: number;
+  last_error?: string;
 }
 
 export interface SimulationRecord {

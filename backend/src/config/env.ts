@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
+
 /**
  * Variables de entorno del backend. Se validan al arrancar: si falta algo
  * obligatorio, la app no levanta y dice qué falta.
@@ -10,6 +12,16 @@ export const envSchema = z.object({
   DATA_DIR: z.string().default('.data'),
   /** Si está, el estado de los sandboxes se guarda en Postgres (necesario en Render, donde el disco es efímero). */
   DATABASE_URL: z.string().optional(),
+  /**
+   * Proxy de previsualización: URL pública de la app de cada sandbox bajo un
+   * dominio nuestro, con `{sandbox}` como comodín. Ej: `https://{sandbox}.preview.mayday.rip`
+   * (necesita DNS wildcard apuntando a este backend). Local: `http://{sandbox}.preview.localhost:3001`.
+   * Sin definir, el proxy está apagado y el frontend embebe la app directo.
+   */
+  PREVIEW_URL_TEMPLATE: z
+    .string()
+    .refine((v) => v.includes('{sandbox}'), 'Debe incluir {sandbox}')
+    .optional(),
 
   // Render
   RENDER_API_KEY: z.string().min(1, 'RENDER_API_KEY es obligatoria'),
@@ -41,6 +53,33 @@ export const envSchema = z.object({
   GITHUB_HACK26_ORG_TOKEN: z.string().optional(),
   GITHUB_ORG: z.string().default('hack26-sandboxes'),
 
+  // Login con GitHub (GitHub App, src/auth). Sin las tres variables, el login queda apagado
+  // y la API se comporta como antes: abierta, sin dueños (modo equipo / desarrollo).
+  /** Client ID de la GitHub App (empieza con Iv…). */
+  GITHUB_APP_CLIENT_ID: z.string().optional(),
+  GITHUB_APP_CLIENT_SECRET: z.string().optional(),
+  /** Slug público de la app (github.com/apps/<slug>): para el link "comparte repos con Mayday". */
+  GITHUB_APP_SLUG: z.string().optional(),
+  /** Firma la cookie de sesión y cifra los tokens de GitHub guardados. */
+  SESSION_SECRET: z
+    .string()
+    .min(32, 'SESSION_SECRET debe tener al menos 32 caracteres')
+    .optional(),
+  /** Adónde vuelve el usuario después del login (default: el primer origen de CORS_ORIGIN). */
+  FRONTEND_URL: z.url().optional(),
+  /** Callback de OAuth (default: PUBLIC_BACKEND_URL/auth/github/callback o localhost:PORT). */
+  AUTH_CALLBACK_URL: z.url().optional(),
+  /** Logins de GitHub que ven todos los sandboxes y simulaciones (equipo). Separados por coma. */
+  ADMIN_GITHUB_LOGINS: z
+    .string()
+    .default('')
+    .transform((v) =>
+      v
+        .split(',')
+        .map((k) => k.trim().toLowerCase())
+        .filter(Boolean),
+    ),
+
   // Agente de deploy (fallback cuando el camino determinista no alcanza)
   /**
    * Secreto maestro de los endpoints /agent/*. Cada agente recibe un token
@@ -68,7 +107,7 @@ export const envSchema = z.object({
   CONDUCTOR_AGENT_BLANK_ENV: z
     .string()
     .default(
-      'RENDER_API_KEY,GITHUB_TOKEN,GITHUB_HACK26_ORG_TOKEN,AGENT_API_SECRET,OPENAI_API_KEY,ELEVENLABS_API_KEY,CLOUDFLARE_API_TOKEN,DATABASE_URL',
+      'RENDER_API_KEY,GITHUB_TOKEN,GITHUB_HACK26_ORG_TOKEN,AGENT_API_SECRET,OPENAI_API_KEY,ELEVENLABS_API_KEY,CLOUDFLARE_API_TOKEN,DATABASE_URL,GITHUB_APP_CLIENT_SECRET,SESSION_SECRET',
     )
     .transform((v) =>
       v
@@ -119,6 +158,22 @@ export const envSchema = z.object({
   CLICKY_MAX_QUESTIONS_PER_SIM: z.coerce.number().int().min(1).default(80),
   /** Tope de caracteres de voz por simulación; al pasarlo, Clicky usa la voz del navegador. */
   CLICKY_MAX_TTS_CHARS_PER_SIM: z.coerce.number().int().min(0).default(30000),
+
+  // Simulación: roles que corren en el backend con la API de Claude (SimulationBrain)
+  /** Sin key, todos los roles corren como threads de Conductor (comportamiento anterior). */
+  ANTHROPIC_API_KEY: z.string().optional(),
+  /** Roles que pasan a la API si hay key. Vacío = ninguno. Solo infra, observer y generator. */
+  SIM_API_ROLES: z.string().default('infra,observer,generator'),
+  SIM_MODEL_CONTEXT: z.string().default('claude-haiku-5-5'),
+  SIM_EFFORT_CONTEXT: effortSchema.default('low'),
+  SIM_MODEL_GENERATOR: z.string().default('claude-sonnet-5-5'),
+  SIM_EFFORT_GENERATOR: effortSchema.default('low'),
+  SIM_MODEL_OBSERVER: z.string().default('claude-sonnet-5-5'),
+  SIM_EFFORT_OBSERVER: effortSchema.default('medium'),
+  SIM_MODEL_DEBRIEF: z.string().default('claude-opus-5-5'),
+  SIM_EFFORT_DEBRIEF: effortSchema.default('high'),
+  /** Cuántas vulns se juegan antes de que el director cierre la simulación. */
+  SIM_MAX_INCIDENTS: z.coerce.number().int().min(1).default(3),
 });
 
 export type Env = z.infer<typeof envSchema>;
