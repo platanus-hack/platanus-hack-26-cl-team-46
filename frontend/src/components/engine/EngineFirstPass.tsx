@@ -234,35 +234,27 @@ function Elapsed() {
  * Todos los agentes listos: un solo botón grande al centro. No mostramos qué vulnerabilidades
  * encontró el atacante: eso lo descubre el developer en el simulacro y lo ve en el reporte.
  */
-function ReadyGate({ sim, onStart }: { sim: Simulation; onStart: StartFn }) {
+function ReadyGate({ onStart }: { sim: Simulation; onStart: StartFn }) {
   const [starting, setStarting] = useState(false);
-  const vectors = sim.engine?.findings.filter((f) => f.confirmed).length ?? sim.attack_plan?.findings?.length ?? 0;
   return (
-    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-6 py-12 text-center">
-      <span className="md-index">TODO LISTO</span>
-      <h2 className="max-w-2xl text-[40px] font-semibold leading-[1.08] tracking-[-0.035em] text-ink">
-        Tu app está arriba y el atacante ya sabe por dónde entrar.
-      </h2>
-      <p className="max-w-xl text-[16px] leading-relaxed text-ink-muted">
-        Apenas partas empiezan a llegar las alertas. Si abres a Hinty, el incidente se pausa mientras hablan.
-      </p>
-      <button
-        type="button"
-        disabled={starting}
-        onClick={(e) => {
-          setStarting(true);
-          // Los pixeles de la transición salen desde el centro del botón.
-          const r = e.currentTarget.getBoundingClientRect();
-          // Si falla, el error se muestra arriba y el botón vuelve a quedar disponible.
-          void onStart({ x: r.left + r.width / 2, y: r.top + r.height / 2 }).finally(() => setStarting(false));
-        }}
-        className="md-btn md-btn--primary h-20! rounded-lg! px-16! text-[24px]! font-semibold tracking-[-0.01em] shadow-[0_0_0_1px_#2EE6FF66,0_0_48px_#2EE6FF55] transition-shadow hover:shadow-[0_0_0_1px_#2EE6FF99,0_0_72px_#2EE6FF77] disabled:opacity-60"
-      >
-        {starting ? "Partiendo…" : "Comenzar simulación"}
-      </button>
-      <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">
-        App desplegada · {vectors} {vectors === 1 ? "vector" : "vectores"} · agentes en posición
-      </span>
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-14 px-6 py-12 text-center">
+      <h2 className="text-[44px] font-semibold leading-[1.08] tracking-[-0.035em] text-ink">Todos los sistemas están listos</h2>
+      <div className="md-arcade-glow">
+        <button
+          type="button"
+          disabled={starting}
+          onClick={(e) => {
+            setStarting(true);
+            // Los pixeles de la transición salen desde el centro del botón.
+            const r = e.currentTarget.getBoundingClientRect();
+            // Si falla, el error se muestra arriba y el botón vuelve a quedar disponible.
+            void onStart({ x: r.left + r.width / 2, y: r.top + r.height / 2 }).finally(() => setStarting(false));
+          }}
+          className="md-arcade"
+        >
+          {starting ? "Iniciando…" : "Iniciar simulación"}
+        </button>
+      </div>
     </div>
   );
 }
