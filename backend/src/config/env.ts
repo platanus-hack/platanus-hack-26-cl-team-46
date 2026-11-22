@@ -175,6 +175,17 @@ export const envSchema = z.object({
   /** Agente de reportes: arma el reporte final de cada simulación (src/simulations/report). */
   SIM_MODEL_REPORT: z.string().default('claude-opus-5-5'),
   SIM_EFFORT_REPORT: effortSchema.default('high'),
+
+  // Motor de hacking real en Modal (engine/modal_app.py, engine/docs/MODAL.md).
+  /** URL de la API del motor (…--hack26-engine-api.modal.run). Con las tres variables, las simulaciones nuevas usan el motor real. */
+  ENGINE_URL: z.url().optional(),
+  /** Proxy Auth Token de Modal: Token ID (wk-…) y Token Secret (ws-…). */
+  ENGINE_MODAL_KEY: z.string().optional(),
+  ENGINE_MODAL_SECRET: z.string().optional(),
+  /** Segundos entre pasos del atacante al repetir el ataque real en el simulacro. */
+  ENGINE_REPLAY_STEP_SECONDS: z.coerce.number().min(1).default(30),
+  /** Plugin del motor (catálogo de ataques). Hoy: apuntes | tasks. */
+  ENGINE_PLUGIN: z.string().default('apuntes'),
   /** Cuántas vulns se juegan antes de que el director cierre la simulación. */
   SIM_MAX_INCIDENTS: z.coerce.number().int().min(1).default(3),
 });

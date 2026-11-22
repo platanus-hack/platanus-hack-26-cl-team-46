@@ -163,6 +163,7 @@ export class SimulationsService implements OnModuleInit {
             seed_users: [],
           },
       hacker_mode: s.hacker_mode,
+      engine_driven: Boolean(s.engine_driven),
       workspace_id: s.workspace_id ?? null,
       workspace_link: s.workspace_link ?? null,
       threads: s.threads.map(
@@ -194,6 +195,7 @@ export class SimulationsService implements OnModuleInit {
       tools_detected: s.tools_detected ?? null,
       context: this.contextView(s),
       attack_plan: s.attack_plan ?? null,
+      engine: engineView(s),
       state: s.state ?? null,
       debrief: s.debrief ?? null,
       report: s.report
@@ -246,7 +248,15 @@ export class SimulationsService implements OnModuleInit {
     }
 
     const now = new Date().toISOString();
-    const hackerMode = input.hacker ?? 'emulated';
+    // Con el motor real configurado, el hacker es el motor (salvo que se pida el emulado).
+    const engineReady = Boolean(
+      this.config.get('ENGINE_URL', { infer: true }) &&
+        this.config.get('ENGINE_MODAL_KEY', { infer: true }) &&
+        this.config.get('ENGINE_MODAL_SECRET', { infer: true }),
+    );
+    const hackerMode = input.hacker ?? (engineReady ? 'external' : 'emulated');
+    // El rol hacker lo opera el motor interno (EngineHacker), no alguien de afuera.
+    const engineDriven = !input.hacker && engineReady;
     const sim = this.store.insert({
       sim_id: `sim-${randomBytes(4).toString('hex')}`,
       sandbox_id: sandboxId,
@@ -255,6 +265,7 @@ export class SimulationsService implements OnModuleInit {
       created_at: now,
       updated_at: now,
       hacker_mode: hackerMode,
+      ...(engineDriven ? { engine_driven: true } : {}),
       threads: SIM_ROLES.map((role) => ({
         role,
         mode:
@@ -280,8 +291,9 @@ export class SimulationsService implements OnModuleInit {
     void this.launch(sim.sim_id);
     return {
       ...this.toView(sim),
-      // Para un motor de hacking externo (rol hacker vía HTTP).
-      ...(hackerMode === 'external'
+      // Para un motor de hacking externo (rol hacker vía HTTP). Solo si se pidió
+      // explícitamente: el token sirve para cualquier rol (x-sim-role es declarado).
+      ...(hackerMode === 'external' && !engineDriven
         ? { hacker_token: this.token(sim.sim_id) }
         : {}),
     };
@@ -988,4 +1000,28 @@ function str(v: unknown, fallback: string): string {
 
 function firstLine(s: string): string {
   return (s.split('\n').find((x) => x.trim()) ?? s).slice(0, 100);
+}
+
+/** Lo que ve el frontend del motor real (sin la repetición completa, que pesa). */
+function engineView(s: SimulationRecord) {
+  const e = s.engine;
+  if (!e) return null;
+  return {
+    status: e.status,
+    error: e.error ?? null,
+    started_at: e.started_at,
+    finished_at: e.finished_at ?? null,
+    log: e.log.slice(-80),
+    summary: e.summary ?? null,
+    findings: e.findings ?? [],
+    selected: e.selected ?? null,
+    played: e.played,
+    current: e.current ?? null,
+    verifies: e.verifies.map(({ vuln_id, status, requested_at, error }) => ({
+      vuln_id,
+      status,
+      requested_at,
+      error: error ?? null,
+    })),
+  };
 }

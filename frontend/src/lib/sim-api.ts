@@ -52,6 +52,11 @@ export interface Simulation {
   tools_detected: string[] | null;
   context: Record<string, unknown> | null;
   attack_plan: { findings?: { vuln_id: string; file: string; line?: number; severity: string }[] } | null;
+  /** Motor de hacking real (solo hacker_mode external): primera pasada, informe y verificaciones. */
+  engine: EngineView | null;
+  hacker_mode?: "emulated" | "external";
+  /** El rol hacker lo opera el motor real (primera pasada + simulacro). */
+  engine_driven?: boolean;
   state: {
     phase?: string;
     attacker_active?: boolean;
@@ -63,6 +68,32 @@ export interface Simulation {
   /** Reporte final (lo arma el agente de reportes al cerrar). null = la simulación no tiene. */
   report: { status: ReportStatus; verdict: ResultVerdict | null; rank: ResultRank | null; degraded: boolean } | null;
   created_at: string;
+}
+
+export interface EngineFinding {
+  vuln_id: string;
+  title: string;
+  severity: string;
+  order: number;
+  confirmed: boolean;
+  file?: string;
+  line?: number;
+  real_case?: string;
+}
+
+export interface EngineView {
+  status: "running" | "done" | "failed";
+  error: string | null;
+  started_at: string;
+  finished_at: string | null;
+  /** Salida del motor en vivo (últimas líneas). */
+  log: string[];
+  summary: { confirmed: number; total: number; requests: number; duration_ms: number; correlated: number } | null;
+  findings: EngineFinding[];
+  selected: string[] | null;
+  played: string[];
+  current: string | null;
+  verifies: { vuln_id: string; status: "running" | "done" | "failed"; requested_at: string; error: string | null }[];
 }
 
 export type ReportStatus = "pending" | "generating" | "ready" | "failed";
@@ -121,7 +152,8 @@ export const simApi = {
   list: () => request<Simulation[]>("/simulations"),
   get: (id: string) => request<Simulation>(`/simulations/${id}`),
   create: (body: { repo_url?: string; sandbox_id?: string }) => post<Simulation>("/simulations", body),
-  start: (id: string) => post<Simulation>(`/simulations/${id}/start`),
+  /** Con el motor real se pueden elegir los incidentes (en orden). */
+  start: (id: string, vulns?: string[]) => post<Simulation>(`/simulations/${id}/start`, vulns?.length ? { vulns } : {}),
   control: (id: string, action: "next" | "pause" | "resume" | "finish", vuln_id?: string) =>
     post<Simulation>(`/simulations/${id}/control`, { action, vuln_id }),
   message: (id: string, text: string) => post<TimelineEvent>(`/simulations/${id}/messages`, { text }),

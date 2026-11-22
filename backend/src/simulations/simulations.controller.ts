@@ -19,16 +19,19 @@ import {
   controlSchema,
   createSimulationSchema,
   messageSchema,
+  startSchema,
   stopSchema,
   timelineQuerySchema,
   type ActionBody,
   type ControlBody,
   type CreateSimulationBody,
   type MessageBody,
+  type StartBody,
   type StopBody,
   type TimelineQuery,
 } from './simulations.schemas.js';
 import { SimulationsService } from './simulations.service.js';
+import { EngineHacker } from './engine/engine.hacker.js';
 import { TimelineService } from './timeline.service.js';
 import { EVENT_TYPES } from './simulation.types.js';
 
@@ -50,6 +53,7 @@ export class SimulationsController {
     private readonly timeline: TimelineService,
     private readonly auth: AuthService,
     private readonly sandboxes: SandboxesService,
+    private readonly engine: EngineHacker,
   ) {}
 
   @Get()
@@ -129,8 +133,14 @@ export class SimulationsController {
 
   @Post(':id/start')
   @HttpCode(200)
-  start(@Param('id') id: string, @CurrentUser() user: AuthUser | null) {
+  start(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser | null,
+    @Body({ schema: startSchema }) body: StartBody,
+  ) {
     this.owned(id, user);
+    // Con el motor real, el developer elige los incidentes (en orden) desde el informe.
+    if (body?.vulns?.length) this.engine.select(id, body.vulns);
     return this.sims.start(id);
   }
 

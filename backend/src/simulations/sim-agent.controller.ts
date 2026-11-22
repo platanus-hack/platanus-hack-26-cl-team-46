@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -20,6 +21,8 @@ import {
   agentEventSchema,
   agentLogsQuerySchema,
   agentSqlSchema,
+  engineProgressSchema,
+  type EngineProgressBody,
   agentTimelineQuerySchema,
   type AgentChangesBody,
   type AgentDeployQuery,
@@ -30,6 +33,7 @@ import {
   type AgentTimelineQuery,
 } from './simulations.schemas.js';
 import { SimulationsService } from './simulations.service.js';
+import { EngineHacker } from './engine/engine.hacker.js';
 
 const CLI_PATH = path.resolve(import.meta.dirname, '../../agent-cli/sim.mjs');
 
@@ -39,7 +43,10 @@ const CLI_PATH = path.resolve(import.meta.dirname, '../../agent-cli/sim.mjs');
  */
 @Controller('sim')
 export class SimAgentController {
-  constructor(private readonly sims: SimulationsService) {}
+  constructor(
+    private readonly sims: SimulationsService,
+    private readonly engine: EngineHacker,
+  ) {}
 
   /** La CLI no tiene secretos: el rol queda fijo en el archivo. */
   @Get('cli.mjs')
@@ -87,6 +94,21 @@ export class SimAgentController {
   ) {
     const e = this.sims.postFromAgent(id, req.simRole, body);
     return { seq: e.seq, type: e.type };
+  }
+
+  /** Avance en vivo de la primera pasada del motor real (lo manda engine/modal_app.py). */
+  @Post(':id/engine/progress')
+  @UseGuards(SimTokenGuard)
+  @HttpCode(202)
+  engineProgress(
+    @Param('id') id: string,
+    @Req() req: SimAgentRequest,
+    @Body({ schema: engineProgressSchema }) body: EngineProgressBody,
+  ) {
+    if (req.simRole !== 'hacker')
+      throw new ForbiddenException('Solo el motor (rol hacker) reporta avance');
+    this.sims.get(id);
+    return this.engine.progress(id, body.lines);
   }
 
   @Get(':id/source.tar.gz')

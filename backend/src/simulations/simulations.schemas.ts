@@ -28,7 +28,8 @@ export const createSimulationSchema = z
       .regex(/^sbx-[a-f0-9]+$/)
       .optional(),
     /** emulated: thread de Conductor que emula el hack. external: lo opera el motor real vía HTTP. */
-    hacker: z.enum(['emulated', 'external']).default('emulated'),
+    /** Sin valor: external si el motor real está configurado (ENGINE_URL), si no emulated. */
+    hacker: z.enum(['emulated', 'external']).optional(),
   })
   .refine((v) => v.repo_url || v.sandbox_id, 'Indica repo_url o sandbox_id');
 
@@ -124,3 +125,15 @@ export type AgentDeployQuery = z.infer<typeof agentDeployQuerySchema>;
 export type AgentChangesBody = z.infer<typeof agentChangesSchema>;
 export type AgentEnvBody = z.infer<typeof agentEnvSchema>;
 export type AgentSqlBody = z.infer<typeof agentSqlSchema>;
+
+/** Partir la simulación. Con el motor real, el developer puede elegir los incidentes (en orden). */
+export const startSchema = z
+  .object({ vulns: z.array(z.string().min(1).max(80)).min(1).max(8).optional() })
+  .default({});
+export type StartBody = z.infer<typeof startSchema>;
+
+/** Avance de la primera pasada del motor (líneas del CLI), desde Modal. */
+export const engineProgressSchema = z.object({
+  lines: z.array(z.string().max(500)).max(500),
+});
+export type EngineProgressBody = z.infer<typeof engineProgressSchema>;

@@ -11,6 +11,7 @@ import { ChannelIcon } from "@/components/workspace/ChannelIcon";
 import { Logo } from "@/components/mayday";
 import { CmdK, RenameInput, repoShortName, SandboxPicker, type SandboxEntry } from "@/components/sandbox/SandboxPicker";
 import { api, type Sandbox } from "@/lib/api";
+import { EngineFirstPass } from "@/components/engine/EngineFirstPass";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
 import { eventToMessage, seedMessages } from "@/lib/workspace-chat";
 import { eventToMail, seedMails } from "@/lib/workspace-mail";
@@ -217,6 +218,11 @@ function SimulateConsole() {
     }
   };
 
+  // Motor real: antes de partir se ve la primera pasada (en vivo) y el informe, no el escritorio.
+  const firstPass =
+    Boolean(sim) &&
+    sim!.engine_driven &&
+    (sim!.status === "starting" || sim!.status === "ready" || (sim!.status === "failed" && Boolean(sim!.engine)));
   const project = sim ? sim.repo_url.replace(/\/$/, "").split("/").pop() || "proyecto" : "proyecto";
   const simStart = sim?.created_at;
   const mails = [
@@ -288,7 +294,11 @@ function SimulateConsole() {
 
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
 
-      {sim && (
+      {sim && firstPass && (
+        <EngineFirstPass sim={sim} onStart={(vulns) => run(() => simApi.start(sim.sim_id, vulns))} />
+      )}
+
+      {sim && !firstPass && (
         <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_420px] gap-3">
           {/* Izquierda: el espacio de trabajo simulado (arriba) y el historial de sucesos (abajo).
               Es la columna de Hinty: su tile, su isla, su pizarra y sus tarjetas van aquí, nunca sobre el Agente. */}
@@ -360,7 +370,7 @@ function pendingSteps(sim: Simulation): string[] {
   return [
     sim.sandbox.status !== "ready" && "desplegando la app",
     !sim.tools_detected && "revisando herramientas",
-    !sim.attack_plan && "el atacante analiza el código",
+    !sim.attack_plan && (sim.engine_driven ? "el motor ataca tu sandbox" : "el atacante analiza el código"),
   ].filter((x): x is string => Boolean(x));
 }
 
