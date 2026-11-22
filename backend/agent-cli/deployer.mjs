@@ -35,6 +35,8 @@ deployer <comando>
   note "<título>" ["detalle"]     Publica una nota en el timeline que ve el usuario
   ask KEY "descripción" [...]     Pide variables secretas al usuario y espera a que las entregue
   report deployed|gave_up "<resumen>"   Termina el trabajo (OBLIGATORIO al final)
+  report unsupported "<motivo para el usuario>" "<detalle técnico>"
+                                  La app no se puede desplegar hoy (ver prompt)
 `;
 
 const [cmd, ...args] = process.argv.slice(2);
@@ -74,6 +76,11 @@ try {
       await ask(args);
       break;
     case 'report':
+      if (args[0] === 'unsupported') {
+        if (!args[1]) fail('Uso: deployer report unsupported "<motivo en una frase, para el usuario>" "<detalle técnico>"');
+        print(await api('POST', '/report', { outcome: 'unsupported', reason: args[1], summary: args[2] ?? args[1] }));
+        break;
+      }
       if (!['deployed', 'gave_up'].includes(args[0]) || !args[1]) fail('Uso: deployer report deployed|gave_up "<resumen>"');
       print(await api('POST', '/report', { outcome: args[0], summary: args[1] }));
       break;

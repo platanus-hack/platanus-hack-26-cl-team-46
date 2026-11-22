@@ -34,6 +34,9 @@ export interface Simulation {
     /** La app servida por el proxy de preview (mismo site que mayday.rip: las cookies funcionan en el iframe). */
     preview_url?: string | null;
     seed_users: unknown[];
+    /** Si el deploy falló: por qué (unsupported = la app no se puede desplegar hoy). */
+    failure_kind?: "unsupported" | "capacity" | "error" | null;
+    failure_reason?: string | null;
   };
   threads: {
     role: SimRole;

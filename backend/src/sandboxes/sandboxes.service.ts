@@ -629,6 +629,8 @@ export class SandboxesService
       current_deploy: s.current_deploy ?? null,
       agent,
       pending_inputs: s.pending_inputs,
+      failure_kind: s.status === 'failed' ? (s.failure_kind ?? 'error') : null,
+      failure_reason: s.status === 'failed' ? (s.failure_reason ?? null) : null,
       created_at: s.created_at,
       updated_at: s.updated_at,
     };
@@ -826,7 +828,13 @@ export class SandboxesService
    * y espera a que quede live. Lanza un error si el deploy falla.
    */
   async applyPlan(id: string, manifest: SandboxManifest, reason: string) {
-    this.store.update(id, { manifest, status: 'deploying', error: undefined });
+    this.store.update(id, {
+      manifest,
+      status: 'deploying',
+      error: undefined,
+      failure_kind: undefined,
+      failure_reason: undefined,
+    });
     const s = this.get(id);
 
     // Postgres
@@ -1404,7 +1412,11 @@ export class SandboxesService
     if (!s || s.status === 'deleted') return;
     if (err instanceof RenderCapacityError) {
       // No tiene sentido que el agente reintente: falta cupo, no es su repo.
-      this.store.update(id, { status: 'failed', error: err.message });
+      this.store.update(id, {
+        status: 'failed',
+        error: err.message,
+        failure_kind: 'capacity',
+      });
       this.events.emit(id, 'critical', 'Render sin cupo', err.message);
       void this.agents.stop(id, err.message);
       return;

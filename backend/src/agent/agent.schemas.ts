@@ -51,10 +51,19 @@ export const agentInputRequestSchema = z.object({
     .max(20),
 });
 
-export const agentReportSchema = z.object({
-  outcome: z.enum(['deployed', 'gave_up']),
-  summary: z.string().min(1).max(8000),
-});
+export const agentReportSchema = z
+  .object({
+    /** unsupported: la app no se puede desplegar hoy (dependencias que no podemos levantar). */
+    outcome: z.enum(['deployed', 'gave_up', 'unsupported']),
+    summary: z.string().min(1).max(8000),
+    /** unsupported: motivo en una frase, para el usuario (sin jerga de infraestructura). */
+    reason: z.string().min(1).max(300).optional(),
+  })
+  .refine((v) => v.outcome !== 'unsupported' || v.reason, {
+    message:
+      'unsupported requiere reason (el motivo en una frase, para el usuario)',
+    path: ['reason'],
+  });
 
 export const agentUsersSchema = z
   .array(

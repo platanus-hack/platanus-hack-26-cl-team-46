@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { api, type Sandbox, type SimEvent } from "@/lib/api";
 import { simApi, type SimStatus, type Simulation } from "@/lib/sim-api";
 import { AgentPanel } from "@/components/sandbox/AgentPanel";
+import { UnsupportedApp } from "@/components/sandbox/UnsupportedApp";
 import { useConfirm } from "@/components/mayday";
 
 /**
@@ -141,6 +142,11 @@ function DeployConsole() {
 
         {current ? (
           <section className="space-y-4">
+            {current.status === "failed" && current.failure_kind === "unsupported" && (
+              <div className="rounded-md border border-line bg-bg-100 p-5">
+                <UnsupportedApp reason={current.failure_reason ?? null} compact />
+              </div>
+            )}
             <div className="rounded-md border border-line bg-bg-100 p-4 text-sm">
               <dl className="grid grid-cols-[140px_1fr] gap-y-1">
                 <dt className="text-ink-muted">URL</dt>

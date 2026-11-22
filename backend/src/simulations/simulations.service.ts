@@ -194,6 +194,11 @@ export class SimulationsService implements OnModuleInit {
                 : null,
             commit_sha: sbx.commit_sha ?? null,
             seed_users: sbx.manifest?.seed_users ?? [],
+            /** Si el deploy falló: por qué (unsupported = la app no se puede desplegar hoy). */
+            failure_kind:
+              sbx.status === 'failed' ? (sbx.failure_kind ?? 'error') : null,
+            failure_reason:
+              sbx.status === 'failed' ? (sbx.failure_reason ?? null) : null,
           }
         : {
             sandbox_id: s.sandbox_id,
@@ -854,7 +859,14 @@ export class SimulationsService implements OnModuleInit {
           {},
           'critical',
         );
-        this.setStatus(simId, 'failed', `Falló el deploy: ${sbx.error ?? ''}`);
+        // Una app no desplegable ya trae su mensaje para el usuario.
+        this.setStatus(
+          simId,
+          'failed',
+          sbx.failure_kind === 'unsupported'
+            ? (sbx.error ?? 'Esta app no se puede desplegar por ahora.')
+            : `Falló el deploy: ${sbx.error ?? ''}`,
+        );
       }
       return;
     }
