@@ -5,7 +5,7 @@
  */
 import { AnthropicProvider } from './anthropic.ts';
 import { OpenAICompatProvider } from './openai-compat.ts';
-import type { AnalysisProvider, GeneratedArtifact, ProposedAngle, ProviderInput } from './types.ts';
+import type { AnalysisProvider, GeneratedArtifact, ProbeGenInput, ProbeSpec, ProposedAngle, ProviderInput } from './types.ts';
 import type { Usage } from '../core/ledger.ts';
 
 export interface CascadeAttempt {
@@ -38,6 +38,22 @@ export class CascadeProvider implements AnalysisProvider {
       }
     }
     throw new Error(`todos los providers fallaron: ${lastErr instanceof Error ? lastErr.message : lastErr}`);
+  }
+
+  async generateProbes(input: ProbeGenInput): Promise<ProbeSpec[]> {
+    let lastErr: unknown;
+    for (const p of this.providers) {
+      if (!p.generateProbes) continue;
+      try {
+        const specs = await p.generateProbes(input);
+        this.attempts.push({ provider: p.id, ok: true });
+        return specs;
+      } catch (e) {
+        lastErr = e;
+        this.attempts.push({ provider: p.id, ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
+    }
+    throw new Error(`ningún provider generó probes: ${lastErr instanceof Error ? lastErr.message : lastErr}`);
   }
 
   async adapt(input: ProviderInput, baseModuleId: string): Promise<GeneratedArtifact> {

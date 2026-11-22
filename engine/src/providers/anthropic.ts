@@ -9,7 +9,8 @@
  */
 import { llmCost, type Usage } from '../core/ledger.ts';
 import { ProviderRefusal } from './openai-compat.ts';
-import { DEFAULT_TIERS, type AnalysisProvider, type ProposedAngle, type ProviderInput, type TierConfig } from './types.ts';
+import { DEFAULT_TIERS, type AnalysisProvider, type ProbeGenInput, type ProbeSpec, type ProposedAngle, type ProviderInput, type TierConfig } from './types.ts';
+import { PROBE_SYSTEM, parseProbeSpecs } from './probe-prompt.ts';
 
 const API = 'https://api.anthropic.com/v1/messages';
 const API_VERSION = '2023-06-01'; // ajustar al correr de verdad (ver skill claude-api)
@@ -60,5 +61,13 @@ export class AnthropicProvider implements AnalysisProvider {
     } catch {
       return [];
     }
+  }
+
+  async generateProbes(input: ProbeGenInput): Promise<ProbeSpec[]> {
+    // La generación de módulos usa el tier "generation" (Opus/Sonnet 4.5). El gate
+    // valida después: nunca se confía en la autolimitación del LLM.
+    const user = JSON.stringify({ repo: input.repo, angles: input.angles, scope: input.scopeOrigins }).slice(0, 100_000);
+    const text = await this.call(this.tiers.generation, PROBE_SYSTEM, user);
+    return parseProbeSpecs(text);
   }
 }

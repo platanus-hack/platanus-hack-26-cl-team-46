@@ -45,10 +45,40 @@ export const DEFAULT_TIERS: TierConfig = {
   generation: 'claude-opus-5-5',
 };
 
+/**
+ * ProbeSpec: módulo de ataque EJECUTABLE pero DECLARATIVO (datos, no código).
+ * Es lo que un provider genera (structured output) y lo que el ejecutor confiable
+ * corre tras pasar el gate (scope). Contrato compartido providers ↔ dual.
+ */
+export interface ProbeSpec {
+  id: string;
+  vuln_class: string;
+  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+  path: string; // relativo (debe empezar con '/')
+  query?: Record<string, string>;
+  body?: Record<string, unknown>;
+  needs_auth?: boolean;
+  success: {
+    status_eq?: number;
+    status_gte?: number;
+    body_matches?: string; // regex (i)
+    reflects_query?: string; // clave de query cuyo valor debe aparecer sin escapar en HTML
+  };
+  note?: string;
+}
+
+export interface ProbeGenInput {
+  repo?: unknown;
+  angles: ProposedAngle[];
+  scopeOrigins: string[];
+}
+
 export interface AnalysisProvider {
   id: string;
   /** ¿Puede ejecutarse sin costo/externo? (mock=true, anthropic=false). */
   readonly free: boolean;
   analyze(input: ProviderInput): Promise<ProposedAngle[]>;
   adapt?(input: ProviderInput, baseModuleId: string): Promise<GeneratedArtifact>;
+  /** Genera ProbeSpecs ejecutables (structured output). El gate los valida después. */
+  generateProbes?(input: ProbeGenInput): Promise<ProbeSpec[]>;
 }
