@@ -1,7 +1,7 @@
 "use client";
 
 import { ArrowUp, Mic, Plus } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { SIM_ICONS } from "@/components/workspace/sim-icons";
 import type { TimelineEvent } from "@/lib/sim-api";
 import { Markdown } from "./Markdown";
@@ -62,9 +62,12 @@ function AgentHeader({ title }: { title: string }) {
 
 /**
  * Mascota pixel del agente, animada en pixeles enteros: rebota, mueve los brazos, pisa con
- * las patas de a pares y pestañea. Con reduced motion queda quieta.
+ * las patas de a pares y pestañea. Cada 10 s levanta una banderita de Platanus (un plátano
+ * pixel en sus amarillos) por unos 2 s y la vuelve a bajar. Con reduced motion queda quieta
+ * y sin bandera.
  */
 function AgentMascot() {
+  const clipId = `mascot-flag-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   return (
     <>
       <style>{MASCOT_CSS}</style>
@@ -86,6 +89,27 @@ function AgentMascot() {
             <rect x="3" y="1" width="1" height="1.5" />
             <rect x="7" y="1" width="1" height="1.5" />
           </g>
+          {/* La bandera sale de detrás de la cabeza: solo se ve sobre y = 0, más el asta junto a la mano. */}
+          <clipPath id={clipId}>
+            <rect x="0" y="-9" width="12" height="9" />
+            <rect x="10" y="0" width="1" height="2" />
+          </clipPath>
+          <g clipPath={`url(#${clipId})`}>
+            <g className="agent-mascot__flag">
+              <rect x="10" y="-5" width="1" height="7" fill="#A0A3A8" />
+              <rect x="1" y="-5" width="9" height="4" fill="#0A0A0B" />
+              <rect x="8" y="-5" width="1" height="1" fill="#8A5A14" />
+              <g fill="#FFEC40">
+                <rect x="2" y="-4" width="1" height="1" />
+                <rect x="7" y="-4" width="2" height="1" />
+                <rect x="3" y="-3" width="4" height="1" />
+              </g>
+              <g fill="#F9BC12">
+                <rect x="7" y="-3" width="1" height="1" />
+                <rect x="3" y="-2" width="4" height="1" />
+              </g>
+            </g>
+          </g>
         </g>
       </g>
     </svg>
@@ -105,6 +129,13 @@ const MASCOT_CSS = `
 @keyframes agent-mascot-step { 50% { transform: translateY(-.5px); } }
 @keyframes agent-mascot-arm { 50% { transform: translateY(-1px); } }
 @keyframes agent-mascot-blink { 0%, 92%, 100% { transform: scaleY(1); } 94%, 97% { transform: scaleY(.15); } }
+.agent-mascot__flag { transform: translateY(9px); animation: agent-mascot-flag 10s infinite -5s; }
+@keyframes agent-mascot-flag {
+  0%, 72% { transform: translateY(9px); animation-timing-function: steps(1); }
+  72.01% { transform: translateY(9px); animation-timing-function: steps(9, end); }
+  76%, 96% { transform: translateY(0); animation-timing-function: steps(9, end); }
+  100% { transform: translateY(9px); }
+}
 @media (prefers-reduced-motion: reduce) { .agent-mascot * { animation: none !important; } }
 `;
 
