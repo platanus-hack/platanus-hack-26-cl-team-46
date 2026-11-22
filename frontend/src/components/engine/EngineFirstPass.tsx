@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Eye, EyeOff } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button, StatusChip, useReducedMotion } from "@/components/mayday";
 import { UnsupportedApp } from "@/components/sandbox/UnsupportedApp";
 import type { EngineFinding, Simulation } from "@/lib/sim-api";
@@ -282,6 +283,60 @@ const SEVERITY: Record<string, { label: string; cls: string }> = {
 
 const MAX_INCIDENTS = 3;
 
+/** Pastilla de severidad: la misma en la lista y en la elección de incidentes. */
+function SeverityPill({ severity }: { severity: string }) {
+  const sev = SEVERITY[severity] ?? SEVERITY.medium;
+  return (
+    <span className={`shrink-0 border px-1.5 py-1 font-mono text-[10.5px] leading-none uppercase tracking-[0.1em] ${sev.cls}`}>
+      {sev.label}
+    </span>
+  );
+}
+
+/**
+ * Lo que delata la vulnerabilidad (título, caso real, archivo) va difuminado hasta que el usuario
+ * pide ver los spoilers: si no, sabe qué arreglar antes de vivir el incidente.
+ */
+function Spoiler({ hidden, children, className = "" }: { hidden: boolean; children: ReactNode; className?: string }) {
+  return (
+    <span
+      className={`transition-[filter] duration-200 motion-reduce:transition-none ${hidden ? "blur-[6px] select-none" : ""} ${className}`}
+      aria-hidden={hidden || undefined}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Switch "Ver spoilers" con ojo: apagado por defecto. */
+function SpoilerSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  const Icon = on ? Eye : EyeOff;
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={() => onChange(!on)}
+      className="flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] text-ink-muted hover:bg-bg-200 hover:text-ink"
+    >
+      <Icon className={`size-4 ${on ? "text-defense" : ""}`} strokeWidth={1.5} aria-hidden="true" />
+      Ver spoilers
+      <span
+        aria-hidden="true"
+        className={`relative h-5 w-9 rounded-sm border transition-colors duration-150 motion-reduce:transition-none ${
+          on ? "border-defense bg-defense" : "border-line-strong bg-bg-200"
+        }`}
+      >
+        <span
+          className={`absolute top-1/2 size-3 -translate-y-1/2 transition-[left] duration-150 motion-reduce:transition-none ${
+            on ? "left-[18px] bg-on-defense" : "left-[3px] bg-ink-muted"
+          }`}
+        />
+      </span>
+    </button>
+  );
+}
+
 export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: StartFn }) {
   const engine = sim.engine!;
   const confirmed = useMemo(
@@ -290,6 +345,7 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: Start
   );
   const [picked, setPicked] = useState<string[]>(() => engine.selected ?? confirmed.slice(0, MAX_INCIDENTS).map((f) => f.vuln_id));
   const [starting, setStarting] = useState(false);
+  const [spoilers, setSpoilers] = useState(false);
   const s = engine.summary;
   const critical = confirmed.filter((f) => f.severity === "critical").length;
   const toggle = (id: string) =>
@@ -306,15 +362,18 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: Start
         <p className="mt-1 max-w-2xl text-[16px] leading-relaxed text-ink-muted">
           Cada una se probó con tráfico real contra tu sandbox. Van en el orden en que un atacante las usaría.
         </p>
-        <div className="my-6 flex gap-10">
+        <div className="my-6 flex items-end gap-10">
           <Stat label="Confirmadas" value={`${s?.confirmed ?? confirmed.length}/${s?.total ?? engine.findings.length}`} attack />
           <Stat label="Críticas" value={String(critical)} />
           <Stat label="Con archivo y línea" value={`${s?.correlated ?? 0}/${confirmed.length}`} />
           <Stat label="Requests" value={String(s?.requests ?? "—")} />
+          <div className="ml-auto pb-1">
+            <SpoilerSwitch on={spoilers} onChange={setSpoilers} />
+          </div>
         </div>
         <ul>
           {confirmed.map((f, i) => (
-            <FindingRow key={f.vuln_id} f={f} n={i + 1} picked={picked.includes(f.vuln_id)} />
+            <FindingRow key={f.vuln_id} f={f} n={i + 1} picked={picked.includes(f.vuln_id)} hidden={!spoilers} />
           ))}
         </ul>
       </div>
@@ -342,12 +401,13 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: Start
                 <span className={`mt-0.5 grid size-4 shrink-0 place-items-center border-[1.5px] font-mono text-[10px] ${on ? "border-defense bg-defense text-on-defense" : "border-line-strong"}`}>
                   {on ? idx + 1 : ""}
                 </span>
-                <span className="min-w-0">
-                  {byId.get(f.vuln_id)?.title}
+                <span className="min-w-0 flex-1">
+                  <Spoiler hidden={!spoilers}>{byId.get(f.vuln_id)?.title}</Spoiler>
                   <small className="mt-0.5 block font-mono text-[11px] uppercase tracking-[0.1em] text-ink-faint">
                     {on ? `Incidente ${idx + 1}` : "Opcional"}
                   </small>
                 </span>
+                <SeverityPill severity={f.severity} />
               </button>
             );
           })}
@@ -384,8 +444,7 @@ function Stat({ label, value, attack }: { label: string; value: string; attack?:
   );
 }
 
-function FindingRow({ f, n, picked }: { f: EngineFinding; n: number; picked: boolean }) {
-  const sev = SEVERITY[f.severity] ?? SEVERITY.medium;
+function FindingRow({ f, n, picked, hidden }: { f: EngineFinding; n: number; picked: boolean; hidden: boolean }) {
   return (
     <li
       className={`grid grid-cols-[36px_92px_minmax(0,1fr)_auto] items-center gap-3.5 border-t border-line py-3 ${
@@ -393,12 +452,22 @@ function FindingRow({ f, n, picked }: { f: EngineFinding; n: number; picked: boo
       }`}
     >
       <span className="pl-1 font-mono text-[13px] text-ink-faint">{String(n).padStart(2, "0")}</span>
-      <span className={`justify-self-start border px-1.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.1em] ${sev.cls}`}>{sev.label}</span>
+      <span className="justify-self-start">
+        <SeverityPill severity={f.severity} />
+      </span>
       <div className="min-w-0">
-        <div className="text-[15px]">{f.title}</div>
-        {f.real_case && <div className="mt-0.5 truncate text-[12.5px] text-ink-faint">Caso real: {f.real_case}</div>}
+        <Spoiler hidden={hidden} className="block text-[15px]">
+          {f.title}
+        </Spoiler>
+        {f.real_case && (
+          <Spoiler hidden={hidden} className="mt-0.5 block truncate text-[12.5px] text-ink-faint">
+            Caso real: {f.real_case}
+          </Spoiler>
+        )}
       </div>
-      <span className="font-mono text-xs text-ink-muted">{f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "—"}</span>
+      <Spoiler hidden={hidden} className="font-mono text-xs text-ink-muted">
+        {f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "—"}
+      </Spoiler>
     </li>
   );
 }
