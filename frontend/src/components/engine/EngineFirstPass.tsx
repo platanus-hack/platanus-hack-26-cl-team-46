@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button, StatusChip } from "@/components/mayday";
 import type { EngineFinding, Simulation } from "@/lib/sim-api";
 
@@ -174,14 +174,16 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: (vuln
   const byId = new Map(confirmed.map((f) => [f.vuln_id, f]));
 
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-10 overflow-y-auto px-10 py-8">
-      <div className="min-w-0">
+    // Cada columna scrollea por su cuenta: el botón de empezar siempre queda a la vista.
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-10 overflow-hidden px-10">
+      <div className="min-h-0 min-w-0 overflow-y-auto py-8">
         <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Lo que confirmó el motor</span>
         <h2 className="mt-2 text-[40px] font-semibold tracking-[-0.035em]">
           Tu app tiene {confirmed.length} {confirmed.length === 1 ? "puerta abierta" : "puertas abiertas"}.
         </h2>
         <p className="mt-1 max-w-2xl text-[16px] leading-relaxed text-ink-muted">
-          Cada una se probó con tráfico real contra tu sandbox. Van en el orden en que un atacante las usaría.
+          Cada una se probó con tráfico real contra tu sandbox. Van en el orden en que un atacante las usaría. Los detalles
+          quedan ocultos hasta el simulacro: elige por severidad.
         </p>
         <div className="my-6 flex gap-10">
           <Stat label="Confirmadas" value={`${s?.confirmed ?? confirmed.length}/${s?.total ?? engine.findings.length}`} attack />
@@ -195,7 +197,7 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: (vuln
           ))}
         </ul>
       </div>
-      <aside className="self-start rounded-md border border-line bg-bg-100 p-6">
+      <aside className="my-8 flex max-h-[calc(100%-4rem)] min-h-0 flex-col self-start rounded-md border border-line bg-bg-100 p-6">
         <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Tu simulacro</span>
         <h3 className="mt-2 text-xl font-semibold tracking-[-0.02em]">
           {picked.length} {picked.length === 1 ? "incidente" : "incidentes"}
@@ -203,7 +205,7 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: (vuln
         <p className="mt-1 text-sm leading-relaxed text-ink-muted">
           Elige hasta {MAX_INCIDENTS}, en el orden en que quieres vivirlos. El atacante repite lo que hizo de verdad, paso a paso.
         </p>
-        <div className="my-4 flex flex-col gap-2">
+        <div className="-mx-2 my-4 flex min-h-0 flex-col gap-2 overflow-y-auto px-2">
           {confirmed.map((f) => {
             const idx = picked.indexOf(f.vuln_id);
             const on = idx !== -1;
@@ -219,11 +221,14 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: (vuln
                 <span className={`mt-0.5 grid size-4 shrink-0 place-items-center border-[1.5px] font-mono text-[10px] ${on ? "border-defense bg-defense text-on-defense" : "border-line-strong"}`}>
                   {on ? idx + 1 : ""}
                 </span>
-                <span className="min-w-0">
-                  {byId.get(f.vuln_id)?.title}
-                  <small className="mt-0.5 block font-mono text-[11px] uppercase tracking-[0.1em] text-ink-faint">
-                    {on ? `Incidente ${idx + 1}` : "Opcional"}
-                  </small>
+                <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <Spoiler announce>{byId.get(f.vuln_id)?.title}</Spoiler>
+                  <span className="flex items-center gap-2">
+                    <SeverityChip severity={f.severity} />
+                    <small className="font-mono text-[11px] uppercase tracking-[0.1em] text-ink-faint">
+                      {on ? `Incidente ${idx + 1}` : "Opcional"}
+                    </small>
+                  </span>
                 </span>
               </button>
             );
@@ -231,7 +236,7 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: (vuln
         </div>
         <Button
           variant="primary"
-          className="w-full justify-center"
+          className="w-full shrink-0 justify-center"
           disabled={!picked.length || starting}
           onClick={() => {
             setStarting(true);
@@ -241,10 +246,6 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: (vuln
         >
           {starting ? "Partiendo…" : "Empezar simulacro"}
         </Button>
-        <p className="mt-3 flex gap-2.5 text-[13px] leading-snug text-ink-faint">
-          <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 bg-defense" />
-          No mostramos cómo arreglarlas: eso lo descubres en el simulacro y lo ves en el reporte final.
-        </p>
       </aside>
     </div>
   );
@@ -259,8 +260,29 @@ function Stat({ label, value, attack }: { label: string; value: string; attack?:
   );
 }
 
+/** Pastilla de severidad: es lo único que se ve de cada hallazgo antes del simulacro. */
+function SeverityChip({ severity }: { severity: string }) {
+  const sev = SEVERITY[severity] ?? SEVERITY.medium;
+  return (
+    <span className={`justify-self-start border px-1.5 py-1 font-mono text-[10.5px] leading-none uppercase tracking-[0.1em] ${sev.cls}`}>
+      {sev.label}
+    </span>
+  );
+}
+
+/** Texto borroneado para no hacer spoilers: el detalle se descubre en el simulacro. */
+function Spoiler({ children, className = "", announce }: { children: ReactNode; className?: string; announce?: boolean }) {
+  return (
+    <>
+      <span aria-hidden="true" className={`pointer-events-none blur-[6px] select-none ${className}`}>
+        {children}
+      </span>
+      {announce && <span className="sr-only">Incidente oculto hasta el simulacro</span>}
+    </>
+  );
+}
+
 function FindingRow({ f, n, picked }: { f: EngineFinding; n: number; picked: boolean }) {
-  const sev = SEVERITY[f.severity] ?? SEVERITY.medium;
   return (
     <li
       className={`grid grid-cols-[36px_92px_minmax(0,1fr)_auto] items-center gap-3.5 border-t border-line py-3 ${
@@ -268,12 +290,12 @@ function FindingRow({ f, n, picked }: { f: EngineFinding; n: number; picked: boo
       }`}
     >
       <span className="pl-1 font-mono text-[13px] text-ink-faint">{String(n).padStart(2, "0")}</span>
-      <span className={`justify-self-start border px-1.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.1em] ${sev.cls}`}>{sev.label}</span>
+      <SeverityChip severity={f.severity} />
       <div className="min-w-0">
-        <div className="text-[15px]">{f.title}</div>
-        {f.real_case && <div className="mt-0.5 truncate text-[12.5px] text-ink-faint">Caso real: {f.real_case}</div>}
+        <Spoiler announce className="block text-[15px]">{f.title}</Spoiler>
+        {f.real_case && <Spoiler className="mt-0.5 block truncate text-[12.5px] text-ink-faint">Caso real: {f.real_case}</Spoiler>}
       </div>
-      <span className="font-mono text-xs text-ink-muted">{f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "—"}</span>
+      <Spoiler className="font-mono text-xs text-ink-muted">{f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "—"}</Spoiler>
     </li>
   );
 }
