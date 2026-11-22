@@ -346,11 +346,53 @@ describe('EngineHacker', () => {
     t.sim().status = 'running';
     t.append('observer', { type: 'control.next', raw: { vuln_id: 'idor' } });
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(
-      t
-        .sim()
-        .timeline.some((e) => e.actor === 'hacker' && e.vuln_id === 'idor'),
-    ).toBe(false);
+    const fromHacker = t
+      .sim()
+      .timeline.filter((e) => e.actor === 'hacker' && e.vuln_id === 'idor');
+    // No la ataca: solo cierra el comando con un attack.done saltado.
+    expect(fromHacker.map((e) => e.type)).toEqual(['attack.done']);
+    expect(fromHacker[0].raw).toMatchObject({
+      skipped: true,
+      attacker_active: false,
+    });
+  });
+
+  it('un control.next que el motor no puede jugar no deja el ataque en curso para siempre', async () => {
+    const t = setup();
+    t.append('system', { type: 'deploy.ready' });
+    await vi.waitFor(() => expect(t.sim().engine?.call_id).toBe('fc-1'));
+    await t.tick();
+    // El plan tiene una vuln confirmada sin pasos para repetir.
+    t.sim().engine!.findings!.push({
+      vuln_id: 'sin-pasos',
+      title: 'Sin pasos',
+      severity: 'high',
+      order: 9,
+      confirmed: true,
+    });
+    (t.sim().attack_plan!.findings as { vuln_id: string }[]).push({
+      vuln_id: 'sin-pasos',
+    });
+    t.sim().status = 'running';
+    t.append('observer', {
+      type: 'control.next',
+      vuln_id: 'sin-pasos',
+      raw: { vuln_id: 'sin-pasos' },
+    });
+    const done = t.sims.postFromAgent.mock.calls.find(
+      ([, , input]) => input.type === 'attack.done',
+    )?.[2];
+    expect(done).toMatchObject({
+      vuln_id: 'sin-pasos',
+      raw: { vuln_id: 'sin-pasos', attacker_active: false, skipped: true },
+    });
+    const f = computeFacts(t.sim().timeline, t.sim().attack_plan);
+    expect(f.attack_in_progress).toBe(false);
+    // No cuenta como atacada ni se vuelve a pedir.
+    expect(f.vulns['sin-pasos']).toMatchObject({
+      status: 'pending',
+      skipped: true,
+    });
   });
 
   it('no toca simulaciones external que no son del motor interno', async () => {
@@ -435,7 +477,13 @@ describe('EngineHacker', () => {
     // Primera pasada con un RepoModel en los artefactos.
     t.client.status.mockResolvedValueOnce({
       status: 'done',
-      result: { ...FIRST_PASS, artifacts: { ...FIRST_PASS.artifacts, repo_model: { schemaVersion: '1', routes: [], signals: [] } } },
+      result: {
+        ...FIRST_PASS,
+        artifacts: {
+          ...FIRST_PASS.artifacts,
+          repo_model: { schemaVersion: '1', routes: [], signals: [] },
+        },
+      },
     });
     await t.tick();
 
@@ -443,7 +491,10 @@ describe('EngineHacker', () => {
     t.client.start.mockResolvedValueOnce('fc-verify');
     t.client.status.mockResolvedValueOnce({
       status: 'done',
-      result: { ...FIRST_PASS, artifacts: { diagnoses: [{ vuln_id: 'idor', verdict: 'confirmed' }] } },
+      result: {
+        ...FIRST_PASS,
+        artifacts: { diagnoses: [{ vuln_id: 'idor', verdict: 'confirmed' }] },
+      },
     });
     t.append('observer', { type: 'control.verify', raw: { vuln_id: 'idor' } });
     await vi.waitFor(() => expect(t.client.start).toHaveBeenCalledTimes(2));

@@ -16,8 +16,9 @@ export const CLICKY_CONFIG = {
   /** Voz del sistema para leer las respuestas. */
   voice: true,
   /**
-   * Contexto extra que se manda con cada pregunta. Vacío a propósito: el backend ya le explica
-   * a Hinty qué es Mayday, cómo es la pantalla y qué pasa en el simulacro (backend/src/clicky).
+   * Contexto extra que se manda con cada pregunta. El backend lo acepta pero no lo usa (lo que
+   * manda el navegador no entra al prompt): él le explica a Hinty qué es Mayday, cómo es la
+   * pantalla y qué pasa en el simulacro (backend/src/clicky).
    */
   context: "",
 };

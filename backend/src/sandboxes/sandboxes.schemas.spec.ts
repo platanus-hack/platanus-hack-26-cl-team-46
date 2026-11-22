@@ -20,6 +20,27 @@ describe('schemas', () => {
     ).toBe(false);
   });
 
+  it('solo acepta repos de GitHub con la forma exacta', () => {
+    for (const bad of [
+      'https://gitlab.com/a/b',
+      'https://github.com/hack26-sandboxes/%73bx-1a2b3c4d',
+      'https://github.com/a/b/tree/main',
+      'https://github.com/a/b?x=1',
+      'https://github.com/a',
+    ])
+      expect(
+        createSandboxSchema.safeParse({ repo_url: bad }).success,
+        bad,
+      ).toBe(false);
+  });
+
+  it('guarda la URL en forma canónica', () => {
+    expect(
+      createSandboxSchema.parse({ repo_url: 'HTTPS://GitHub.com/A/b.git' })
+        .repo_url,
+    ).toBe('https://github.com/A/b');
+  });
+
   it('setEnv exige al menos un cambio', () => {
     expect(setEnvSchema.safeParse({}).success).toBe(false);
     expect(setEnvSchema.safeParse({ generate: ['JWT_SECRET'] }).success).toBe(

@@ -6,6 +6,44 @@ export type ConductorSessionStatus = 'idle' | 'working' | 'error';
 export type ConductorWorkspaceStatus =
   'initializing' | 'ready' | 'sleeping' | 'archived' | 'deleted' | 'updating';
 
+/** Tope por llamada: una llamada colgada no puede trabar el tick de las simulaciones. */
+const DEFAULT_TIMEOUT_MS = 30_000;
+/** Crear la VM (y su primera sesión) tarda más que el resto. */
+const CREATE_WORKSPACE_TIMEOUT_MS = 120_000;
+const CREATE_SESSION_TIMEOUT_MS = 60_000;
+
+/**
+ * Error de la API de agentes. `message` es apto para pantalla (no nombra al
+ * proveedor); `code` resume lo que decía la respuesta antes de descartarla.
+ */
+export class ConductorError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: ConductorErrorCode,
+  ) {
+    super(message);
+    this.name = 'ConductorError';
+  }
+}
+
+export type ConductorErrorCode =
+  'workspace_gone' | 'timeout' | 'network' | 'not_configured';
+
+/** El workspace ya no existe (archivado o borrado): la simulación no puede seguir. */
+export function isWorkspaceGone(err: unknown): boolean {
+  return err instanceof ConductorError && err.code === 'workspace_gone';
+}
+
+/** Código a partir del cuerpo crudo de una respuesta con error. */
+export function conductorErrorCode(
+  body: string,
+): ConductorErrorCode | undefined {
+  return /Workspace is (deleted|archived)/i.test(body)
+    ? 'workspace_gone'
+    : undefined;
+}
+
 export interface CreateWorkspaceInput {
   name: string;
   sessionName: string;
@@ -34,20 +72,25 @@ export class ConductorClient {
     input: CreateWorkspaceInput,
   ): Promise<{ workspaceId: string; sessionId: string; deepLink: string }> {
     const branch = this.config.get('CONDUCTOR_PROJECT_BRANCH', { infer: true });
-    return this.request('POST', '/v0/workspaces', {
-      projectId: this.config.get('CONDUCTOR_PROJECT_ID', { infer: true }),
-      ...(branch ? { branch } : {}),
-      name: input.name,
-      sessionName: input.sessionName,
-      agent: 'claude',
-      model: this.config.get('AGENT_MODEL', { infer: true }),
-      effort: this.config.get('AGENT_EFFORT', { infer: true }),
-      env: agentEnv(
-        this.config.get('CONDUCTOR_AGENT_BLANK_ENV', { infer: true }),
-        input.env,
-      ),
-      message: input.message,
-    });
+    return this.request(
+      'POST',
+      '/v0/workspaces',
+      {
+        projectId: this.config.get('CONDUCTOR_PROJECT_ID', { infer: true }),
+        ...(branch ? { branch } : {}),
+        name: input.name,
+        sessionName: input.sessionName,
+        agent: 'claude',
+        model: this.config.get('AGENT_MODEL', { infer: true }),
+        effort: this.config.get('AGENT_EFFORT', { infer: true }),
+        env: agentEnv(
+          this.config.get('CONDUCTOR_AGENT_BLANK_ENV', { infer: true }),
+          input.env,
+        ),
+        message: input.message,
+      },
+      CREATE_WORKSPACE_TIMEOUT_MS,
+    );
   }
 
   /** Crea otro thread (sesión) dentro de un workspace existente. */
@@ -56,14 +99,19 @@ export class ConductorClient {
     name: string;
     message: string;
   }): Promise<{ id: string; deepLink: string }> {
-    return this.request('POST', '/v0/sessions', {
-      workspaceId: input.workspaceId,
-      name: input.name,
-      agent: 'claude',
-      model: this.config.get('AGENT_MODEL', { infer: true }),
-      effort: this.config.get('AGENT_EFFORT', { infer: true }),
-      message: input.message,
-    });
+    return this.request(
+      'POST',
+      '/v0/sessions',
+      {
+        workspaceId: input.workspaceId,
+        name: input.name,
+        agent: 'claude',
+        model: this.config.get('AGENT_MODEL', { infer: true }),
+        effort: this.config.get('AGENT_EFFORT', { infer: true }),
+        message: input.message,
+      },
+      CREATE_SESSION_TIMEOUT_MS,
+    );
   }
 
   sessionStatus(sessionId: string): Promise<{
@@ -105,26 +153,50 @@ export class ConductorClient {
     method: string,
     path: string,
     body?: unknown,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
   ): Promise<T> {
     // Estos mensajes pueden terminar en pantalla (error del sandbox o de la simulación): nunca
     // nombran al proveedor. El detalle completo queda en el log.
     if (!this.apiKey) {
       this.logger.error('CONDUCTOR_API_KEY no está configurada');
-      throw new Error('El servicio de agentes no está configurado');
+      throw new ConductorError(
+        'El servicio de agentes no está configurado',
+        0,
+        'not_configured',
+      );
     }
-    const res = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: {
-        authorization: `Bearer ${this.apiKey}`,
-        ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
-      },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
-    });
-    const text = await res.text();
+    let res: Response;
+    let text: string;
+    try {
+      res = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: {
+          authorization: `Bearer ${this.apiKey}`,
+          ...(body !== undefined ? { 'content-type': 'application/json' } : {}),
+        },
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      text = await res.text();
+    } catch (err) {
+      const timeout = (err as Error).name === 'TimeoutError';
+      this.logger.error(
+        `${method} ${path} → ${timeout ? `sin respuesta en ${timeoutMs} ms` : (err as Error).message}`,
+      );
+      throw new ConductorError(
+        timeout
+          ? 'El servicio de agentes no respondió a tiempo'
+          : 'No se pudo contactar al servicio de agentes',
+        0,
+        timeout ? 'timeout' : 'network',
+      );
+    }
     if (!res.ok) {
       this.logger.error(`${method} ${path} → ${res.status}: ${text}`);
-      throw new Error(
+      throw new ConductorError(
         `El servicio de agentes respondió con un error (HTTP ${res.status})`,
+        res.status,
+        conductorErrorCode(text),
       );
     }
     return (text ? JSON.parse(text) : undefined) as T;

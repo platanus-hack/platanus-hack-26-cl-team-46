@@ -4,7 +4,13 @@ import {
   type SimulationRecord,
   type TimelineEvent,
 } from '../simulation.types.js';
-import { needsReport, ReportAgent } from './report.agent.js';
+import { HttpException } from '@nestjs/common';
+import {
+  needsReport,
+  REGENERATE_COOLDOWN_MS,
+  ReportAgent,
+} from './report.agent.js';
+import { benchmarkable } from './reports.controller.js';
 import {
   assembleResult,
   computeReportMetrics,
@@ -307,5 +313,123 @@ describe('agente de reportes', () => {
     expect(sims.get('sim-1')!.report!.status).toBe('ready');
     agent.request('sim-1', 'finished', { force: true });
     await vi.waitFor(() => expect(structured).toHaveBeenCalledTimes(2));
+  });
+
+  it('regenerar a mano tiene cooldown y conserva el resultado anterior mientras tanto', async () => {
+    let release!: () => void;
+    const structured = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: OUTPUT,
+        model: 'm',
+        ms: 1,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((r) => {
+            release = () =>
+              r({
+                data: OUTPUT,
+                model: 'm2',
+                ms: 1,
+                usage: { input_tokens: 1, output_tokens: 1 },
+              });
+          }),
+      );
+    const { agent, sims } = setup({ structured });
+    const report = () => sims.get('sim-1')!.report!;
+    agent.request('sim-1', 'finished');
+    await vi.waitFor(() => expect(report().status).toBe('ready'));
+    const first = report().result;
+    const t0 = Date.now();
+    agent.request('sim-1', 'finished', { force: true, now: t0 });
+    await vi.waitFor(() => expect(report().status).toBe('generating'));
+    // Mientras se regenera, el resultado anterior sigue ahí.
+    expect(report().result).toBe(first);
+    release();
+    await vi.waitFor(() => expect(report().status).toBe('ready'));
+    expect(report().model).toBe('m2');
+    // Otra regeneración antes del cooldown: 429.
+    const err = (() => {
+      try {
+        agent.request('sim-1', 'finished', { force: true, now: t0 + 60_000 });
+      } catch (e) {
+        return e as HttpException;
+      }
+    })();
+    expect(err).toBeInstanceOf(HttpException);
+    expect(err!.getStatus()).toBe(429);
+    // Pasado el cooldown, se puede.
+    expect(() =>
+      agent.request('sim-1', 'finished', {
+        force: true,
+        now: t0 + REGENERATE_COOLDOWN_MS + 1,
+      }),
+    ).not.toThrow();
+  });
+});
+
+describe('agente de reportes: regeneración fallida', () => {
+  it('si regenerar falla con el modelo, queda el reporte anterior en vez del respaldo', async () => {
+    const sims = new Map([['sim-1', record()]]);
+    const store = {
+      get: (id: string) => sims.get(id),
+      list: () => [...sims.values()],
+      update: (
+        id: string,
+        p: Partial<SimulationRecord> | ((s: SimulationRecord) => void),
+      ) => {
+        const r = sims.get(id)!;
+        if (typeof p === 'function') p(r);
+        else Object.assign(r, p);
+        return r;
+      },
+    };
+    const agent = new ReportAgent(
+      {
+        get: (k: string) => (k.startsWith('SIM_EFFORT') ? 'high' : 'm'),
+      } as never,
+      store as never,
+      { onAppend: () => () => {} } as never,
+      { get: (id: string) => sims.get(id)!, ownerOf: () => undefined } as never,
+      {
+        get: () => ({ repo_url: 'https://github.com/x/y', name: 'Y' }),
+      } as never,
+    );
+    const structured = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: OUTPUT,
+        model: 'm',
+        ms: 1,
+        usage: { input_tokens: 1, output_tokens: 1 },
+      })
+      .mockRejectedValue(new Error('overloaded'));
+    agent.useLlm({ structured } as unknown as SimLlm);
+    agent.request('sim-1', 'finished');
+    await vi.waitFor(() =>
+      expect(sims.get('sim-1')!.report!.status).toBe('ready'),
+    );
+    const good = sims.get('sim-1')!.report!.result;
+    agent.request('sim-1', 'finished', { force: true });
+    await vi.waitFor(() => expect(structured).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() =>
+      expect(sims.get('sim-1')!.report!.status).toBe('ready'),
+    );
+    expect(sims.get('sim-1')!.report!.result).toBe(good);
+    expect(sims.get('sim-1')!.report!.degraded).toBe(false);
+  });
+});
+
+describe('benchmark', () => {
+  it('deja fuera las corridas con hacker externo que recibió el token', () => {
+    const base = record();
+    expect(benchmarkable(base)).toBe(true);
+    expect(benchmarkable({ ...base, hacker_mode: 'external' })).toBe(false);
+    // El motor interno también es external, pero nunca entrega el token.
+    expect(
+      benchmarkable({ ...base, hacker_mode: 'external', engine_driven: true }),
+    ).toBe(true);
   });
 });

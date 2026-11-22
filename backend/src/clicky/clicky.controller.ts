@@ -44,11 +44,25 @@ export class ClickyController {
           .map((i) => `${i.path.join('.')}: ${i.message}`)
           .join('; '),
       );
-    yield* this.clicky.lesson(
-      req.clickySimId,
-      parsed.data,
-      req.clickySim ?? req.clickySimStatus,
-    );
+    // Si el cliente se va (otra pregunta, Esc, cerró la pestaña), se corta el modelo y las
+    // voces en el acto: el generador solo se entera en su próximo yield, y eso puede tardar.
+    // Es el 'close' de la respuesta (el del request salta apenas se leyó el cuerpo).
+    const gone = new AbortController();
+    const res = req.res;
+    const onClose = () => {
+      if (!res?.writableFinished) gone.abort();
+    };
+    res?.on('close', onClose);
+    try {
+      yield* this.clicky.lesson(
+        req.clickySimId,
+        parsed.data,
+        req.clickySim ?? req.clickySimStatus,
+        gone.signal,
+      );
+    } finally {
+      res?.off('close', onClose);
+    }
   }
 
   @Post('stt-session')

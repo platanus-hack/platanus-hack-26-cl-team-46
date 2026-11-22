@@ -877,3 +877,133 @@ describe('apertura del primer incidente elegido', () => {
     expect(structured).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('cerebro: cierre y reintentos', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  const usage = {
+    input_tokens: 1,
+    output_tokens: 1,
+    cache_read_input_tokens: 0,
+    cache_creation_input_tokens: 0,
+  };
+
+  it('un Stop durante el debrief no se pisa con finished', async () => {
+    const h = harness();
+    let resolve!: (v: unknown) => void;
+    h.llm.structured.mockImplementationOnce(
+      () => new Promise((r) => (resolve = r)) as never,
+    );
+    const done = h.brain.finish('sim-1', 'El developer pidió terminar');
+    await vi.advanceTimersByTimeAsync(0);
+    h.record.status = 'stopped';
+    resolve({
+      data: {
+        summary: 'tarde',
+        outcome: 'breached',
+        per_vuln: [],
+        highlights: [],
+        score: 40,
+      },
+      model: 'claude-test',
+      ms: 1,
+      usage,
+    });
+    await done;
+    expect(h.posted.some((p) => p.type === 'sim.finished')).toBe(false);
+    h.brain.onModuleDestroy();
+  });
+
+  it('después de un fallo respeta el backoff antes de reintentar', async () => {
+    const h = harness();
+    h.llm.structured.mockRejectedValueOnce(new Error('overloaded'));
+    const state = () =>
+      h.timeline.append('sim-1', 'observer', {
+        type: 'state.update',
+        title: 'estado',
+        raw: { phase: 'under_attack' },
+      });
+    state();
+    await vi.advanceTimersByTimeAsync(1_600);
+    const generatorCalls = () =>
+      h.llm.structured.mock.calls.filter(([c]) =>
+        c.system.includes('Tu tarea: las notificaciones'),
+      ).length;
+    expect(generatorCalls()).toBe(1);
+    // Llega otro evento: no se reintenta antes de los 10 s del backoff.
+    state();
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(generatorCalls()).toBe(1);
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(generatorCalls()).toBe(2);
+    h.brain.onModuleDestroy();
+  });
+
+  it('al cerrarse la simulación suelta sus llamadas agendadas', async () => {
+    const h = harness();
+    h.timeline.append('sim-1', 'observer', {
+      type: 'state.update',
+      title: 'estado',
+      raw: { phase: 'under_attack' },
+    });
+    // El sim.status de cierre llega antes del debounce: el timer del generador se suelta.
+    h.timeline.append(
+      'sim-1',
+      'system',
+      { type: 'sim.status', title: 'detenida', raw: { status: 'stopped' } },
+      { trusted: true },
+    );
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(h.calls.filter((c) => c === 'generator')).toHaveLength(0);
+    h.brain.onModuleDestroy();
+  });
+});
+
+describe('director: vulns saltadas', () => {
+  it('una vuln que el motor no pudo jugar destraba el director y no se vuelve a pedir', () => {
+    const T = [
+      ev(1, 'hacker', 'attack.plan', { raw: PLAN }),
+      ev(2, 'user', 'control.start', { min: 0 }),
+      ev(3, 'observer', 'control.next', {
+        vuln_id: 'idor',
+        raw: { vuln_id: 'idor' },
+        min: 0,
+      }),
+      ev(4, 'hacker', 'attack.done', {
+        vuln_id: 'idor',
+        raw: { vuln_id: 'idor', attacker_active: false, skipped: true },
+        min: 0,
+      }),
+    ];
+    const f = computeFacts(T, PLAN);
+    expect(f.attack_in_progress).toBe(false);
+    expect(f.vulns.idor).toMatchObject({ status: 'pending', skipped: true });
+    const next = direct(
+      { status: 'running', timeline: T, attack_plan: PLAN },
+      T0 + 10 * 60_000,
+    );
+    expect(next).toEqual([
+      expect.objectContaining({ type: 'next', vuln_id: W }),
+    ]);
+  });
+
+  it('el siguiente ataque sale solo del plan', () => {
+    const T = [
+      ev(1, 'hacker', 'attack.plan', { raw: { findings: [] } }),
+      ev(2, 'user', 'control.start', { min: 0 }),
+      // Un verify de una vuln fuera del plan la agrega a los hechos como pendiente.
+      ev(3, 'hacker', 'attack.verify', {
+        vuln_id: 'fuera',
+        raw: { still_exploitable: false, attacker_active: false },
+        min: 0,
+      }),
+    ];
+    expect(
+      direct(
+        { status: 'running', timeline: T, attack_plan: { findings: [] } },
+        T0 + 10 * 60_000,
+      ).filter((a) => a.type === 'next'),
+    ).toEqual([]);
+  });
+});

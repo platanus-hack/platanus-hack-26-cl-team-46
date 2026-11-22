@@ -9,7 +9,7 @@ Una **simulación** es un sandbox desplegado más **5 roles** que se coordinan p
 Los roles corren en dos lugares:
 
 - **En el backend, con la API de Claude** (`SimulationBrain`, `backend/src/simulations/brain/`): **infra**, **observer** y **generator**. Son tareas de redactar y consolidar: no necesitan una VM.
-- **En un workspace de Conductor** (una VM, un thread por rol): **hacker** (emulado) y **coder**. Necesitan entorno: leer el repo completo, editar código, correr `tsc`, hacer push.
+- **En un workspace de Conductor** (una VM, un thread por rol): **hacker** y **coder**. El hacker es el motor real (`engine/`, en Modal) cuando `ENGINE_URL`, `ENGINE_MODAL_KEY` y `ENGINE_MODAL_SECRET` están configuradas, y un agente que emula el ataque cuando no. Necesitan entorno: leer el repo completo, editar código, correr `tsc`, hacer push.
 
 Sin `ANTHROPIC_API_KEY`, los 5 roles corren como threads de Conductor (el diseño original). `SIM_API_ROLES` elige cuáles pasan a la API.
 
@@ -50,7 +50,7 @@ Sin `ANTHROPIC_API_KEY`, los 5 roles corren como threads de Conductor (el diseñ
 - **El backend es la fuente de verdad.** La UI, el debrief y el replay salen del mismo timeline, y los agentes leen eventos estructurados en vez de transcripts.
 - **Hechos, estado y narrativa van separados.** El hacker reporta lo que logró, el observador decide el estado ("¿el atacante sigue adentro?") con `control.verify`, y el generador traduce eso a síntomas. Una acción equivocada (cambiar la contraseña) **no** saca al atacante, porque el hacker la verifica contra el código y el entorno reales.
 - **Los roles que solo redactan van por API.** Un turno de Conductor suma el tick, despertar la VM y correr la CLI: 15–40 s por rol, y el aviso al developer pasaba por dos roles en cadena. Por API, el generador responde en 2–7 s y se dispara al aparecer el evento. La salida es JSON validado (canales y severidades como enum), así que un rol no puede inventar un canal ni un formato.
-- **El ritmo va en código.** El director (`brain/facts.ts`) calcula los hechos desde el timeline y decide: re-verificar después de cada `change.deployed`/`change.db`, escalar (`control.next`) cuando lo jugado quedó contenido o el developer ya tuvo tiempo de reaccionar (3 min después de actuar, 8 min si no hace nada), y cerrar con el debrief al llegar a `SIM_MAX_INCIDENTS`. Antes eran reglas en prosa que el observer no siempre seguía.
+- **El ritmo va en código.** El director (`brain/facts.ts`) calcula los hechos desde el timeline y decide: re-verificar después de cada `change.deployed`/`change.db`, lanzar el siguiente ataque (`control.next`) a los `SIM_ATTACK_GAP_SECONDS` de tiempo activo, publicar una consecuencia (`incident.pulse`) cada `SIM_PULSE_SECONDS` mientras el atacante siga adentro, y detener al atacante cuando robó la base o se le acabó el plan (detalle en el ciclo de vida, paso 5). La simulación termina cuando el developer aprieta Terminar. Antes eran reglas en prosa que el observer no siempre seguía.
 - **Los hechos mandan sobre el estado.** `attacker_active` y el status de cada vuln salen del último reporte del hacker (`attack.done`, `attack.verify`); el modelo redacta notas, lo comprometido y las evaluaciones.
 - **Carriles por rol.** `EVENT_TYPES` en `simulation.types.ts` define quién puede publicar cada tipo de evento y a quién despierta, también para los roles del backend. Por ejemplo, el coder no puede publicar `change.deployed` (lo emite el backend) y el hacker no puede publicar `notify`.
 
@@ -71,14 +71,14 @@ cd backend && pnpm replay --sim sim-ed22258c --tasks generator,observer,debrief,
   --repo-dir ../victim-app --models claude-haiku-5-5,claude-sonnet-5-5,claude-opus-5-5 --out /tmp/report.md
 ```
 
-Si una llamada falla, se reintenta (10 s, 20 s); al tercer fallo se saltan esos eventos con un `agent.note`. El debrief prueba Opus dos veces, después el modelo del observer y, como último recurso, publica uno con los hechos para que la simulación nunca quede colgada.
+Si una llamada falla, se reintenta con backoff exponencial (10 s, 20 s); el SDK no reintenta por su cuenta, así el tiempo de cada intento queda acotado. Al tercer fallo se saltan esos eventos con un `agent.note`. El debrief prueba Opus dos veces, después el modelo del observer y, como último recurso, publica uno con los hechos para que la simulación nunca quede colgada.
 
 ## Ciclo de vida
 
 1. `POST /simulations {repo_url | sandbox_id}`: crea el sandbox (o reusa uno) y el workspace con los threads de Conductor (hacker y coder; los 5 si no hay `ANTHROPIC_API_KEY`). Estado `starting`.
 2. Con el deploy listo, el **backend** escanea el código del mirror (`tools-detector.ts`) y fija `tools_detected`: solo las herramientas con evidencia de setup (dependencia del SDK o su inicialización: `@sentry/*`, `posthog-*`, `dd-trace`, `@slack/*`, `.github/dependabot.yml`…). Los canales de la simulación son esas herramientas más los base (email, soporte, teléfono, Render). El developer no las elige y ningún LLM las agrega. En paralelo, **infra** publica `context.ready` (stack, arquitectura, personas, sin análisis de seguridad: también lo lee el coder) y **hacker** analiza el código y publica `attack.plan`.
 3. El estado pasa a `ready` recién cuando **todos los agentes** pueden partir: app arriba, herramientas detectadas, plan del atacante, contexto, el agente de código en línea (su saludo) y las **alertas de apertura** escritas. Esas alertas las escribe el generador antes de partir, a partir del primer ataque del plan (los pasos reales del motor). Si el coder o la apertura tardan más de 3 min, se parte igual. La UI muestra la preparación y, en `ready`, un solo botón: **Comenzar simulación**.
-4. `POST /simulations/:id/start` → `control.start`. Las alertas de apertura salen al tiro (0,8 s, 7 s y 14 s) y el primer ataque arranca en medio segundo, con sus primeros pasos rápidos. Después:
+4. `POST /simulations/:id/start` → `control.start`. Las alertas de apertura salen escalonadas (0,8 s, 20 s y 40 s) y el primer ataque arranca en medio segundo, con sus primeros pasos rápidos. Después:
    - el **observer** actualiza `state.update`,
    - el **generator** manda `notify` solo por los canales activos.
 5. **La simulación es continua** (director en `brain/facts.ts › direct`, sin LLM):
@@ -102,7 +102,7 @@ Si una llamada falla, se reintenta (10 s, 20 s); al tercer fallo se saltan esos 
 |---|---|---|
 | `POST` | `/simulations` | `{repo_url}` o `{sandbox_id}`, más `hacker: "emulated" \| "external"`. Las herramientas de monitoreo no se eligen: se detectan en el código |
 | `GET` | `/simulations/:id` | Estado, threads, canales, contexto, plan, estado del incidente y debrief |
-| `GET` | `/simulations/:id/stream?view=user` | SSE con el panel de eventos. Con `view=all` incluye lo interno |
+| `GET` | `/simulations/:id/stream?view=user` | SSE con el panel de eventos. Con `view=all` incluye lo interno, pero solo si la simulación ya cerró o con `SIM_DEBUG_VIEW=true`; mientras el incidente sigue vivo, el detalle y la lista tampoco traen el plan del atacante ni el estado interno |
 | `GET` | `/simulations/:id/timeline?view=all&since=N&types=notify,attack.*` | Lo mismo, en JSON |
 | `POST` | `/simulations/:id/start` | Parte el ataque |
 | `POST` | `/simulations/:id/control` | `{action: next \| pause \| resume \| verify \| finish, vuln_id?}` |
@@ -115,7 +115,7 @@ Un evento del timeline cumple el formato §6.2 (`t, vuln_id, source, severity, t
 
 ## Contrato para el motor de hacking real
 
-Hoy el thread `hacker` **emula** el ataque: no hace requests. El motor real del equipo motor lo reemplaza sin tocar nada más:
+Sin el motor configurado, el thread `hacker` **emula** el ataque: no hace requests. Un motor externo lo reemplaza sin tocar nada más (el motor de `engine/` se integra por `ENGINE_URL`; este contrato es para motores de terceros):
 
 1. Crea la simulación con `hacker: "external"`. La respuesta trae `hacker_token`.
 2. El motor llama a la API de agentes con `Authorization: Bearer <hacker_token>` y `x-sim-role: hacker`:
@@ -136,8 +136,8 @@ cloudflared tunnel --url http://localhost:3001     # copiar la URL https://….t
 # backend/.env:
 #   AGENT_API_SECRET=<≥16 caracteres>
 #   PUBLIC_BACKEND_URL=<url del túnel>
-pnpm --filter backend build && node --env-file=backend/.env backend/dist/main
+pnpm --filter backend build && (cd backend && node --env-file=.env dist/main)   # DATA_DIR relativo a backend/
 pnpm --filter frontend dev   # → http://localhost:3000/simulate
 ```
 
-En la consola `/simulate` pega `https://github.com/hack26-sandboxes/apuntes` (o el id `sbx-…` de un sandbox listo para ahorrarte el deploy). Cuando quede `ready`, presiona **Partir**.
+En la consola `/simulate` pega `https://github.com/hack26-sandboxes/apuntes` (o el id `sbx-…` de un sandbox listo para ahorrarte el deploy). Cuando quede `ready`, presiona **Comenzar simulación**.

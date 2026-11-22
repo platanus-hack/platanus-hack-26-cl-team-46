@@ -53,6 +53,8 @@ const SEVERITY_BORDER: Record<string, string> = {
 };
 
 const CHAT_TYPES = new Set(["user.message", "coder.reply", "user.action"]);
+/** Lista vacía estable: los useMemo que dependen de `events` no se recalculan en cada render. */
+const NO_EVENTS: TimelineEvent[] = [];
 
 function SimulateConsole() {
   const searchParams = useSearchParams();
@@ -66,6 +68,9 @@ function SimulateConsole() {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [renamingTitle, setRenamingTitle] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Error del refresco periódico, aparte del de las acciones: se borra solo cuando un refresco
+  // vuelve a funcionar, sin tapar el error de una acción que el usuario sí tiene que ver.
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Con cacheComponents, Next no desmonta la página al salir: la esconde (Activity) y al volver conserva el
   // estado, así que el useState de arriba no vuelve a leer la URL. Si llegas con otro ?sandbox= o ?sim=
@@ -100,20 +105,33 @@ function SimulateConsole() {
   const endCountdown = useCallback(() => setCountdown(false), []);
   const creating = useRef(new Set<string>());
 
+  // refresh() se llama desde el intervalo, run() y la creación automática: pueden solaparse y volver en
+  // desorden. Solo aplica la respuesta más nueva (seq) y el intervalo se salta un tick si hay una en vuelo.
+  const reqSeq = useRef(0);
+  const inFlight = useRef(false);
   const refresh = useCallback(async () => {
+    const seq = ++reqSeq.current;
+    inFlight.current = true;
     try {
       const [simList, sbxList] = await Promise.all([simApi.list(), api.listSandboxes()]);
+      if (seq !== reqSeq.current) return;
       setSims(simList);
       setSandboxes(sbxList);
       setLoaded(true);
+      setLoadError(null);
     } catch (e) {
-      setError((e as Error).message);
+      if (seq !== reqSeq.current) return;
+      setLoadError((e as Error).message);
+    } finally {
+      if (seq === reqSeq.current) inFlight.current = false;
     }
   }, []);
 
   useEffect(() => {
     const first = setTimeout(refresh, 0);
-    const t = setInterval(refresh, 3000);
+    const t = setInterval(() => {
+      if (!inFlight.current) void refresh();
+    }, 3000);
     return () => {
       clearTimeout(first);
       clearInterval(t);
@@ -235,7 +253,7 @@ function SimulateConsole() {
       }),
     );
   }, [selected, godMode, key]);
-  const events = log.key === key ? log.list : [];
+  const events = log.key === key ? log.list : NO_EVENTS;
   const feed = events.filter((e) => !CHAT_TYPES.has(e.type) && e.type !== "deploy.progress");
   const chat = events.filter((e) => CHAT_TYPES.has(e.type) || e.type === "change.deployed" || e.type === "change.deploy_failed");
 
@@ -256,20 +274,28 @@ function SimulateConsole() {
     (sim!.status === "starting" || sim!.status === "ready" || (sim!.status === "failed" && !sim!.report));
   const project = sim ? sim.repo_url.replace(/\/$/, "").split("/").pop() || "proyecto" : "proyecto";
   const simStart = sim?.created_at;
-  const mails = [
-    ...seedMails(project, simStart ? new Date(simStart) : new Date()),
-    ...events.flatMap((e) => {
-      const m = eventToMail(e);
-      return m ? [m] : [];
-    }),
-  ];
-  const chatMessages = [
-    ...seedMessages(project, simStart ? new Date(simStart) : new Date()),
-    ...events.flatMap((e) => {
-      const m = eventToMessage(e);
-      return m ? [m] : [];
-    }),
-  ];
+  // Derivados del timeline: solo se rearman cuando cambian los eventos, el proyecto o el inicio.
+  const mails = useMemo(
+    () => [
+      ...seedMails(project, simStart ? new Date(simStart) : new Date()),
+      ...events.flatMap((e) => {
+        const m = eventToMail(e);
+        return m ? [m] : [];
+      }),
+    ],
+    [project, simStart, events],
+  );
+  const chatMessages = useMemo(
+    () => [
+      ...seedMessages(project, simStart ? new Date(simStart) : new Date()),
+      ...events.flatMap((e) => {
+        const m = eventToMessage(e);
+        return m ? [m] : [];
+      }),
+    ],
+    [project, simStart, events],
+  );
+  const banner = error ?? loadError;
 
   return (
     // Debajo de la barra de la app (que trae el logo). Mobile: la página hace scroll (no cabe en una pantalla).
@@ -330,7 +356,7 @@ function SimulateConsole() {
         </div>
       </TopBarSlot>
 
-      {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
+      {banner && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{banner}</p>}
 
       {sim && firstPass && (
         <SimGate
@@ -380,13 +406,19 @@ function SimulateConsole() {
               title={sim.repo_url.replace(/\/$/, "").split("/").pop() || "Respuesta a incidente"}
               events={chat}
               live={sim.status === "running" || sim.status === "paused"}
-              onSend={(msg) => run(() => simApi.message(sim.sim_id, msg))}
+              // Terminado (o detenido) nadie responde: el composer queda de solo lectura.
+              disabled={sim.status !== "running" && sim.status !== "paused"}
+              // Sin run(): si falla, el error lo muestra el composer y el texto no se pierde.
+              onSend={async (msg) => {
+                await simApi.message(sim.sim_id, msg);
+                void refresh();
+              }}
             />
           </div>
         </div>
       )}
 
-      {entry && !sim && !error && (
+      {entry && !sim && !banner && (
         <p className="m-auto text-[15px] text-ink-muted">Preparando el simulacro de {entry.sandbox.name}…</p>
       )}
 

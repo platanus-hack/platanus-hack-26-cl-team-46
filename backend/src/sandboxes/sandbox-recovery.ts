@@ -30,7 +30,9 @@ export type RecoveryAction =
   /** El aprovisionamiento quedó a medias: repetirlo (los pasos son idempotentes). */
   | { kind: 'reprovision' }
   /** Una operación se cortó antes de lanzar el deploy en Render. */
-  | { kind: 'interrupted' };
+  | { kind: 'interrupted' }
+  /** El backend murió mientras creaba la VM del agente: no hay agente que siga. */
+  | { kind: 'launch_interrupted' };
 
 /**
  * Qué hacer con un sandbox que quedó "en curso" cuando murió la instancia que
@@ -41,9 +43,13 @@ export function decideRecovery(
   self: string,
   now = Date.now(),
 ): RecoveryAction {
-  if (!needsWorker(s) || heldByOtherInstance(s, self, now)) {
-    return { kind: 'skip' };
+  if (heldByOtherInstance(s, self, now)) return { kind: 'skip' };
+  // "analyzing" sin agente solo pasa mientras se crea la VM (o quedó así por un
+  // reinicio en ese momento, antes del marcador): nadie lo va a sacar de ahí.
+  if (s.status === 'analyzing' && (s.agent_launching_at || !s.agent)) {
+    return { kind: 'launch_interrupted' };
   }
+  if (!needsWorker(s)) return { kind: 'skip' };
   const deploy = s.current_deploy;
   if (s.render && deploy && !deploy.finished_at) {
     return { kind: 'follow', deployId: deploy.id };

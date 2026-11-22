@@ -142,6 +142,9 @@ function pickVoice() {
 if ('speechSynthesis' in window) speechSynthesis.getVoices();
 
 let playing = null;
+// La frase que suena ahora (voz del servidor, del navegador o sin voz). stopSpeaking() la corta con
+// cut(): mueren sus timers, no suelta las palabras que faltaban y su `done` se resuelve igual.
+let line = null;
 
 // Server voice lines are decoded ahead of time, as soon as the beat arrives, so they start at once.
 export function prepareAudio({ audio, mime = 'audio/mpeg' }) {
@@ -157,17 +160,21 @@ function playAudio(text, audio, el, { onWord, onStart }) {
   el = el || prepareAudio(audio);
   playing = el;
   const starts = audio.words || [];
-  let raf, next = 0;
+  let raf, next = 0, over = false;
   const done = new Promise(resolve => {
-    const finish = () => { cancelAnimationFrame(raf); if (playing === el) playing = null; for (; next < starts.length; next++) onWord?.(next); resolve(); };
+    // al terminar suelta las palabras que falten (y sus marcas); cortada, no
+    const end = all => { if (over) return; over = true; cancelAnimationFrame(raf); if (playing === el) playing = null; if (all) for (; next < starts.length; next++) onWord?.(next); resolve(); };
+    const finish = () => end(true);
     const tick = () => {
+      if (over) return;
       while (next < starts.length && el.currentTime >= starts[next]) onWord?.(next++);
       raf = requestAnimationFrame(tick);
     };
     el.onended = finish;
     el.onerror = finish;
     el.onpause = () => { if (!el.ended) finish(); };
-    el.onplaying = () => { onStart?.(); raf = requestAnimationFrame(tick); };
+    el.onplaying = () => { if (over) return; onStart?.(); raf = requestAnimationFrame(tick); };
+    line = { cut: () => { end(false); el.pause(); } };
     el.play().catch(finish);
   });
   const duration = audio.duration || Math.max(1.6, text.split(/\s+/).length * 0.34 + 0.4);
@@ -189,8 +196,14 @@ export function speak(text, { enabled = true, onWord, onStart, audio, el } = {})
   const times = estimateTimes(text, duration);
   if (!enabled || !('speechSynthesis' in window)) {
     onStart?.();
-    words.forEach((_, i) => setTimeout(() => onWord?.(i), times[i] * 1000));
-    return { times, duration, done: new Promise(r => setTimeout(r, duration * 1000)) };
+    const timers = words.map((_, i) => setTimeout(() => onWord?.(i), times[i] * 1000));
+    let end = () => {};
+    const done = new Promise(r => {
+      const last = setTimeout(() => end(), duration * 1000);
+      end = () => { clearTimeout(last); timers.forEach(clearTimeout); r(); };
+    });
+    line = { cut: () => end() };
+    return { times, duration, done };
   }
   const starts = [];
   words.reduce((pos, w) => { starts.push(text.indexOf(w, pos)); return starts.at(-1) + w.length; }, 0);
@@ -198,16 +211,19 @@ export function speak(text, { enabled = true, onWord, onStart, audio, el } = {})
   u.voice = pickVoice();
   u.lang = u.voice?.lang || 'es-CL';
   u.rate = 1.04;
-  let fallback, clock, heard = -1;
-  const say = i => { if (i > heard) { for (let k = heard + 1; k <= i; k++) onWord?.(k); heard = i; } };
+  let fallback, clock, heard = -1, over = false, cut = () => {};
+  const say = i => { if (!over && i > heard) { for (let k = heard + 1; k <= i; k++) onWord?.(k); heard = i; } };
   const done = new Promise(resolve => {
-    const finish = () => { clearTimeout(fallback); clearInterval(clock); say(words.length - 1); resolve(); };
-    u.onend = finish;
-    u.onerror = finish;
-    fallback = setTimeout(finish, duration * 1000 + 4000);
+    const end = all => { if (over) return; if (all) say(words.length - 1); over = true; clearTimeout(fallback); clearInterval(clock); resolve(); };
+    u.onend = () => end(true);
+    u.onerror = () => end(true);
+    fallback = setTimeout(() => end(true), duration * 1000 + 4000);
+    cut = () => end(false);
   });
+  line = { cut };
   // Many browser voices never report word boundaries: then words follow an estimated clock.
   u.onstart = () => {
+    if (over) return;
     onStart?.();
     const t0 = performance.now();
     say(0);
@@ -228,6 +244,8 @@ export function speak(text, { enabled = true, onWord, onStart, audio, el } = {})
 }
 
 export function stopSpeaking() {
+  line?.cut();
+  line = null;
   if ('speechSynthesis' in window) speechSynthesis.cancel();
   playing?.pause();
   playing = null;

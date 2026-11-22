@@ -1,10 +1,11 @@
-import { createServer, type Server } from 'node:http';
+import { createServer, request as httpRequest, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   BRIDGE_PATH,
   createPreviewProxy,
+  MAX_REWRITE_HTML_BYTES,
   previewHostMatcher,
   rewriteHtml,
   rewriteSetCookie,
@@ -146,5 +147,106 @@ describe('createPreviewProxy', () => {
     const res = await request(app).get(BRIDGE_PATH).set('host', host);
     expect(res.headers['content-type']).toContain('javascript');
     expect(res.text).toContain('mayday:nav');
+  });
+});
+
+describe('createPreviewProxy › la app corta o no responde', () => {
+  let upstream: Server;
+  let app: Server;
+  let port: number;
+  const host = 'sbx-abcd1234.preview.mayday.rip';
+  const logs: string[] = [];
+
+  beforeAll(async () => {
+    upstream = createServer((req, res) => {
+      if (req.url === '/reset-stream') {
+        res.writeHead(200, { 'content-type': 'application/octet-stream' });
+        res.write('x'.repeat(1000));
+        setTimeout(() => res.socket?.destroy(), 20);
+        return;
+      }
+      if (req.url === '/reset-html') {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.write('<html><head>');
+        setTimeout(() => res.socket?.destroy(), 20);
+        return;
+      }
+      if (req.url === '/big-html') {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end(
+          `<html><head></head>${'a'.repeat(MAX_REWRITE_HTML_BYTES + 10)}`,
+        );
+        return;
+      }
+      if (req.url === '/hang') return; // nunca responde
+      res.end('ok');
+    });
+    await new Promise<void>((r) => upstream.listen(0, r));
+    const upstreamUrl = `http://127.0.0.1:${(upstream.address() as AddressInfo).port}`;
+    const proxy = createPreviewProxy({
+      template: TEMPLATE,
+      resolve: () => upstreamUrl,
+      log: (m) => logs.push(m),
+      headersTimeoutMs: 200,
+    });
+    app = createServer((req, res) => void proxy(req, res, () => res.end()));
+    await new Promise<void>((r) => app.listen(0, r));
+    port = (app.address() as AddressInfo).port;
+  });
+
+  afterAll(() => {
+    upstream.closeAllConnections();
+    upstream.close();
+    app.closeAllConnections();
+    app.close();
+  });
+
+  /** GET crudo (supertest no deja ver una respuesta cortada a la mitad). */
+  const get = (path: string) =>
+    new Promise<{ status?: number; body: string; complete: boolean }>(
+      (resolve) => {
+        const req = httpRequest(
+          { host: '127.0.0.1', port, path, headers: { host } },
+          (res) => {
+            let body = '';
+            res.setEncoding('utf8');
+            res.on('data', (c: string) => (body += c));
+            res.on('error', () => undefined);
+            res.on('close', () =>
+              resolve({ status: res.statusCode, body, complete: res.complete }),
+            );
+          },
+        );
+        req.on('error', () => resolve({ body: '', complete: false }));
+        req.end();
+      },
+    );
+
+  it('si la app corta a mitad del stream, cierra la respuesta sin botar el proceso', async () => {
+    const res = await get('/reset-stream');
+    expect(res.complete).toBe(false);
+    // El proxy sigue atendiendo.
+    expect((await get('/ok')).body).toBe('ok');
+  });
+
+  it('si la app corta antes de terminar el HTML, responde 502', async () => {
+    const res = await get('/reset-html');
+    expect(res.status).toBe(502);
+    expect(res.body).toContain('No se pudo conectar con la app');
+  });
+
+  it('si la app no responde los headers a tiempo, responde 502', async () => {
+    const res = await get('/hang');
+    expect(res.status).toBe(502);
+  });
+
+  it('un HTML más grande que el tope se sirve tal cual, sin cargarlo entero', async () => {
+    const res = await get('/big-html');
+    expect(res.status).toBe(200);
+    expect(res.complete).toBe(true);
+    expect(res.body.length).toBe(
+      '<html><head></head>'.length + MAX_REWRITE_HTML_BYTES + 10,
+    );
+    expect(res.body).not.toContain(BRIDGE_PATH);
   });
 });

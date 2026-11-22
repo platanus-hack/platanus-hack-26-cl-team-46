@@ -7,6 +7,14 @@
     "dev:backend": "pnpm --filter backend run start:dev",
     "dev:frontend": "pnpm --filter frontend run dev",
     "build": "pnpm -r run build",
-    "test": "pnpm -r run test"
+    "lint": "pnpm -r run lint",
+    "typecheck": "pnpm --filter backend exec tsc --noEmit -p tsconfig.json && pnpm --filter frontend exec tsc --noEmit",
+    "test": "pnpm -r run test",
+    "test:e2e": "pnpm --filter backend run test:e2e",
+    "test:engine": "cd engine && node --test test/*.test.ts",
+    "check": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:e2e && pnpm test:engine && pnpm build"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }

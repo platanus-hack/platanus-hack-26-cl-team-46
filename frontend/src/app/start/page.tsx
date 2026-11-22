@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: "Mayday · Empieza" };
 const HOW_IT_WORKS = [
   {
     title: "Entra con GitHub",
-    body: "Solo vemos tu perfil y tus repos públicos. Sin permisos de escritura.",
+    body: "Solo vemos tu perfil y los repos que elijas, públicos o privados. Sin permisos de escritura.",
   },
   {
     title: "Elige un repo",
@@ -37,7 +37,7 @@ export default function StartPage() {
           </StepHeading>
           <div className="flex flex-col items-start gap-3">
             <StartCta />
-            <span className="text-[13px] text-ink-faint">Por ahora, solo repos públicos.</span>
+            <span className="text-[13px] text-ink-faint">Solo lectura, y solo de los repos que elijas, públicos o privados.</span>
           </div>
         </section>
 

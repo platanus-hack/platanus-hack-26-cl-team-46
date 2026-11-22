@@ -349,6 +349,9 @@ html.clicky-drawing, html.clicky-drawing * { cursor: crosshair !important; }
 .clicky-confirm { border-color: var(--defense); }
 .clicky-confirm .k, .clicky-stepper .k { font: 500 11px/16px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--defense); }
 .clicky-confirm .t, .clicky-stepper .t { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+/* El chip de confirmar dice el texto real del control; lo que dijo Hinty, si es otra cosa, va abajo y chico. */
+.clicky-confirm .tx { display: flex; flex-direction: column; min-width: 0; }
+.clicky-confirm .d { max-width: 240px; overflow: hidden; text-overflow: ellipsis; font: 400 11px/14px var(--f-ui); color: var(--ink-muted); }
 .clicky-confirm button, .clicky-stepper button { height: 28px; padding: 0 10px; border-radius: var(--radius-sm); font: 500 12px/1 var(--f-ui); cursor: pointer; }
 .clicky-confirm .yes, .clicky-stepper .do { background: var(--defense); color: var(--on-defense); border: 0; }
 .clicky-confirm .no { background: transparent; color: var(--ink); border: 1px solid var(--line-strong); }

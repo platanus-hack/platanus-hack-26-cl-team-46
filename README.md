@@ -20,13 +20,15 @@ Herramienta defensiva y educativa: solo se atacan apps desplegadas en nuestro sa
 
 ## Estructura
 
-Monorepo con pnpm workspaces:
+Monorepo. `backend/` y `frontend/` son el workspace de pnpm; `engine/` y `victim-app/` son paquetes aparte, con su propio despliegue:
 
 | Carpeta | Qué es |
 |---|---|
 | `backend/` | API en NestJS 12 (TypeScript, ESM). Servicio de deploy (`src/sandboxes`, `render`, `git`, `agent`, `conductor`) y simulación multi-agente (`src/simulations`). CLIs para los agentes en `agent-cli/`. |
 | `frontend/` | Next.js 16 (App Router + Tailwind v4). `/simulate` es la consola de la simulación y `/deploy` la del servicio de deploy. |
+| `engine/` | Motor de hacking real: diagnostica una app desplegada en nuestro sandbox y produce el plan de ataque que el simulacro repite. Node 24 sin dependencias; corre en Modal (`engine/docs/MODAL.md`). Arquitectura en [`engine/docs/ARCHITECTURE.md`](engine/docs/ARCHITECTURE.md). |
 | `victim-app/` | "Apuntes": app de entrenamiento deliberadamente vulnerable (8 vulns plantadas). Autocontenida; se despliega en Render. |
+| `docs/architecture.md` | Arquitectura del sistema: componentes, flujos, límites de confianza, modelo de estado, fallas y límites conocidos. |
 | `docs/simulation.md` | Arquitectura de la simulación, API para la UI y contrato para el motor de hacking real. |
 | `docs/victim/` | Guía y solucionario (`ANSWER_KEY.md`) de la app víctima. Va fuera de `victim-app/` para que el analizador no lo vea. |
 
@@ -51,7 +53,7 @@ UI: feed de notificaciones + chat con el agente de código ──▶ acciones qu
    - y le pide al usuario, desde el dashboard, los secretos que falten.
 
    `mode: "manifest"` despliega sin IA a partir de `.sandbox/manifest.json`, para scripts o emergencias.
-2. **Simulación** (`POST /simulations`): infra arma el contexto del repo, el hacker (hoy emulado) publica el plan de ataque y ataca vuln por vuln, el observer lleva el estado del incidente y dirige el ritmo, el generator escribe las notificaciones y el coder ejecuta lo que pide el developer. Después de cada cambio desplegado se **re-verifica el exploit**: así una acción equivocada no saca al atacante.
+2. **Simulación** (`POST /simulations`): infra arma el contexto del repo, el hacker (el motor real de `engine/` si está configurado; si no, un agente que lo emula) publica el plan de ataque y ataca vuln por vuln, el observer lleva el estado del incidente y dirige el ritmo, el generator escribe las notificaciones y el coder ejecuta lo que pide el developer. Después de cada cambio desplegado se **re-verifica el exploit**: así una acción equivocada no saca al atacante.
 3. **Debrief**: veredicto por vuln, fix correcto, momentos clave y caso real.
 
 Detalle completo en [`docs/simulation.md`](docs/simulation.md) y [`CONTEXT.md`](CONTEXT.md).
@@ -67,8 +69,8 @@ cp frontend/.env.example frontend/.env.local
 pnpm dev                                  # backend :3001 + frontend :3000
 ```
 
-- Tests del backend: `pnpm --filter backend test` y `pnpm --filter backend test:e2e`.
-- Lint: `pnpm --filter backend lint` y `pnpm --filter frontend lint`.
+- Todo lo que corre la CI (`.github/workflows/ci.yml`), en local: `pnpm run check` (lint, tipos, tests unitarios y e2e del backend, tests del motor y build).
+- Por partes: `pnpm lint`, `pnpm typecheck`, `pnpm test` (unitarios del backend), `pnpm test:e2e` y `pnpm test:engine`.
 - Sin `DATABASE_URL`, el estado se guarda en `backend/.data/`.
 - **Roles de la simulación en el backend:** `ANTHROPIC_API_KEY` activa infra, observer y generator por API (modelos en `docs/simulation.md`). Sin ella, los 5 roles corren en Conductor. `pnpm --filter backend replay` compara modelos sobre una simulación real.
 - **Agentes (deploy y simulación):** sus VMs llaman al backend, así que necesita una URL pública. Local: `cloudflared tunnel --url http://localhost:3001` y poner esa URL en `PUBLIC_BACKEND_URL`. También hacen falta `AGENT_API_SECRET`, `CONDUCTOR_API_KEY` y el token de GitHub de la org. Si falta alguna, el backend lo avisa al arrancar y solo acepta sandboxes con `mode: "manifest"`.
@@ -107,7 +109,7 @@ Las operaciones largas responden **202** al tiro y el progreso sale por SSE. Con
 |---|---|---|
 | `POST` | `/simulations` | `{repo_url}` o `{sandbox_id}`, más `hacker: "emulated" \| "external"`. Las herramientas de monitoreo no se eligen: se detectan en el código |
 | `GET` | `/simulations/:id` | Estado, threads, canales, contexto, plan, estado del incidente y debrief |
-| `GET` | `/simulations/:id/stream?view=user` | SSE del feed del developer (`view=all` incluye lo interno) |
+| `GET` | `/simulations/:id/stream?view=user` | SSE del feed del developer. `view=all` incluye lo interno, pero solo con la simulación cerrada o `SIM_DEBUG_VIEW=true` (si no, regalaría la respuesta) |
 | `GET` | `/simulations/:id/timeline` | Lo mismo en JSON (`view`, `since`, `types`) |
 | `POST` | `/simulations/:id/start` | Parte el ataque |
 | `POST` | `/simulations/:id/control` | `{action: next \| pause \| resume \| verify \| finish, vuln_id?}` |

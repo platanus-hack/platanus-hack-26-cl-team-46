@@ -1,5 +1,7 @@
 import {
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   OnModuleDestroy,
@@ -33,6 +35,8 @@ const CONCURRENCY = 2;
 const SWEEP_MS = 60_000;
 /** Un "generating" más viejo que esto quedó huérfano (el backend se reinició a mitad). */
 const STALE_MS = 10 * 60_000;
+/** Entre dos regeneraciones pedidas a mano de una misma simulación (cada una gasta Opus). */
+export const REGENERATE_COOLDOWN_MS = 10 * 60_000;
 
 /**
  * Agente de reportes: cuando una simulación se cierra, junta TODAS sus fuentes
@@ -131,26 +135,52 @@ export class ReportAgent implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Pide (o vuelve a pedir) el reporte de una simulación cerrada. */
+  /**
+   * Pide (o vuelve a pedir) el reporte de una simulación cerrada. Con force (regenerar a
+   * mano) hay un cooldown por simulación; el resultado anterior sigue disponible hasta
+   * que el nuevo esté listo.
+   */
   request(
     simId: string,
     trigger: string,
-    opts: { force?: boolean } = {},
+    opts: { force?: boolean; now?: number } = {},
   ): ReportRecord {
     const s = this.sims.get(simId);
     if (!CLOSED.includes(s.status))
       throw new ConflictException('La simulación todavía no termina');
     if (this.running.has(simId) || this.queue.includes(simId)) return s.report!;
     if (s.report?.status === 'ready' && !opts.force) return s.report;
-    const owner = s.report?.owner ?? this.sims.ownerOf(s);
+    const now = opts.now ?? Date.now();
+    const last = Date.parse(s.report?.regenerated_at ?? '');
+    if (opts.force && Number.isFinite(last)) {
+      const wait = last + REGENERATE_COOLDOWN_MS - now;
+      if (wait > 0)
+        throw new HttpException(
+          `Espera ${Math.ceil(wait / 60_000)} min antes de volver a generar el reporte`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+    }
+    const prev = s.report;
+    const owner = prev?.owner ?? this.sims.ownerOf(s);
     const record: ReportRecord = {
       status: 'pending',
       trigger,
       owner,
-      title: s.report?.title ?? this.title(s),
-      requested_at: new Date().toISOString(),
-      closed_at: s.report?.closed_at ?? closedAt(s),
+      title: prev?.title ?? this.title(s),
+      requested_at: new Date(now).toISOString(),
+      closed_at: prev?.closed_at ?? closedAt(s),
       attempts: 0,
+      ...(opts.force ? { regenerated_at: new Date(now).toISOString() } : {}),
+      // El resultado anterior queda hasta que el nuevo esté listo.
+      ...(prev?.result
+        ? {
+            result: prev.result,
+            generated_at: prev.generated_at,
+            model: prev.model,
+            ms: prev.ms,
+            degraded: prev.degraded,
+          }
+        : {}),
     };
     this.store.update(simId, { report: record });
     this.enqueue(simId);
@@ -223,6 +253,15 @@ export class ReportAgent implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    // Una regeneración que no pudo con el modelo no pisa un reporte bueno con el respaldo.
+    const prev = this.store.get(simId)!.report!;
+    if (prev.result && !prev.degraded) {
+      this.patch(simId, { status: 'ready' });
+      this.logger.warn(
+        `[${simId}] no se pudo regenerar el reporte: queda el anterior`,
+      );
+      return;
+    }
     try {
       this.patch(simId, {
         status: 'ready',

@@ -153,8 +153,16 @@ export function createIsland(parent, { talkKey = 'fn', onType, onTalk, onMark, o
     mark.setAttribute('aria-pressed', String(on));
   }
 
+  // Al apagar a Hinty: para las barras (su intervalo seguiría si se apaga mientras habla) y se va.
+  function destroy() {
+    clearInterval(speakTimer);
+    closeInput();
+    el.remove();
+    frame.remove();
+  }
+
   return {
-    el, frame, state, level, word, idle, openInput, marking,
+    el, frame, state, level, word, idle, openInput, marking, destroy,
     closeInput: () => closeInput(),
     caption(text, opts) { caption(text, opts); },
   };

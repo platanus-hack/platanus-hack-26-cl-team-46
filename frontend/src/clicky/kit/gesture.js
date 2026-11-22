@@ -8,6 +8,7 @@ import { svgEl, smoothD } from './geometry.js';
 // El trazo queda en pantalla para la captura (el modelo ve lo mismo) y se borra después.
 const PAUSE_MS = 320; // quieto este rato: el trazo terminó
 const LAG_MS = 800; // el dictado llega con este atraso: las palabras de un trazo se leen después
+const MAX_SAID = 300; // lo que dijo con cada trazo: el backend acepta hasta esto (clicky.schemas.ts)
 
 export function createGesture(parent, { words = () => 0 } = {}) {
   const svg = svgEl('svg', { class: 'clicky-user' }, parent);
@@ -51,7 +52,7 @@ export function createGesture(parent, { words = () => 0 } = {}) {
     let from = 0;
     const out = strokes.map(st => {
       const to = Math.max(from, Math.min(all.length, st.to ?? all.length));
-      const said = all.slice(from, to).join(' ');
+      const said = all.slice(from, to).join(' ').slice(0, MAX_SAID);
       from = to;
       const xs = st.pts.map(p => p[0]), ys = st.pts.map(p => p[1]);
       const box = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
@@ -63,7 +64,7 @@ export function createGesture(parent, { words = () => 0 } = {}) {
     return out.filter((m, i) => {
       const next = out[i + 1];
       const dup = m.shape === 'point' && next && m.elements.length && m.elements.every(id => next.elements.includes(id));
-      if (dup) next.said = [m.said, next.said].filter(Boolean).join(' ');
+      if (dup) next.said = [m.said, next.said].filter(Boolean).join(' ').slice(0, MAX_SAID);
       return !dup;
     }).slice(0, 6);
   }

@@ -37,11 +37,15 @@ export function wordStarts(alignment: Alignment): {
   return { words, duration };
 }
 
-/** ElevenLabs respondió con error: `status` es el código HTTP (0 si no hubo respuesta). */
+/**
+ * ElevenLabs respondió con error: `status` es el código HTTP (0 si no hubo respuesta) y
+ * `detail`, lo que dijo (para saber si el modelo no está disponible).
+ */
 export class TtsError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly detail = '',
   ) {
     super(message);
   }
@@ -62,6 +66,8 @@ export async function textToSpeech(opts: {
   previousText?: string;
   nextText?: string;
   timeoutMs?: number;
+  /** Se corta si el cliente se fue: no se sigue esperando (ni pagando) esta voz. */
+  signal?: AbortSignal;
 }): Promise<Speech> {
   const format = `output_format=${encodeURIComponent(opts.format)}`;
   const dialogue = isDialogueModel(opts.model);
@@ -91,16 +97,25 @@ export async function textToSpeech(opts: {
       method: 'POST',
       headers: { 'xi-api-key': opts.key, 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(opts.timeoutMs ?? 20_000),
+      signal: AbortSignal.any([
+        ...(opts.signal ? [opts.signal] : []),
+        AbortSignal.timeout(opts.timeoutMs ?? 20_000),
+      ]),
     });
   } catch (err) {
     throw new TtsError(`ElevenLabs TTS: ${(err as Error).message}`, 0);
   }
-  const text = await res.text();
+  let text: string;
+  try {
+    text = await res.text();
+  } catch (err) {
+    throw new TtsError(`ElevenLabs TTS: ${(err as Error).message}`, 0);
+  }
   if (!res.ok)
     throw new TtsError(
       `ElevenLabs TTS ${res.status} (${opts.model}): ${text.slice(0, 200)}`,
       res.status,
+      text.slice(0, 500),
     );
   const data = JSON.parse(text) as {
     audio_base64: string;

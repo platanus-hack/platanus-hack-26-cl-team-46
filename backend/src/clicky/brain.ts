@@ -4,10 +4,15 @@
 import Anthropic from '@anthropic-ai/sdk';
 
 const OPENAI = 'https://api.openai.com/v1';
-const TIMEOUT_MS = 45_000;
+/** Espera máxima hasta que el modelo empieza a escribir (razona antes, con la captura). */
+const FIRST_MS = 45_000;
+/** Ya escribiendo, si se queda callado este rato se corta: se colgó. */
+const IDLE_MS = 20_000;
+/** Tope de toda la respuesta, aunque siga escribiendo (10 beats caben de sobra). */
+const MAX_MS = 120_000;
 
 /** Los modelos `claude-*` van por la API de Claude; el resto, por la de OpenAI. */
-export const isClaudeModel = (model: string) => /^claude-/.test(model);
+export const isClaudeModel = (model: string) => model.startsWith('claude-');
 
 /** El modelo no pudo responder: `status` es el código HTTP del proveedor (0 si no hubo respuesta). */
 export class BrainError extends Error {
@@ -27,14 +32,19 @@ export class BeatScanner {
   private buf = '';
   private pos = 0;
   private inArray = false;
+  /** Ya se cerró el arreglo de beats: lo que venga después (JSON repetido, texto) se ignora. */
+  private closed = false;
   private depth = 0;
+  /** Corchetes abiertos dentro del arreglo pero fuera de un beat. */
+  private brackets = 0;
   private inString = false;
   private escaped = false;
   private start = -1;
 
   push(chunk: string): unknown[] {
-    this.buf += chunk;
     const out: unknown[] = [];
+    if (this.closed) return out;
+    this.buf += chunk;
     if (!this.inArray) {
       const m = /"beats"\s*:\s*\[/.exec(this.buf);
       if (!m) return out;
@@ -53,7 +63,15 @@ export class BeatScanner {
       else if (c === '{') {
         if (this.depth === 0) this.start = this.pos;
         this.depth++;
+      } else if (this.depth === 0 && c === '[') this.brackets++;
+      else if (this.depth === 0 && c === ']') {
+        // el "]" que cierra "beats": se termina la lectura
+        if (this.brackets-- === 0) {
+          this.closed = true;
+          break;
+        }
       } else if (c === '}') {
+        if (this.depth === 0) continue; // una llave suelta fuera de un beat no cuenta
         this.depth--;
         if (this.depth === 0 && this.start >= 0) {
           try {
@@ -69,13 +87,45 @@ export class BeatScanner {
   }
 }
 
-/** Cada trozo de texto del stream SSE de chat/completions. */
+/**
+ * Plazos del stream: hasta FIRST_MS para el primer trozo, IDLE_MS entre trozos (`touch()` en
+ * cada uno reinicia la espera) y MAX_MS para toda la respuesta. Si vence, la señal se corta
+ * con un TimeoutError; si la corta quien pidió la respuesta, con su AbortError.
+ */
+export function deadline(
+  signal: AbortSignal,
+  { first = FIRST_MS, idle = IDLE_MS, max = MAX_MS } = {},
+) {
+  const quiet = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const wait = (ms: number) => {
+    clearTimeout(timer);
+    timer = setTimeout(
+      () =>
+        quiet.abort(
+          new DOMException('El modelo dejó de responder', 'TimeoutError'),
+        ),
+      ms,
+    );
+    timer.unref?.(); // no retiene el proceso
+  };
+  wait(first);
+  return {
+    signal: AbortSignal.any([signal, quiet.signal, AbortSignal.timeout(max)]),
+    touch: () => wait(idle),
+    done: () => clearTimeout(timer),
+  };
+}
+
+/** Cada trozo de texto del stream SSE de chat/completions. `touch` se llama con cada trozo. */
 async function* deltas(
   body: ReadableStream<Uint8Array>,
+  touch: () => void,
 ): AsyncGenerator<string> {
   const decoder = new TextDecoder();
   let pending = '';
   for await (const bytes of body as unknown as AsyncIterable<Uint8Array>) {
+    touch();
     pending += decoder.decode(bytes, { stream: true });
     const lines = pending.split('\n');
     pending = lines.pop() ?? '';
@@ -179,6 +229,7 @@ async function* streamClaude(opts: BrainOptions): AsyncGenerator<unknown> {
               effort: opts.effort as 'low' | 'medium' | 'high',
             },
           };
+  const limit = deadline(opts.signal);
   try {
     const stream = client.beta.messages.stream(
       {
@@ -194,22 +245,38 @@ async function* streamClaude(opts: BrainOptions): AsyncGenerator<unknown> {
         betas: ['server-side-fallback-2026-07-01'],
         fallbacks: 'default',
       },
-      {
-        signal: AbortSignal.any([opts.signal, AbortSignal.timeout(TIMEOUT_MS)]),
-      },
+      { signal: limit.signal },
     );
     const scanner = new BeatScanner();
-    for await (const evt of stream)
+    for await (const evt of stream) {
+      limit.touch(); // cualquier evento (también el razonamiento) cuenta como vivo
       if (evt.type === 'content_block_delta' && evt.delta.type === 'text_delta')
         yield* scanner.push(evt.delta.text);
+    }
   } catch (err) {
+    // El SDK envuelve el corte en un APIError: se devuelve el motivo real (cancelado o plazo).
+    if (limit.signal.aborted) throw limit.signal.reason ?? err;
     if (err instanceof Anthropic.APIError)
       throw new BrainError(String(err.message).slice(0, 300), err.status ?? 0);
     throw err;
+  } finally {
+    limit.done();
   }
 }
 
 async function* streamOpenAI(opts: BrainOptions): AsyncGenerator<unknown> {
+  const limit = deadline(opts.signal);
+  try {
+    yield* readOpenAI(opts, limit);
+  } finally {
+    limit.done();
+  }
+}
+
+async function* readOpenAI(
+  opts: BrainOptions,
+  limit: ReturnType<typeof deadline>,
+): AsyncGenerator<unknown> {
   const send = (withEffort: boolean, withTier: boolean) =>
     fetch(`${OPENAI}/chat/completions`, {
       method: 'POST',
@@ -225,7 +292,7 @@ async function* streamOpenAI(opts: BrainOptions): AsyncGenerator<unknown> {
         ...(withEffort ? { reasoning_effort: opts.effort } : {}),
         ...(withTier ? { service_tier: opts.tier } : {}),
       }),
-      signal: AbortSignal.any([opts.signal, AbortSignal.timeout(TIMEOUT_MS)]),
+      signal: limit.signal,
     });
 
   let withEffort = opts.effort !== 'default';
@@ -244,5 +311,6 @@ async function* streamOpenAI(opts: BrainOptions): AsyncGenerator<unknown> {
     throw new BrainError((await res.text()).slice(0, 300), res.status);
 
   const scanner = new BeatScanner();
-  for await (const text of deltas(res.body)) yield* scanner.push(text);
+  for await (const text of deltas(res.body, limit.touch))
+    yield* scanner.push(text);
 }

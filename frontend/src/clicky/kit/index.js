@@ -28,6 +28,10 @@ import { harvestScreen, labelShot, shownFraction, ATTACK } from './harvest.js';
 // question (spoken or typed).
 // buddy: the blip follows the cursor when Hinty is not drawing. proactive: when a new attacker
 // signal shows up, Hinty flies there and offers to explain it (at most once every 45 s).
+
+// Los mismos largos que acepta el backend (clicky.schemas.ts › LIMITS): lo que pasa se recorta aquí.
+const LIMITS = { question: 600, answer: 2000, turns: 6, title: 120, path: 200, context: 1500 };
+
 export function createClicky({
   api = '/clicky', headers: extraHeaders = () => ({}), theme = 'mayday', voice = true, pushToTalkKey = 'Fn', cssHref = '/clicky/styles.css',
   hint, screenshot, context = '', autoTag = true, ignore = '[data-clicky-ignore]', surface = 'light', liveTranscription = true,
@@ -56,7 +60,9 @@ export function createClicky({
   const gesture = createGesture(root, { words: () => partial.split(/\s+/).filter(Boolean).length });
   const penLayer = svgEl('svg', { class: 'clicky-layer clicky-penlayer' }, root);
 
-  let current = THEMES[theme] || THEMES.mayday, voiceOn = voice, history = [], busy = false, answering = null;
+  // turn: el AbortController de la respuesta en curso (su pedido, su voz y sus acciones). Una pregunta
+  // nueva, Esc, cerrar los dibujos o hablar encima lo cortan.
+  let current = THEMES[theme] || THEMES.mayday, voiceOn = voice, history = [], busy = false, turn = null, destroyed = false;
   let talking = false, askGen = 0, lastQuestion = '', lastAnswerAt = 0, partial = '', interruptedSay = '', stepSeen = () => {};
   const alias = new Map(); // e1, e2… → elemento, de la última cosecha
   const ctx = {
@@ -82,7 +88,7 @@ export function createClicky({
   const marks = createMarks(ctx), cards = createCards(ctx);
   const actions = createActions(ctx, { onStep: s => waitStep(s) });
   const ACT = { click: actions.click, type: actions.type, scroll: actions.scroll, step: actions.step };
-  const draw = (m, s) => (marks[m.type] || ACT[m.type] || cards[m.type])?.(m, s);
+  const draw = (m, s, signal) => (marks[m.type] || ACT[m.type] || cards[m.type])?.(m, s, signal);
 
   const talkKey = hint || (pushToTalkKey === 'Fn' ? 'fn' : pushToTalkKey === 'Space' ? 'espacio' : pushToTalkKey);
   const island = createIsland(root, { talkKey, onType: q => typed(q), onTalk: t => talkButton(t), onMark: () => toggleMark(), onClose, talkCode: pushToTalkKey });
@@ -112,14 +118,21 @@ export function createClicky({
   }
   const dim = on => [root, multiply].forEach(r => r.classList.toggle('clicky-dimmed', on));
 
-  // Erases the drawing. `fast`: a quick fade instead of running the pen backwards, used when a
-  // new question comes in, so the screen is clean for the capture without making anyone wait.
-  async function wipe({ fast = false } = {}) {
+  // Corta la respuesta en curso: el pedido al backend, la voz, lo que faltaba dibujar y las acciones
+  // (un clic o una letra que faltaba ya no se hace: actions.js mira la señal).
+  function stopTurn() {
+    turn?.abort();
+    turn = null;
     director.stop();
     stopSpeaking();
-    answering?.abort();
-    answering = null;
     ctx.cancelConfirm?.();
+  }
+
+  // Erases the drawing and cuts the answer in progress. `fast`: a quick fade instead of running the
+  // pen backwards, used when a new question comes in, so the screen is clean for the capture
+  // without making anyone wait.
+  async function wipe({ fast = false } = {}) {
+    stopTurn();
     pending = null;
     nudging = null;
     const items = ctx.items.splice(0), strokes = ctx.strokes.splice(0).reverse(), fades = ctx.fades.splice(0), anchors = ctx.anchors.splice(0);
@@ -200,11 +213,15 @@ export function createClicky({
   }
 
   // opts: { annotation: { marks }, harvest, walk: { goal, done }, interrupted }
+  // Una pregunta nueva siempre entra (escrita, hablada o el paso siguiente de una guía): corta la que
+  // estuviera en curso y sigue. Después de cada espera mira si sigue siendo la vigente (`stale`);
+  // si no, se retira sin tocar nada.
   async function ask(question, opts = {}) {
-    question = String(question || '').trim();
-    if (!question || busy) return;
+    question = String(question || '').trim().slice(0, LIMITS.question);
+    if (!question || destroyed) return;
     busy = true;
     const gen = ++askGen;
+    const stale = () => destroyed || gen !== askGen || gen <= clearedGen;
     if (!opts.walk) { ctx.walk = null; lastQuestion = question; } // una pregunta nueva termina la guía
     let show = null, stepped = false;
     talking = true;
@@ -214,8 +231,10 @@ export function createClicky({
       island.caption(opts.walk ? `Paso ${opts.walk.done.length} listo. Veo qué sigue…` : '“' + question + '”');
       island.state('thinking');
       // Clear the previous drawing first (quickly), so the capture shows the page and not our marks
-      // (the user's own strokes stay: the model has to see them).
+      // (the user's own strokes stay: the model has to see them). It also cuts the previous answer.
       await wipe({ fast: true });
+      if (stale()) return;
+      const { signal } = (turn = new AbortController());
       talking = true; syncPen();
       const h = opts.harvest || harvest();
       alias.clear();
@@ -223,29 +242,29 @@ export function createClicky({
       // Con el foco en un campo de clave no se captura la pantalla (como DuckyHelper).
       const secret = isSecretField(document.activeElement);
       const image = secret ? null : await capture(h);
+      if (stale() || signal.aborted) return; // otra pregunta, «Borrar todo» o el usuario habló mientras se capturaba
       gesture.clear();
       const ctxText = typeof context === 'function' ? context() : context;
-      if (gen <= clearedGen) return; // «Borrar todo» llegó mientras se capturaba: no se pregunta
-      const abort = answering = new AbortController();
       const res = await fetch(api + '/lesson', {
         method: 'POST',
         credentials: 'include',
         headers: { ...extraHeaders(), 'Content-Type': 'application/vnd.clicky+json' },
         body: JSON.stringify({
           question, elements: h.list, viewport: { w: innerWidth, h: innerHeight }, history, screenshot: image,
-          page: { title: document.title, path: location.pathname }, context: ctxText, voice: voiceOn,
+          page: { title: document.title.slice(0, LIMITS.title), path: location.pathname.slice(0, LIMITS.path) },
+          context: String(ctxText || '').slice(0, LIMITS.context), voice: voiceOn,
           annotation: opts.annotation?.marks?.length ? opts.annotation : null,
           walk: opts.walk || null, interrupted: opts.interrupted || '', private: secret,
         }),
-        signal: abort.signal,
+        signal,
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error([data.message].flat().join('; ') || data.error || res.statusText);
       }
-      busy = false; // a new question can interrupt this answer from now on
-      if (gen <= clearedGen) return;
-      show = director.start();
+      busy = false;
+      if (stale() || signal.aborted) return;
+      show = director.start(signal);
       const said = [];
       const reader = res.body.getReader(), decoder = new TextDecoder();
       let buf = '';
@@ -264,10 +283,9 @@ export function createClicky({
       }
       show.end();
       if (!opts.walk) {
-        history.push({ q: question, a: said.join(' ') });
-        history = history.slice(-6);
+        history.push({ q: question, a: said.join(' ').slice(0, LIMITS.answer) });
+        history = history.slice(-LIMITS.turns);
       }
-      if (answering === abort) answering = null;
       await show.done;
       if (gen !== askGen) return;
       if (pending) {
@@ -278,12 +296,12 @@ export function createClicky({
         sounds.done();
       }
     } catch (e) {
-      if (e.name === 'AbortError') return; // another question or clear() took over
+      if (e.name === 'AbortError' || stale()) return; // otra pregunta, Esc o el usuario tomó el control
       show?.end();
       island.caption('No pude responder: ' + e.message, { error: true });
       island.state('idle');
     } finally {
-      if (gen === askGen) {
+      if (gen === askGen && !destroyed) {
         busy = false;
         talking = false;
         lastAnswerAt = Date.now();
@@ -302,9 +320,12 @@ export function createClicky({
     syncPen();
     card.querySelector('.do').onclick = async e => {
       e.stopPropagation();
-      if (!(await doIt()) && pending?.el === el) island.caption('No lo hice. Hazlo tú cuando quieras, o Esc para salir.', { muted: true });
+      // con la señal de la respuesta (o una nueva si ya terminó): Esc o una pregunta nueva lo cortan
+      const { signal } = (turn ??= new AbortController());
+      if (!(await doIt(signal)) && pending?.el === el) island.caption('No lo hice. Hazlo tú cuando quieras, o Esc para salir.', { muted: true });
     };
   }
+  let stepTimer = 0;
   function completeStep() {
     const p = pending;
     if (!p || !ctx.walk) return;
@@ -318,9 +339,11 @@ export function createClicky({
     const walk = { goal: ctx.walk.goal, done: [...ctx.walk.done] };
     island.caption(`Paso ${walk.done.length} listo`, { muted: true });
     // un momento para que la página reaccione al clic antes de mirarla de nuevo
-    setTimeout(() => { if (ctx.walk?.goal === walk.goal && ctx.walk.done.length === walk.done.length) ask(walk.goal, { walk }); }, 650);
+    clearTimeout(stepTimer);
+    stepTimer = setTimeout(() => { if (ctx.walk?.goal === walk.goal && ctx.walk.done.length === walk.done.length) ask(walk.goal, { walk }); }, 650);
   }
   function stopWalk() {
+    clearTimeout(stepTimer);
     if (!ctx.walk && !pending) return;
     ctx.walk = null;
     pending = null;
@@ -339,6 +362,7 @@ export function createClicky({
   dismiss.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); clearAll(); });
   function clearAll() {
     clearedGen = askGen;
+    clearTimeout(stepTimer);
     ctx.walk = null;
     pending = null;
     nudging = null;
@@ -408,9 +432,10 @@ export function createClicky({
   }
   async function tryQueued() {
     clearTimeout(retry);
+    if (destroyed) return;
     if (!queued?.isConnected) { queued = null; return; }
     if (await nudge(queued)) queued = null;
-    else retry = setTimeout(tryQueued, 2500);
+    else if (!destroyed) retry = setTimeout(tryQueued, 2500);
   }
   if (proactive && typeof MutationObserver === 'function') {
     document.querySelectorAll(ATTACK).forEach(e => seen.add(e)); // lo que ya estaba no es noticia
@@ -436,9 +461,10 @@ export function createClicky({
     const h = harvest(), mark = pointAt(el, h);
     ask('¿Qué es esta nueva señal del atacante?', { harvest: h, annotation: mark ? { marks: [mark] } : null });
   }
+  let nudgeHide = 0;
   async function nudge(el, { force = false } = {}) {
     const now = Date.now();
-    if (!el?.isConnected || listening || busy || talking || pending || ctx.walk) return false;
+    if (destroyed || !el?.isConnected || listening || busy || talking || pending || ctx.walk) return false;
     if (!force && (now - lastNudge < 45_000 || now - lastAnswerAt < 8_000)) return false;
     lastNudge = now;
     await wipe({ fast: true });
@@ -454,7 +480,8 @@ export function createClicky({
       res.tag.onclick = () => explainNudge(el);
     }
     island.caption(`Señal nueva del atacante. Mantén ${talkKey} y pregúntame.`, { muted: true });
-    setTimeout(() => { if (nudging === token && !listening && !busy) { nudgeEl = null; wipe({ fast: true }); island.idle(); } }, 10_000);
+    clearTimeout(nudgeHide);
+    nudgeHide = setTimeout(() => { if (nudging === token && !listening && !busy && !destroyed) { nudgeEl = null; wipe({ fast: true }); island.idle(); } }, 10_000);
     return true;
   }
 
@@ -477,14 +504,13 @@ export function createClicky({
 
   // Si el usuario habla mientras Hinty explica, Hinty se calla y sus marcas se atenúan (no se
   // borran: lo que estaba diciendo sigue a la vista). El modelo sabe en qué frase lo cortaron.
+  // La pregunta que se estuviera armando (capturando, esperando al backend) tampoco sigue.
   function interrupt() {
     const said = director.saying;
     if (said) interruptedSay = said;
-    director.stop();
-    stopSpeaking();
-    answering?.abort();
-    answering = null;
-    ctx.cancelConfirm?.();
+    clearedGen = askGen;
+    clearTimeout(stepTimer); // hablar es una pregunta nueva: el paso siguiente de la guía no se pide
+    stopTurn();
     if (ctx.strokes.length || ctx.items.length) dim(true);
   }
 
@@ -493,7 +519,7 @@ export function createClicky({
   // markMode: el lápiz encendido; con él, mantener shift dibuja con el cursor.
   let listening = null, latched = false, markMode = false;
   async function listen() {
-    if (busy || listening) return;
+    if (listening || destroyed) return; // aunque esté pensando: hablar corta lo anterior (interrupt)
     listening = true;
     latched = false;
     partial = '';
@@ -527,6 +553,7 @@ export function createClicky({
     if (markMode) gesture.stop();
     const h = harvest(); // ahora, antes de que algo se mueva
     const { text, blob } = await mic.stop();
+    if (destroyed) return;
     prefetchStt();
     let strokes = markMode ? gesture.finish(candidates(h), text || '') : [];
     // Hablando con un aviso en pantalla y sin marcar nada: la pregunta es por ese aviso
@@ -547,6 +574,7 @@ export function createClicky({
     island.state('thinking');
     try {
       const { text: uploaded } = await post('/transcribe', blob, { 'Content-Type': blob.type });
+      if (destroyed) return;
       ask(uploaded || fallback, { annotation, harvest: h, interrupted });
     } catch (e) {
       gesture.clear();
@@ -646,13 +674,22 @@ export function createClicky({
     get walking() { return !!ctx.walk; },
     get theme() { return Object.keys(THEMES).find(k => THEMES[k] === current); },
     destroy() {
+      // Apagado: nada que quede pendiente (una respuesta, el paso siguiente de la guía, un aviso,
+      // el borrado del aviso, el reflow o las barras de la isla) puede volver a correr después.
+      destroyed = true;
+      clearedGen = askGen;
       wipe({ fast: true });
       document.documentElement.classList.remove('clicky-drawing');
       if (listening) { listening = null; mic.stop(); }
       mo?.disconnect();
       clearTimeout(nudgeTimer);
       clearTimeout(retry);
+      clearTimeout(stepTimer);
+      clearTimeout(nudgeHide);
+      cancelAnimationFrame(reflowRaf);
+      reflowRaf = 0;
       clearInterval(dismissTimer);
+      island.destroy();
       removeEventListener('keydown', down);
       removeEventListener('keyup', up);
       removeEventListener('blur', lost);

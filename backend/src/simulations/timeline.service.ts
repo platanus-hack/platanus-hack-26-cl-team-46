@@ -24,6 +24,13 @@ export interface AppendInput {
 
 type Listener = (e: TimelineEvent) => void;
 
+/**
+ * Un cliente SSE que no lee (pestaña colgada, red lenta) acumula eventos en memoria.
+ * Pasado este atraso (en chunks) se cierra su stream; EventSource reconecta y sigue
+ * desde el último id que recibió.
+ */
+export const SSE_MAX_BACKLOG = 500;
+
 /** Eventos posteriores a `cursor` que despiertan a `role` (y que no publicó él mismo). */
 export function pendingFor(
   timeline: TimelineEvent[],
@@ -87,7 +94,13 @@ export class TimelineService {
       };
       s.timeline.push(event);
     });
-    for (const l of this.listeners.get(simId) ?? []) l(event);
+    for (const l of this.listeners.get(simId) ?? []) {
+      try {
+        l(event);
+      } catch {
+        // un stream roto no puede impedir que el evento quede publicado
+      }
+    }
     for (const l of this.global) {
       try {
         l(event);
@@ -134,7 +147,16 @@ export class TimelineService {
     const set = this.listeners.get(simId) ?? new Set();
     set.add(listener);
     this.listeners.set(simId, set);
-    return () => set.delete(listener);
+    return () => {
+      set.delete(listener);
+      if (!set.size && this.listeners.get(simId) === set)
+        this.listeners.delete(simId);
+    };
+  }
+
+  /** Suscriptores en vivo de una simulación (streams SSE abiertos). */
+  listenerCount(simId: string): number {
+    return this.listeners.get(simId)?.size ?? 0;
   }
 
   /** SSE: historial + en vivo. view=user filtra lo que ve el developer. */
@@ -144,26 +166,50 @@ export class TimelineService {
     since?: number,
   ): ReadableStream<string> {
     let unsubscribe = () => {};
-    let heartbeat: NodeJS.Timeout;
+    let heartbeat: NodeJS.Timeout | undefined;
+    let closed = false;
     const visible = (e: TimelineEvent) =>
       view === 'all' || e.visibility === 'user';
     const format = (e: TimelineEvent) =>
       `id: ${e.seq}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`;
+    const cleanup = () => {
+      closed = true;
+      unsubscribe();
+      clearInterval(heartbeat);
+    };
     return new ReadableStream<string>({
       start: (controller) => {
-        controller.enqueue(': connected\n\n');
-        for (const e of this.list(simId, { since, view }))
-          controller.enqueue(format(e));
-        unsubscribe = this.subscribe(
-          simId,
-          (e) => visible(e) && controller.enqueue(format(e)),
+        const send = (chunk: string) => {
+          if (closed) return;
+          // Sin backpressure el atraso crece sin tope: se corta y el cliente reconecta.
+          if ((controller.desiredSize ?? 0) < -SSE_MAX_BACKLOG) {
+            cleanup();
+            try {
+              controller.close();
+            } catch {
+              // ya estaba cerrado
+            }
+            return;
+          }
+          try {
+            controller.enqueue(chunk);
+          } catch {
+            cleanup();
+          }
+        };
+        // El historial va en un solo chunk: no cuenta como atraso del cliente.
+        send(
+          ': connected\n\n' +
+            this.list(simId, { since, view }).map(format).join(''),
         );
-        heartbeat = setInterval(() => controller.enqueue(': ping\n\n'), 15_000);
+        if (closed) return;
+        unsubscribe = this.subscribe(simId, (e) => {
+          if (visible(e)) send(format(e));
+        });
+        heartbeat = setInterval(() => send(': ping\n\n'), 15_000);
+        heartbeat.unref?.();
       },
-      cancel: () => {
-        unsubscribe();
-        clearInterval(heartbeat);
-      },
+      cancel: cleanup,
     });
   }
 }

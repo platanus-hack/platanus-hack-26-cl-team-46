@@ -1,6 +1,7 @@
 /** Cliente del backend (NestJS). Tipos alineados con el contrato Deploy → Motor. */
+import { API_URL, HttpError, request } from "./http";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+export { API_URL };
 
 export type SandboxStatus =
   | "provisioning"
@@ -84,44 +85,91 @@ export function authedEventSource(url: string) {
   return new EventSource(url, { withCredentials: true });
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
-    ...init,
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...init?.headers },
-  });
-  if (res.status === 401) goToLogin();
-  const body = await res.json().catch(() => undefined);
-  if (!res.ok) {
-    const msg = Array.isArray(body?.message) ? body.message.join(", ") : body?.message;
-    throw new Error(msg ?? `HTTP ${res.status}`);
+/** Llamada a la API con sesión (ver http.ts). Un 401 manda al login, volviendo a esta página. */
+export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
+  try {
+    return await request<T>(path, init);
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 401) goToLogin();
+    throw e;
   }
-  return body as T;
+}
+
+export interface StreamOptions {
+  /** Se conectó (o reconectó): el backend puede volver a mandar el historial desde el inicio. */
+  onOpen?: () => void;
+}
+
+const RETRY_MIN_MS = 1_000;
+const RETRY_MAX_MS = 30_000;
+
+/**
+ * SSE con sesión que no se muere en silencio. EventSource reintenta solo los cortes de red, pero si
+ * al reconectar recibe un no-200 (un 502 durante un deploy, p. ej.) queda CLOSED para siempre y la
+ * pantalla deja de actualizarse sin avisar. En ese caso lo reabrimos con espera creciente
+ * (1 s → 30 s; vuelve a 1 s al conectar). `url` puede ser función para reabrir desde otro punto.
+ * Devuelve la función para cerrar (también cancela un reintento pendiente).
+ */
+export function subscribeStream(
+  url: string | (() => string),
+  types: string[],
+  onMessage: (msg: MessageEvent) => void,
+  opts: StreamOptions = {},
+): () => void {
+  let es: EventSource | null = null;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  let delay = RETRY_MIN_MS;
+  let closed = false;
+  const handler = (msg: Event) => onMessage(msg as MessageEvent);
+
+  const connect = () => {
+    timer = null;
+    if (closed) return;
+    const source = authedEventSource(typeof url === "function" ? url() : url);
+    es = source;
+    for (const t of types) source.addEventListener(t, handler);
+    source.onopen = () => {
+      delay = RETRY_MIN_MS;
+      opts.onOpen?.();
+    };
+    source.onerror = () => {
+      // CONNECTING = el navegador ya está reintentando solo; CLOSED = se rindió, nos toca a nosotros.
+      if (closed || source.readyState !== EventSource.CLOSED) return;
+      source.close();
+      timer = setTimeout(connect, delay);
+      delay = Math.min(delay * 2, RETRY_MAX_MS);
+    };
+  };
+  connect();
+
+  return () => {
+    closed = true;
+    if (timer) clearTimeout(timer);
+    es?.close();
+  };
 }
 
 export const api = {
-  listSandboxes: () => request<Sandbox[]>("/sandboxes"),
-  getSandbox: (id: string) => request<Sandbox>(`/sandboxes/${id}`),
+  listSandboxes: () => apiRequest<Sandbox[]>("/sandboxes"),
+  getSandbox: (id: string) => apiRequest<Sandbox>(`/sandboxes/${id}`),
   createSandbox: (repo_url: string, opts: { env?: Record<string, string>; mode?: SandboxMode; name?: string } = {}) =>
-    request<Sandbox>("/sandboxes", { method: "POST", body: JSON.stringify({ repo_url, ...opts }) }),
+    apiRequest<Sandbox>("/sandboxes", { method: "POST", body: JSON.stringify({ repo_url, ...opts }) }),
   /** Cambia el nombre para mostrar. Vacío = vuelve a `owner/repo`. */
   renameSandbox: (id: string, name: string) =>
-    request<Sandbox>(`/sandboxes/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
+    apiRequest<Sandbox>(`/sandboxes/${id}`, { method: "PATCH", body: JSON.stringify({ name }) }),
   /** Entrega los secretos que pidió el agente. */
   provideInputs: (id: string, env: Record<string, string>) =>
-    request<Sandbox>(`/sandboxes/${id}/inputs`, { method: "POST", body: JSON.stringify({ env }) }),
+    apiRequest<Sandbox>(`/sandboxes/${id}/inputs`, { method: "POST", body: JSON.stringify({ env }) }),
   redeploy: (id: string, body: { patch?: string; message?: string } = {}) =>
-    request<Sandbox>(`/sandboxes/${id}/redeploy`, { method: "POST", body: JSON.stringify(body) }),
+    apiRequest<Sandbox>(`/sandboxes/${id}/redeploy`, { method: "POST", body: JSON.stringify(body) }),
   setEnv: (id: string, body: { env?: Record<string, string>; generate?: string[] }) =>
-    request<Sandbox>(`/sandboxes/${id}/env`, { method: "PUT", body: JSON.stringify(body) }),
-  restart: (id: string) => request<Sandbox>(`/sandboxes/${id}/restart`, { method: "POST" }),
-  deleteSandbox: (id: string) => request<Sandbox>(`/sandboxes/${id}`, { method: "DELETE" }),
-  /** SSE de progreso (eventos `deploy` del backend y `agent` del agente de IA). Devuelve la función para cerrar. */
-  subscribeEvents: (id: string, onEvent: (e: SimEvent) => void) => {
-    const es = authedEventSource(`${API_URL}/sandboxes/${id}/events`);
-    const handler = (msg: Event) => onEvent(JSON.parse((msg as MessageEvent).data));
-    es.addEventListener("deploy", handler);
-    es.addEventListener("agent", handler);
-    return () => es.close();
-  },
+    apiRequest<Sandbox>(`/sandboxes/${id}/env`, { method: "PUT", body: JSON.stringify(body) }),
+  restart: (id: string) => apiRequest<Sandbox>(`/sandboxes/${id}/restart`, { method: "POST" }),
+  deleteSandbox: (id: string) => apiRequest<Sandbox>(`/sandboxes/${id}`, { method: "DELETE" }),
+  /**
+   * SSE de progreso (eventos `deploy` del backend y `agent` del agente de IA). Devuelve la función para cerrar.
+   * Ojo: cada conexión (y reconexión) repite el historial completo; `onOpen` avisa para partir de cero.
+   */
+  subscribeEvents: (id: string, onEvent: (e: SimEvent) => void, opts?: StreamOptions) =>
+    subscribeStream(`${API_URL}/sandboxes/${id}/events`, ["deploy", "agent"], (msg) => onEvent(JSON.parse(msg.data)), opts),
 };

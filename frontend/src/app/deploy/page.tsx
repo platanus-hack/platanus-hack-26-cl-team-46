@@ -37,55 +37,91 @@ function DeployConsole() {
   }
   const [eventLog, setEventLog] = useState<{ id: string | null; list: SimEvent[] }>({ id: null, list: [] });
   const [error, setError] = useState<string | null>(null);
+  // Error del refresco periódico, aparte del de las acciones: se borra cuando un refresco vuelve a funcionar.
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const confirm = useConfirm();
 
+  // El intervalo y run() pueden solaparse y volver en desorden: solo aplica la respuesta más nueva (seq)
+  // y el intervalo se salta un tick si hay una en vuelo.
+  const reqSeq = useRef(0);
+  const inFlight = useRef(false);
   const refresh = useCallback(async () => {
+    const seq = ++reqSeq.current;
+    inFlight.current = true;
     try {
       const [sbxs, simList] = await Promise.all([
         api.listSandboxes(),
         // Si /simulations falla, la consola de deploy sigue funcionando: solo no sabemos qué sims existen.
         simApi.list().catch(() => null),
       ]);
+      if (seq !== reqSeq.current) return;
       setSandboxes(sbxs);
       if (simList) setSims(simList);
+      setLoadError(null);
     } catch (e) {
-      setError((e as Error).message);
+      if (seq !== reqSeq.current) return;
+      setLoadError((e as Error).message);
+    } finally {
+      if (seq === reqSeq.current) inFlight.current = false;
     }
   }, []);
 
   useEffect(() => {
     const first = setTimeout(refresh, 0);
-    const t = setInterval(refresh, 4000);
+    const t = setInterval(() => {
+      if (!inFlight.current) void refresh();
+    }, 4000);
     return () => {
       clearTimeout(first);
       clearInterval(t);
     };
   }, [refresh]);
 
-  // El SSE manda el historial completo al conectarse, así que al cambiar de sandbox se parte de cero.
+  // El SSE manda el historial completo en cada conexión (y reconexión): el primer evento después de abrir
+  // reemplaza la lista en vez de sumarse, así ni una reconexión ni salir y volver a la página (Activity
+  // conserva el estado) duplican el log. Se reemplaza al primer evento y no al abrir, para no parpadear vacío.
   useEffect(() => {
     if (!selected) return;
-    return api.subscribeEvents(selected, (e) =>
-      setEventLog((prev) => (prev.id === selected ? { id: selected, list: [...prev.list, e] } : { id: selected, list: [e] })),
+    let fresh = false;
+    return api.subscribeEvents(
+      selected,
+      (e) => {
+        const replace = fresh;
+        fresh = false;
+        setEventLog((prev) =>
+          !replace && prev.id === selected ? { id: selected, list: [...prev.list, e] } : { id: selected, list: [e] },
+        );
+      },
+      {
+        onOpen: () => {
+          fresh = true;
+        },
+      },
     );
   }, [selected]);
   const events = eventLog.id === selected ? eventLog.list : [];
 
-  const run = async (fn: () => Promise<unknown>) => {
+  /** Corre una acción y refresca. Devuelve si salió bien (el formulario de secretos se limpia solo entonces). */
+  const run = async (fn: () => Promise<unknown>): Promise<boolean> => {
     setBusy(true);
     setError(null);
     try {
       await fn();
       await refresh();
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
   };
 
   const current = sandboxes.find((s) => s.sandbox_id === selected);
+  // Simulación viva del sandbox: mientras corre, los cambios van por el simulador (quedan en su timeline).
+  const liveSim = current && sims.find((s) => s.sandbox.sandbox_id === current.sandbox_id && ACTIVE_SIM.includes(s.status));
+  const banner = error ?? loadError;
   const agentDone = !!current?.agent && !current.agent.active;
   const seedUsers = current?.credentials.seed_users ?? [];
 
@@ -115,7 +151,7 @@ function DeployConsole() {
       <p className="mb-6 text-sm text-ink-muted">Repo de GitHub → sandbox en Render → URL</p>
 
 
-      {error && <p className="mb-4 rounded-md border border-attack bg-attack-soft p-3 text-sm text-attack-strong">{error}</p>}
+      {banner && <p className="mb-4 rounded-md border border-attack bg-attack-soft p-3 text-sm text-attack-strong">{banner}</p>}
 
       <div className="grid grid-cols-1 gap-6 md:grid-cols-[320px_1fr]">
         <ul className="space-y-2">
@@ -177,15 +213,22 @@ function DeployConsole() {
                 )}
               </dl>
               <div className="mt-4 flex flex-wrap gap-2">
-                <SimulateButton
-                  sandbox={current}
-                  sim={sims.find((s) => s.sandbox.sandbox_id === current.sandbox_id && ACTIVE_SIM.includes(s.status))}
-                />
-                <Action disabled={busy} onClick={() => run(() => api.restart(current.sandbox_id))}>Restart</Action>
-                <Action disabled={busy} onClick={() => run(() => api.redeploy(current.sandbox_id))}>Redeploy</Action>
-                <Action disabled={busy} onClick={() => run(() => api.setEnv(current.sandbox_id, { generate: ["JWT_SECRET"] }))}>
-                  Rotar JWT_SECRET
-                </Action>
+                <SimulateButton sandbox={current} sim={liveSim} />
+                {/* Con un simulacro vivo, restart/redeploy/rotar irían directo a la API sin pasar por el
+                    timeline (el simulacro no se enteraría): ahí se hacen desde el simulador. */}
+                {liveSim ? (
+                  <span className="self-center text-xs text-ink-faint">
+                    Restart, redeploy y rotar secretos: durante un simulacro, hazlo desde el simulador.
+                  </span>
+                ) : (
+                  <>
+                    <Action disabled={busy} onClick={() => run(() => api.restart(current.sandbox_id))}>Restart</Action>
+                    <Action disabled={busy} onClick={() => run(() => api.redeploy(current.sandbox_id))}>Redeploy</Action>
+                    <Action disabled={busy} onClick={() => run(() => api.setEnv(current.sandbox_id, { generate: ["JWT_SECRET"] }))}>
+                      Rotar JWT_SECRET
+                    </Action>
+                  </>
+                )}
                 <Action
                   disabled={busy}
                   onClick={async () => {
@@ -208,7 +251,13 @@ function DeployConsole() {
             {/* Mientras trabaja, el panel del agente va arriba; al terminar baja con el resumen, después del log. */}
             {current.agent && !agentDone && <AgentPanel sandbox={current} events={events} />}
             {current.pending_inputs.length > 0 && (
-              <InputsForm sandbox={current} disabled={busy} onSubmit={(env) => run(() => api.provideInputs(current.sandbox_id, env))} />
+              <InputsForm
+                // Un formulario por sandbox: lo escrito para uno no se arrastra a otro.
+                key={current.sandbox_id}
+                sandbox={current}
+                disabled={busy}
+                onSubmit={(env) => run(() => api.provideInputs(current.sandbox_id, env))}
+              />
             )}
 
             <ol className="space-y-1 rounded-md border border-line bg-bg-100 p-4 font-mono text-xs">
@@ -289,14 +338,16 @@ function Copyable({ label, value }: { label: string; value: string }) {
   );
 }
 
-function InputsForm(props: { sandbox: Sandbox; disabled?: boolean; onSubmit: (env: Record<string, string>) => void }) {
+function InputsForm(props: { sandbox: Sandbox; disabled?: boolean; onSubmit: (env: Record<string, string>) => Promise<boolean> }) {
   const [values, setValues] = useState<Record<string, string>>({});
   return (
     <form
       className="space-y-2 rounded-md border border-line-strong bg-bg-100 p-4 text-sm"
-      onSubmit={(e) => {
+      onSubmit={async (e) => {
         e.preventDefault();
-        props.onSubmit(values);
+        // Solo lo que el agente está pidiendo ahora (no todo lo que alguna vez se escribió).
+        const env = Object.fromEntries(props.sandbox.pending_inputs.map((p) => [p.key, values[p.key] ?? ""]));
+        if (await props.onSubmit(env)) setValues({});
       }}
     >
       <p className="font-medium">El agente necesita estos datos para desplegar tu app</p>

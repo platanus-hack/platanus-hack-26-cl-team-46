@@ -147,7 +147,13 @@ export class SandboxEventsService
   /** Stream SSE: historial + eventos en vivo + heartbeat. */
   sseStream(sandboxId: string): ReadableStream<string> {
     let unsubscribe = () => {};
-    let heartbeat: NodeJS.Timeout;
+    let heartbeat: NodeJS.Timeout | undefined;
+    let stopped = false;
+    const stop = () => {
+      stopped = true;
+      unsubscribe();
+      clearInterval(heartbeat);
+    };
     // Salida pública: sin rastros del proveedor de agentes (también en eventos viejos ya guardados).
     const format = (e: SandboxEvent) =>
       `event: ${e.source}\ndata: ${JSON.stringify({
@@ -158,18 +164,23 @@ export class SandboxEventsService
       })}\n\n`;
     return new ReadableStream<string>({
       start: (controller) => {
-        controller.enqueue(': connected\n\n');
-        for (const e of this.getHistory(sandboxId))
-          controller.enqueue(format(e));
-        unsubscribe = this.subscribe(sandboxId, (e) =>
-          controller.enqueue(format(e)),
-        );
-        heartbeat = setInterval(() => controller.enqueue(': ping\n\n'), 15_000);
+        // Un stream cerrado lanza en enqueue: se deja de escribir en vez de
+        // propagar el error a quien emitió el evento (un deploy en curso).
+        const send = (chunk: string) => {
+          if (stopped) return;
+          try {
+            controller.enqueue(chunk);
+          } catch {
+            stop();
+          }
+        };
+        send(': connected\n\n');
+        for (const e of this.getHistory(sandboxId)) send(format(e));
+        if (stopped) return;
+        unsubscribe = this.subscribe(sandboxId, (e) => send(format(e)));
+        heartbeat = setInterval(() => send(': ping\n\n'), 15_000);
       },
-      cancel: () => {
-        unsubscribe();
-        clearInterval(heartbeat);
-      },
+      cancel: stop,
     });
   }
 

@@ -33,6 +33,7 @@ function envSpecificDetails(
 }
 
 const BASE_URL = 'https://api.render.com/v1';
+const RENDER_TIMEOUT_MS = 60_000;
 
 export class RenderApiError extends Error {
   constructor(
@@ -86,7 +87,11 @@ export class RenderClient {
         `Usando workspace de Render "${first.name}" (${first.id})`,
       );
       return first.id;
-    })();
+    })().catch((err: unknown) => {
+      // No se cachea un fallo (Render caído un momento): el próximo llamado reintenta.
+      this.ownerIdPromise = undefined;
+      throw err;
+    });
     return this.ownerIdPromise;
   }
 
@@ -326,6 +331,8 @@ export class RenderClient {
           ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
         },
         body: body !== undefined ? JSON.stringify(body) : undefined,
+        // Holgado (listados largos), pero una llamada colgada no bloquea un deploy para siempre.
+        signal: AbortSignal.timeout(RENDER_TIMEOUT_MS),
       });
 
       // Rate limit: reintenta con backoff.

@@ -140,6 +140,8 @@ export interface ReportRecord {
   /** Nombre para mostrar del sandbox al cerrar. */
   title?: string;
   requested_at: string;
+  /** Última regeneración pedida a mano (para el cooldown). */
+  regenerated_at?: string;
   /** Cuándo se cerró la simulación (según el timeline). */
   closed_at?: string;
   started_at?: string;

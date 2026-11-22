@@ -44,8 +44,12 @@ export class LlmRefusalError extends Error {}
 export class SimLlm {
   constructor(private readonly client: Anthropic) {}
 
+  /**
+   * Sin reintentos del SDK: el cerebro y el agente de reportes ya reintentan a su
+   * manera, y con los 2 del SDK cada intento podía durar 3× timeoutMs.
+   */
   static fromApiKey(apiKey: string) {
-    return new SimLlm(new Anthropic({ apiKey }));
+    return new SimLlm(new Anthropic({ apiKey, maxRetries: 0 }));
   }
 
   async structured<S extends z.ZodType>(

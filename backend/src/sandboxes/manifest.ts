@@ -8,9 +8,22 @@ import { z } from 'zod';
  * Le dice al deployer cómo levantar la app. Si no existe, se infiere lo
  * que se pueda (Dockerfile o package.json).
  */
+/**
+ * Ruta relativa a la app: empieza con una sola `/`, sin barra invertida ni espacios. Así
+ * nunca es una URL absoluta ni protocol-relative (`//otro-host`), que haría que
+ * el backend le pegara a cualquier host (SSRF).
+ */
+const HEALTHCHECK_PATH = /^\/(?![/\\])[^\s\\]*$/;
+
 export const manifestSchema = z.object({
   runtime: z.enum(['docker', 'node']).default('docker'),
-  healthcheck_path: z.string().default('/health'),
+  healthcheck_path: z
+    .string()
+    .regex(
+      HEALTHCHECK_PATH,
+      'debe ser una ruta de la app que empiece con "/" (p. ej. /health)',
+    )
+    .default('/health'),
   needs_postgres: z.boolean().default(false),
   /** Nombre de la variable donde se inyecta la URL de Postgres. */
   database_url_env: z.string().default('DATABASE_URL'),
@@ -41,6 +54,22 @@ export const manifestSchema = z.object({
 });
 
 export type SandboxManifest = z.infer<typeof manifestSchema>;
+
+/**
+ * URL del healthcheck dentro de la app, o null si `healthPath` apunta a otro
+ * origen (manifests guardados antes de validar la ruta).
+ */
+export function healthcheckUrl(
+  appUrl: string,
+  healthPath: string | undefined,
+): string | null {
+  const { origin } = new URL(appUrl);
+  // Vacío (manifests viejos) = la raíz, como antes.
+  const path = healthPath || '/';
+  if (!HEALTHCHECK_PATH.test(path)) return null;
+  const target = new URL(path, origin);
+  return target.origin === origin ? target.toString() : null;
+}
 
 export class ManifestError extends Error {}
 
