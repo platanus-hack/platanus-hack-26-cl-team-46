@@ -238,6 +238,36 @@ export class RenderClient {
     });
   }
 
+  /**
+   * Recursos que cuentan para el tope del plan (Hobby: 25), servicios más
+   * instancias Postgres. Ese es el conteo con el que Render rechazó la
+   * creación con 25 en uso.
+   */
+  async countPlanResources(): Promise<{ services: number; postgres: number }> {
+    const ownerId = await this.ownerId();
+    const count = async (path: string) => {
+      let total = 0;
+      let cursor: string | undefined;
+      for (let page = 0; page < 20; page++) {
+        const qs = new URLSearchParams({ ownerId, limit: '100' });
+        if (cursor) qs.set('cursor', cursor);
+        const list = await this.request<Array<{ cursor: string }>>(
+          'GET',
+          `${path}?${qs}`,
+        );
+        total += list.length;
+        if (list.length < 100) break;
+        cursor = list[list.length - 1].cursor;
+      }
+      return total;
+    };
+    const [services, postgres] = await Promise.all([
+      count('/services'),
+      count('/postgres'),
+    ]);
+    return { services, postgres };
+  }
+
   async findPostgresByName(name: string): Promise<RenderPostgres | undefined> {
     const ownerId = await this.ownerId();
     const qs = new URLSearchParams({ name, ownerId, limit: '20' });

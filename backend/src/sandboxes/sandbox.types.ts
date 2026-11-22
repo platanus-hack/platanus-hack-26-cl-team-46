@@ -64,6 +64,8 @@ export interface SandboxLease {
 export interface SandboxRecord {
   /** Instancia del backend con una operación en curso (ver SandboxLease). */
   lease?: SandboxLease;
+  /** Última acción del usuario sobre el sandbox (crear, redeploy, env...). Lo usa la limpieza. */
+  last_activity_at?: string;
   sandbox_id: string;
   /** Nombre que le puso el usuario. Si no hay, se muestra `owner/repo` (sandboxDisplayName). */
   name?: string;

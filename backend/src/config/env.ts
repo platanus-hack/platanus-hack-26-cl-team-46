@@ -98,6 +98,19 @@ export const envSchema = z.object({
     .string()
     .min(16, 'SANDBOX_DB_SECRET debe tener al menos 16 caracteres')
     .optional(),
+  // Cupo y limpieza de sandboxes (Render Hobby permite 25 servicios en total)
+  /** Servicios (web + Postgres) que admite el workspace de Render. */
+  RENDER_SERVICE_LIMIT: z.coerce.number().int().min(1).default(25),
+  /** Sandboxes activos por usuario. Al crear uno más se liberan sus inactivos. */
+  SANDBOX_MAX_PER_USER: z.coerce.number().int().min(1).default(3),
+  /** Horas sin actividad del usuario tras las que un sandbox se borra. */
+  SANDBOX_IDLE_TTL_HOURS: z.coerce.number().min(0.1).default(3),
+  /** Horas tras las que se borra un sandbox fallido. */
+  SANDBOX_FAILED_TTL_HOURS: z.coerce.number().min(0.1).default(1),
+  /** Minutos sin uso tras los que se borra una copia repetida (mismo dueño y repo). */
+  SANDBOX_DUPLICATE_GRACE_MIN: z.coerce.number().min(1).default(20),
+  /** Cada cuántos minutos corre la limpieza automática. */
+  SANDBOX_GC_INTERVAL_MIN: z.coerce.number().min(1).default(10),
   /** URL pública del backend, a la que llaman los agentes desde sus VMs. */
   PUBLIC_BACKEND_URL: z.url().optional(),
   CONDUCTOR_API_KEY: z.string().optional(),
