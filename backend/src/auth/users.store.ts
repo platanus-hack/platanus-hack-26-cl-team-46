@@ -1,7 +1,7 @@
 import {
   Injectable,
   Logger,
-  OnModuleDestroy,
+  OnApplicationShutdown,
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -32,11 +32,13 @@ export interface UserRecord {
  * igual que SandboxStore.
  */
 @Injectable()
-export class UsersStore implements OnModuleInit, OnModuleDestroy {
+export class UsersStore implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(UsersStore.name);
   private readonly file: string;
   private readonly databaseUrl?: string;
   private pool?: pg.Pool;
+  /** El pool ya se cerró (fin del apagado): lo que llegue después se descarta con un aviso. */
+  private closed = false;
   private readonly items = new Map<number, UserRecord>();
   private writing: Promise<void> = Promise.resolve();
 
@@ -84,8 +86,10 @@ export class UsersStore implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async onModuleDestroy() {
+  /** Cierra Postgres al final del apagado (onModuleDestroy corre primero y cortaba escrituras en curso). */
+  async onApplicationShutdown() {
     await this.writing;
+    this.closed = true;
     await this.pool?.end();
   }
 
@@ -107,6 +111,12 @@ export class UsersStore implements OnModuleInit, OnModuleDestroy {
   }
 
   private persist(record: UserRecord) {
+    if (this.closed) {
+      this.logger.warn(
+        `Apagando: no se guardó el usuario ${record.login} (llegó después del cierre)`,
+      );
+      return;
+    }
     if (this.pool) {
       const pool = this.pool;
       this.writing = this.writing
