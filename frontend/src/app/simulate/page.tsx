@@ -314,12 +314,12 @@ function SimulateConsole() {
       {sim && firstPass && (
         <SimGate
           sim={sim}
-          onStart={(origin) => {
+          onStart={(origin, vulns) => {
             setStartFx((fx) => ({ key: fx.key + 1, origin, hold: true }));
             started.current = false;
             fxDone.current = false;
             return run(async () => {
-              await simApi.start(sim.sim_id);
+              await simApi.start(sim.sim_id, vulns);
               started.current = true;
               if (fxDone.current) setCountdown(true);
             }).finally(() => setStartFx((fx) => ({ ...fx, hold: false })));

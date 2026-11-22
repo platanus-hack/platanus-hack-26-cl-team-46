@@ -2,18 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button, StatusChip, useReducedMotion } from "@/components/mayday";
-import type { Simulation } from "@/lib/sim-api";
+import type { EngineFinding, Simulation } from "@/lib/sim-api";
 
 /**
- * Antes del simulacro: la preparación (deploy, primera pasada del motor y agentes) y,
- * cuando TODOS los agentes están listos, el botón para partir. Al partir, las alertas
- * empiezan a llegar al tiro: el backend ya tiene escritas las primeras.
+ * Antes del simulacro: la preparación (deploy, primera pasada del motor y agentes) y, cuando
+ * TODOS los agentes están listos, la partida. Con el motor real, la partida es el informe de lo
+ * que confirmó atacando de verdad (con la elección de incidentes); sin motor, un botón al centro.
  */
 /** Parte el simulacro. `from` es el centro del botón (coordenadas de la ventana): de ahí sale la transición. */
-export type StartFn = (from?: { x: number; y: number }) => Promise<unknown>;
+/** from: centro del botón (de ahí salen los pixeles). vulns: incidentes elegidos en el informe del motor. */
+export type StartFn = (from?: { x: number; y: number }, vulns?: string[]) => Promise<unknown>;
 
 export function SimGate({ sim, onStart }: { sim: Simulation; onStart: StartFn }) {
-  if (sim.status === "ready") return <ReadyGate sim={sim} onStart={onStart} />;
+  if (sim.status === "ready") {
+    // Con el motor real: el informe con lo que confirmó atacando de verdad, y desde ahí se parte.
+    if (sim.engine_driven && sim.engine?.status === "done") return <EngineReport sim={sim} onStart={onStart} />;
+    return <ReadyGate sim={sim} onStart={onStart} />;
+  }
   if (sim.engine_driven) return <EnginePrep sim={sim} />;
   return <AgentsPrep sim={sim} />;
 }
@@ -254,5 +259,137 @@ function ReadyGate({ onStart }: { sim: Simulation; onStart: StartFn }) {
         {starting ? "Iniciando…" : "Iniciar simulación"}
       </Button>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------- informe
+
+const SEVERITY: Record<string, { label: string; cls: string }> = {
+  critical: { label: "Crítica", cls: "border-attack/50 bg-attack-soft text-attack" },
+  high: { label: "Alta", cls: "border-attack-strong/40 text-attack-strong" },
+  medium: { label: "Media", cls: "border-line-strong text-ink-muted" },
+  low: { label: "Baja", cls: "border-line-strong text-ink-faint" },
+};
+
+const MAX_INCIDENTS = 3;
+
+export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: StartFn }) {
+  const engine = sim.engine!;
+  const confirmed = useMemo(
+    () => engine.findings.filter((f) => f.confirmed).sort((a, b) => a.order - b.order),
+    [engine.findings],
+  );
+  const [picked, setPicked] = useState<string[]>(() => engine.selected ?? confirmed.slice(0, MAX_INCIDENTS).map((f) => f.vuln_id));
+  const [starting, setStarting] = useState(false);
+  const s = engine.summary;
+  const critical = confirmed.filter((f) => f.severity === "critical").length;
+  const toggle = (id: string) =>
+    setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length >= MAX_INCIDENTS ? cur : [...cur, id]));
+  const byId = new Map(confirmed.map((f) => [f.vuln_id, f]));
+
+  return (
+    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-10 overflow-y-auto px-10 py-8">
+      <div className="min-w-0">
+        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Lo que confirmó el motor</span>
+        <h2 className="mt-2 text-[40px] font-semibold tracking-[-0.035em]">
+          Tu app tiene {confirmed.length} {confirmed.length === 1 ? "puerta abierta" : "puertas abiertas"}.
+        </h2>
+        <p className="mt-1 max-w-2xl text-[16px] leading-relaxed text-ink-muted">
+          Cada una se probó con tráfico real contra tu sandbox. Van en el orden en que un atacante las usaría.
+        </p>
+        <div className="my-6 flex gap-10">
+          <Stat label="Confirmadas" value={`${s?.confirmed ?? confirmed.length}/${s?.total ?? engine.findings.length}`} attack />
+          <Stat label="Críticas" value={String(critical)} />
+          <Stat label="Con archivo y línea" value={`${s?.correlated ?? 0}/${confirmed.length}`} />
+          <Stat label="Requests" value={String(s?.requests ?? "—")} />
+        </div>
+        <ul>
+          {confirmed.map((f, i) => (
+            <FindingRow key={f.vuln_id} f={f} n={i + 1} picked={picked.includes(f.vuln_id)} />
+          ))}
+        </ul>
+      </div>
+      <aside className="self-start rounded-md border border-line bg-bg-100 p-6">
+        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Tu simulacro</span>
+        <h3 className="mt-2 text-xl font-semibold tracking-[-0.02em]">
+          {picked.length} {picked.length === 1 ? "incidente" : "incidentes"}
+        </h3>
+        <p className="mt-1 text-sm leading-relaxed text-ink-muted">
+          Elige hasta {MAX_INCIDENTS}, en el orden en que quieres vivirlos. El atacante repite lo que hizo de verdad, paso a paso.
+        </p>
+        <div className="my-4 flex flex-col gap-2">
+          {confirmed.map((f) => {
+            const idx = picked.indexOf(f.vuln_id);
+            const on = idx !== -1;
+            return (
+              <button
+                key={f.vuln_id}
+                type="button"
+                onClick={() => toggle(f.vuln_id)}
+                className={`flex items-start gap-3 rounded-md border px-3 py-2.5 text-left text-sm ${
+                  on ? "border-defense/40 bg-defense-soft" : "border-line hover:bg-bg-200"
+                }`}
+              >
+                <span className={`mt-0.5 grid size-4 shrink-0 place-items-center border-[1.5px] font-mono text-[10px] ${on ? "border-defense bg-defense text-on-defense" : "border-line-strong"}`}>
+                  {on ? idx + 1 : ""}
+                </span>
+                <span className="min-w-0">
+                  {byId.get(f.vuln_id)?.title}
+                  <small className="mt-0.5 block font-mono text-[11px] uppercase tracking-[0.1em] text-ink-faint">
+                    {on ? `Incidente ${idx + 1}` : "Opcional"}
+                  </small>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        <Button
+          variant="primary"
+          className="w-full justify-center"
+          disabled={!picked.length || starting}
+          onClick={(e) => {
+            setStarting(true);
+            // Los pixeles de la transición salen desde el centro del botón.
+            const r = e.currentTarget.getBoundingClientRect();
+            // Si falla, el error se muestra arriba y el botón vuelve a quedar disponible.
+            void onStart({ x: r.left + r.width / 2, y: r.top + r.height / 2 }, picked).finally(() => setStarting(false));
+          }}
+        >
+          {starting ? "Partiendo…" : "Empezar simulacro"}
+        </Button>
+        <p className="mt-3 flex gap-2.5 text-[13px] leading-snug text-ink-faint">
+          <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 bg-defense" />
+          No mostramos cómo arreglarlas: eso lo descubres en el simulacro y lo ves en el reporte final.
+        </p>
+      </aside>
+    </div>
+  );
+}
+
+function Stat({ label, value, attack }: { label: string; value: string; attack?: boolean }) {
+  return (
+    <div>
+      <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">{label}</div>
+      <div className={`font-mono text-[32px] tabular-nums ${attack ? "text-attack" : "text-ink"}`}>{value}</div>
+    </div>
+  );
+}
+
+function FindingRow({ f, n, picked }: { f: EngineFinding; n: number; picked: boolean }) {
+  const sev = SEVERITY[f.severity] ?? SEVERITY.medium;
+  return (
+    <li
+      className={`grid grid-cols-[36px_92px_minmax(0,1fr)_auto] items-center gap-3.5 border-t border-line py-3 ${
+        picked ? "bg-gradient-to-r from-defense-soft to-transparent" : ""
+      }`}
+    >
+      <span className="pl-1 font-mono text-[13px] text-ink-faint">{String(n).padStart(2, "0")}</span>
+      <span className={`justify-self-start border px-1.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.1em] ${sev.cls}`}>{sev.label}</span>
+      <div className="min-w-0">
+        <div className="text-[15px]">{f.title}</div>
+        {f.real_case && <div className="mt-0.5 truncate text-[12.5px] text-ink-faint">Caso real: {f.real_case}</div>}
+      </div>
+      <span className="font-mono text-xs text-ink-muted">{f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "—"}</span>
+    </li>
   );
 }
