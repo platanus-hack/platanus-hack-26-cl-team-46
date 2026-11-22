@@ -30,6 +30,7 @@ export const FOOTER = {
       { label: "Cómo funciona", href: "/como-funciona" },
       { label: "Hinty", href: "/como-funciona#hinty" },
       { label: "Preguntas frecuentes", href: "/como-funciona#preguntas" },
+      { label: "Tus reportes", href: "/reports" },
       { label: "Entra con GitHub", href: "/start/github" },
     ],
   } satisfies FooterColumn,
@@ -43,12 +44,10 @@ export const FOOTER = {
   project: {
     title: "Proyecto",
     links: [
-      // TODO(clemente): URL del repositorio en GitHub.
+      // TODO(clemente): link al repo público cuando quede en el GitHub de Platanus (hoy rmena1/hack-26 es privado).
       { label: "Repositorio en GitHub" },
-      // TODO(clemente): página o link del equipo.
-      { label: "Equipo" },
-      // TODO(clemente): correo o link de contacto.
-      { label: "Contacto" },
+      { label: "Equipo", href: "/como-funciona#equipo" },
+      { label: "Contacto", href: "https://www.instagram.com/presion.y.vida/", external: true },
     ],
   } satisfies FooterColumn,
   bottom: {

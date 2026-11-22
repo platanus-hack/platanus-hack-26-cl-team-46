@@ -19,6 +19,7 @@ export function HeroSplit({
   overlayRef,
   children,
   cta,
+  onScrollHint,
 }: {
   firstRef?: Ref<HTMLDivElement>;
   secondRef?: Ref<HTMLDivElement>;
@@ -26,6 +27,8 @@ export function HeroSplit({
   children?: ReactNode;
   /** Botón bajo la indicación de scroll (solo mobile; en desktop va arriba a la derecha). */
   cta?: ReactNode;
+  /** Al apretar "Baja para empezar": hace el mismo recorrido que el scroll (cortinas y pregunta). */
+  onScrollHint?: () => void;
 }) {
   return (
     <>
@@ -63,10 +66,17 @@ export function HeroSplit({
           </span>
           <PixelRotator phrases={HERO.titlePhrases} className="w-full text-attack-strong" />
         </h1>
-        <span className="md-index mt-6 flex items-center gap-2 rounded-full border border-line-strong bg-bg-100/70 px-4 py-2 text-ink-muted backdrop-blur-sm md:mt-12">
+        {/* Botón: la capa del hero no recibe clics, así que va con pointer-events-auto. */}
+        <button
+          type="button"
+          onClick={onScrollHint}
+          className="md-index group pointer-events-auto mt-6 flex cursor-pointer items-center gap-2 rounded-full border border-line-strong bg-bg-100/70 px-4 py-2 text-ink-muted backdrop-blur-sm transition-colors hover:border-defense hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-defense md:mt-12"
+        >
           {HERO.scrollHint}
-          <span aria-hidden="true">↓</span>
-        </span>
+          <span aria-hidden="true" className="transition-transform group-hover:translate-y-0.5">
+            ↓
+          </span>
+        </button>
         {/* La capa del hero no recibe clics; el botón sí. */}
         {cta && <div className="pointer-events-auto md:hidden">{cta}</div>}
       </div>

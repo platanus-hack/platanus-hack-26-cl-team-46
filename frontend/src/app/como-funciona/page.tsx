@@ -10,6 +10,7 @@ import { LearnByDoing } from "@/components/site/LearnByDoing";
 import { Rise } from "@/components/site/Rise";
 import { Section } from "@/components/site/Section";
 import { SiteFooter } from "@/components/site/SiteFooter";
+import { Team } from "@/components/site/Team";
 import { VIDEOS, type VideoId } from "@/content/videos";
 
 export const metadata: Metadata = {
@@ -108,6 +109,16 @@ export default function ComoFuncionaPage() {
             </details>
           ))}
         </Rise>
+      </Section>
+
+      <Section
+        id="equipo"
+        label="Equipo"
+        title="Cinco personas, 36 horas."
+        lead="Hicimos Mayday en Platanus Hack 26, en Santiago."
+        className="border-t border-line"
+      >
+        <Team />
       </Section>
 
       <FinalCta />
@@ -246,7 +257,7 @@ const SAFETY = [
   {
     icon: EyeOff,
     title: "Solo lectura.",
-    text: "Entras con GitHub sin permisos de escritura: vemos tu perfil y tus repos públicos. Nunca escribimos en tu repo.",
+    text: "Entras con GitHub sin permisos de escritura: vemos tu perfil y solo los repos que elijas compartir. Nunca escribimos en tu repo.",
   },
   {
     icon: Copy,
@@ -281,9 +292,70 @@ const FAQ: { q: string; a: ReactNode }[] = [
   {
     q: "¿Qué pasa con mi código?",
     a: (
+      <>
+        <p>
+          Entras con GitHub y eliges qué repos compartir con Mayday. El permiso es de solo lectura: nunca escribimos en
+          tu GitHub ni en tu repo.
+        </p>
+        <p>
+          Copiamos el repo que elijas a un repo privado de Mayday y lo desplegamos en un sandbox aislado, con su propia
+          base de datos. Agentes de IA leen ese código para desplegarlo y simular el ataque. Tus sandboxes, simulaciones
+          y reportes solo los ves tú.
+        </p>
+      </>
+    ),
+  },
+  {
+    q: "¿Puedo usar un repo privado?",
+    a: (
       <p>
-        Entras con GitHub sin pedir permisos: solo vemos tu perfil y tus repos públicos. Copiamos el repo que elijas a
-        un espacio privado nuestro y lo desplegamos en un sandbox aislado. Tu repo original no se toca.
+        Sí. Al entrar con GitHub eliges qué repos compartir, públicos o privados, y puedes compartir más después desde
+        el paso de elegir repo. Si el repo es público, también puedes pegar dueño/repo sin compartirlo.
+      </p>
+    ),
+  },
+  {
+    q: "¿Qué tipo de proyectos soporta?",
+    a: (
+      <p>
+        Repos de GitHub con una app web. Un agente revisa tu configuración (Dockerfile, Procfile, railway.toml,
+        fly.toml, el ORM y sus migraciones) y la levanta en el sandbox, con Postgres si la necesita. Ya lo probamos con
+        apps en Node y en Flask.
+      </p>
+    ),
+  },
+  {
+    q: "¿Qué ataques prueba?",
+    a: (
+      <>
+        <p>
+          El atacante saca las rutas de tu código y de la app desplegada, y prueba lo que más se ve en apps web: SQL
+          injection, JWT falsificables, IDOR, mass assignment, rutas de admin sin control de rol, datos expuestos sin
+          sesión, archivos expuestos, CORS mal configurado, fuerza bruta, enumeración de usuarios y errores que
+          filtran información.
+        </p>
+        <p>Solo cuenta un ataque si lo confirma contra tu app, y te dice en qué archivo y línea está el problema.</p>
+      </>
+    ),
+  },
+  {
+    q: "¿Cuánto dura un simulacro?",
+    a: (
+      <>
+        <p>
+          No tiene un largo fijo. Parte cuando todos los agentes están listos y termina cuando eliminas la amenaza o
+          cuando aprietas Terminar. Mientras tanto, el atacante sigue lanzando ataques nuevos.
+        </p>
+        <p>Mientras Hinty está encendido, el simulacro se pausa: el atacante y el reloj se detienen.</p>
+      </>
+    ),
+  },
+  {
+    q: "¿Qué recibo al final?",
+    a: (
+      <p>
+        Un reporte con tu tiempo y tus pasos contra el mínimo, lo que alcanzó a romper el atacante y qué hacer distinto
+        la próxima vez. Todos tus reportes quedan guardados en tu historial.
       </p>
     ),
   },
@@ -297,19 +369,7 @@ const FAQ: { q: string; a: ReactNode }[] = [
     ),
   },
   {
-    q: "¿Qué tipo de proyectos soporta?",
-    a: (
-      <p>
-        Por ahora, repos públicos de GitHub con una app web. Un agente revisa tu configuración (Dockerfile, Procfile,
-        railway.toml, fly.toml, el ORM y sus migraciones) y la levanta en el sandbox, con Postgres si la necesita. Ya lo
-        probamos con apps en Node y en Flask.
-      </p>
-    ),
-  },
-  {
     q: "¿Cuánto cuesta?",
     a: <p>Nada. Mayday es gratis.</p>,
   },
-  // TODO(clemente): ¿Cuánto dura un simulacro? (la corrida de prueba duró ~8 min, pero no hay un largo fijo
-  // documentado).
 ];
