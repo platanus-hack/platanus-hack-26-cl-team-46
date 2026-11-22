@@ -137,11 +137,17 @@ export function HintyPreview() {
               aria-label="Cerrar lo que dibujó Hinty (esc)"
               style={{ position: "absolute", left: BOARD.x + BOARD.w + 6, top: BOARD.y - 42, animation: "none" }}
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+              {/* anillo del cierre automático, a medio vaciar */}
+              <svg className="ring" viewBox="0 0 44 44" aria-hidden="true">
+                <circle className="track" cx="22" cy="22" r="20" />
+                <circle className="bar" cx="22" cy="22" r="20" pathLength={100} style={{ strokeDashoffset: 40 }} />
+              </svg>
+              <svg className="x" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="2.25" strokeLinecap="square" />
               </svg>
               <span className="lbl">
-                Cerrar<kbd>esc</kbd>
+                <span className="t">Se cierra en 12 s</span>
+                <kbd>esc</kbd>
               </span>
             </button>
           </div>

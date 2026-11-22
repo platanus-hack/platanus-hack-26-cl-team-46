@@ -28,6 +28,10 @@ import { harvestScreen, labelShot, shownFraction, ATTACK } from './harvest.js';
 // question (spoken or typed).
 // buddy: the blip follows the cursor when Hinty is not drawing. proactive: when a new attacker
 // signal shows up, Hinty flies there and offers to explain it (at most once every 45 s).
+// La X de los dibujos se cierra sola este rato después de que Hinty termina de hablar.
+const AUTO_MS = 20_000;
+const RING_R = 20;
+
 export function createClicky({
   api = '/clicky', headers: extraHeaders = () => ({}), theme = 'mayday', voice = true, pushToTalkKey = 'Fn', cssHref = '/clicky/styles.css',
   hint, screenshot, context = '', autoTag = true, ignore = '[data-clicky-ignore]', surface = 'light', liveTranscription = true,
@@ -326,11 +330,15 @@ export function createClicky({
   // Esc, lo hace desaparecer: el lápiz deshace los trazos, se corta la voz y la respuesta en curso, y
   // Hinty queda prendido esperando la próxima pregunta (para apagarlo está la X de la barra).
   let clearedGen = 0;
-  const dismiss = htmlEl('button', 'clicky-dismiss', root, `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="2.25" stroke-linecap="square"/></svg><span class="lbl">Cerrar<kbd>esc</kbd></span>`);
+  const dismiss = htmlEl('button', 'clicky-dismiss', root, `<svg class="ring" viewBox="0 0 44 44" aria-hidden="true"><circle class="track" cx="22" cy="22" r="${RING_R}"/><circle class="bar" cx="22" cy="22" r="${RING_R}" pathLength="100"/></svg><svg class="x" width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="2.25" stroke-linecap="square"/></svg><span class="lbl"><span class="t">Cerrar</span><kbd>esc</kbd></span>`);
+  const ring = dismiss.querySelector('.ring .bar'), lbl = dismiss.querySelector('.lbl .t');
   dismiss.type = 'button';
   dismiss.setAttribute('aria-label', 'Cerrar lo que dibujó Hinty (esc)');
   dismiss.addEventListener('pointerdown', e => e.stopPropagation());
   dismiss.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); clearAll(); });
+  let overX = false;
+  dismiss.addEventListener('pointerenter', () => { overX = true; });
+  dismiss.addEventListener('pointerleave', () => { overX = false; });
   function clearAll() {
     clearedGen = askGen;
     ctx.walk = null;
@@ -339,6 +347,7 @@ export function createClicky({
     gesture.clear();
     dim(false);
     dismiss.removeAttribute('data-on');
+    autoLeft = AUTO_MS;
     island.idle('Listo, pantalla limpia. Pregúntame cuando quieras.');
     wipe({ fast: reducedMotion() }).then(syncPen);
   }
@@ -371,6 +380,31 @@ export function createClicky({
     if (!dismiss.hasAttribute('data-on')) dismiss.setAttribute('data-on', '');
   }
   const dismissTimer = setInterval(placeDismiss, 200);
+
+  // Cierre automático (como HeyClicky): cuando Hinty termina de hablar, el anillo de la X se va
+  // vaciando y al llegar a cero los dibujos se cierran solos. Se pausa mientras el cursor está sobre
+  // la X o sobre lo dibujado (alguien lo está leyendo), mientras Hinty habla o espera un paso, una
+  // confirmación o al usuario, y con la pestaña oculta. Si aparece un dibujo nuevo, vuelve a llenarse.
+  let autoLeft = AUTO_MS, autoLast = 0, autoCount = 0, autoRaf = 0, pointer = { x: -1, y: -1 };
+  function autoTick(now) {
+    autoRaf = requestAnimationFrame(autoTick);
+    const dt = autoLast ? Math.min(250, now - autoLast) : 0;
+    autoLast = now;
+    if (!dismiss.hasAttribute('data-on')) { autoLeft = AUTO_MS; autoCount = 0; return; }
+    const count = ctx.items.length + ctx.strokes.length;
+    if (count !== autoCount) { autoCount = count; autoLeft = AUTO_MS; }
+    const waiting = talking || busy || pending || ctx.walk || listening || root.querySelector('.clicky-confirm');
+    if (waiting) autoLeft = AUTO_MS;
+    const box = drawingBox();
+    const reading = overX || (box && pointer.x >= box.x0 - 8 && pointer.x <= box.x1 + 8 && pointer.y >= box.y0 - 8 && pointer.y <= box.y1 + 8);
+    const paused = !!(waiting || reading || document.hidden);
+    if (!paused) autoLeft -= dt;
+    dismiss.toggleAttribute('data-paused', !!reading && !waiting);
+    lbl.textContent = reading && !waiting ? 'En pausa' : waiting ? 'Cerrar' : `Se cierra en ${Math.max(1, Math.ceil(autoLeft / 1000))} s`;
+    ring.style.strokeDashoffset = String(100 - Math.max(0, autoLeft / AUTO_MS) * 100);
+    if (autoLeft <= 0) { autoLeft = AUTO_MS; clearAll(); }
+  }
+  autoRaf = requestAnimationFrame(autoTick);
   const inStep = t => pending && t instanceof Node && (pending.el === t || pending.el.contains(t));
   const onDocClick = e => { if (inStep(e.target) && !pending.field) completeStep(); };
   const onDocChange = e => { if (inStep(e.target)) completeStep(); };
@@ -614,6 +648,7 @@ export function createClicky({
   const lost = () => { shiftDraw(false); if (listening) send(); };
   const move = e => {
     ctx.pen.cursor(e.clientX, e.clientY);
+    pointer = { x: e.clientX, y: e.clientY };
     if (markMode) shiftDraw(e.shiftKey); // por si shift se apretó o soltó fuera de la ventana
     if (markMode && e.shiftKey) gesture.add(e.clientX, e.clientY);
     if (pending) glow(e.clientX, e.clientY);
@@ -647,6 +682,7 @@ export function createClicky({
       clearTimeout(nudgeTimer);
       clearTimeout(retry);
       clearInterval(dismissTimer);
+      cancelAnimationFrame(autoRaf);
       removeEventListener('keydown', down);
       removeEventListener('keyup', up);
       removeEventListener('blur', lost);
