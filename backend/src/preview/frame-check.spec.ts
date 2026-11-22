@@ -79,6 +79,14 @@ describe('checkFrame', () => {
         return res.end();
       }
       if (req.url === '/blocked') res.setHeader('x-frame-options', 'DENY');
+      if (req.url === '/api-404') {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        return res.end('Not Found');
+      }
+      if (req.url === '/html-404') {
+        res.writeHead(404, { 'content-type': 'text/html' });
+        return res.end('<h1>404</h1>');
+      }
       res.end('ok');
     }).listen(0);
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -114,10 +122,26 @@ describe('checkFrame', () => {
     const opts = { allowPrivate: true };
     expect(await checkFrame(`${base}/`, ORIGIN, opts)).toEqual({
       embeddable: true,
+      page: true,
+      status: 200,
     });
     expect(await checkFrame(`${base}/redirect`, ORIGIN, opts)).toEqual({
       embeddable: false,
       reason: 'blocked',
+    });
+  });
+
+  it('marca sin página un error que no es HTML (backend solo API)', async () => {
+    const opts = { allowPrivate: true };
+    expect(await checkFrame(`${base}/api-404`, ORIGIN, opts)).toEqual({
+      embeddable: true,
+      page: false,
+      status: 404,
+    });
+    expect(await checkFrame(`${base}/html-404`, ORIGIN, opts)).toEqual({
+      embeddable: true,
+      page: true,
+      status: 404,
     });
   });
 });

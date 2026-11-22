@@ -85,6 +85,8 @@ Cuando todo esté OK, reporta con \`deployer report deployed "<resumen>"\`. El r
 - qué verificaste,
 - y advertencias.
 
+Escríbelo en secciones, una por línea, cada una con su etiqueta al inicio (\`Estrategia:\`, \`Archivos:\`, \`Migraciones:\`, \`Variables:\`, \`Usuarios de prueba:\`, \`Verificado:\`, \`Advertencias:\`), con frases cortas. La interfaz muestra cada sección por separado.
+
 ## Formato de \`.sandbox/manifest.json\`
 
 \`\`\`json

@@ -1,10 +1,11 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Button, Select, type SelectOption } from "@/components/mayday";
 import { api, type Sandbox, type SandboxMode, type SimEvent } from "@/lib/api";
 import { simApi, type SimStatus, type Simulation } from "@/lib/sim-api";
+import { isWarningLabel, parseAgentSummary } from "@/lib/agent-summary";
 
 /**
  * Consola de desarrollo del servicio de deploy. No es la UI del simulador:
@@ -82,6 +83,29 @@ function DeployConsole() {
   };
 
   const current = sandboxes.find((s) => s.sandbox_id === selected);
+  const agentDone = !!current?.agent && !current.agent.active;
+  const seedUsers = current?.credentials.seed_users ?? [];
+
+  // Sigue el despliegue hacia abajo: con cada evento nuevo (y al final, con el resumen y los
+  // usuarios de prueba) baja la página, salvo que el usuario haya subido a mirar algo.
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const stick = useRef(true);
+  useEffect(() => {
+    const onScroll = () => {
+      const doc = document.documentElement;
+      stick.current = window.innerHeight + window.scrollY >= doc.scrollHeight - 160;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  useEffect(() => {
+    stick.current = true;
+  }, [selected]);
+  useEffect(() => {
+    if (!stick.current || !bottomRef.current) return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    bottomRef.current.scrollIntoView({ block: "end", behavior: reduce ? "auto" : "smooth" });
+  }, [events.length, agentDone, current?.agent?.summary, seedUsers.length, current?.status]);
 
   return (
     <main className="mx-auto w-full max-w-6xl p-5 font-sans md:p-8">
@@ -184,7 +208,8 @@ function DeployConsole() {
               </div>
             </div>
 
-            {current.agent && <AgentPanel sandbox={current} />}
+            {/* Mientras trabaja, el panel del agente va arriba; al terminar baja con el resumen, después del log. */}
+            {current.agent && !agentDone && <AgentPanel sandbox={current} />}
             {current.pending_inputs.length > 0 && (
               <InputsForm sandbox={current} disabled={busy} onSubmit={(env) => run(() => api.provideInputs(current.sandbox_id, env))} />
             )}
@@ -199,6 +224,10 @@ function DeployConsole() {
               ))}
               {events.length === 0 && <li className="text-ink-faint">Sin eventos todavía</li>}
             </ol>
+
+            {current.agent && agentDone && <AgentPanel sandbox={current} />}
+            {current.status === "ready" && seedUsers.length > 0 && <AccessCard url={current.deployed_url} users={seedUsers} />}
+            <div ref={bottomRef} />
           </section>
         ) : (
           <p className="text-sm text-ink-muted">Selecciona o crea un sandbox.</p>
@@ -226,8 +255,81 @@ function AgentPanel({ sandbox }: { sandbox: Sandbox }) {
       </div>
       <p className="text-ink-muted">{agent.reason}</p>
       <p className="mt-1 text-ink-muted">Planes intentados: {agent.plans_submitted}</p>
-      {agent.summary && <pre className="mt-2 whitespace-pre-wrap font-sans">{agent.summary}</pre>}
+      {agent.summary && <AgentSummary text={agent.summary} />}
     </div>
+  );
+}
+
+/** Resumen del agente en secciones: etiqueta a la izquierda y cada frase en su propia línea. */
+function AgentSummary({ text }: { text: string }) {
+  const sections = parseAgentSummary(text);
+  return (
+    <dl className="mt-4 divide-y divide-line border-t border-line">
+      {sections.map((sec, i) => {
+        const warn = isWarningLabel(sec.label);
+        return (
+          <div key={i} className="grid gap-1 py-3 sm:grid-cols-[160px_1fr] sm:gap-4">
+            <dt className={`text-xs font-medium uppercase tracking-wide ${warn ? "text-attack-strong" : "text-defense"}`}>
+              {sec.label ?? "Nota"}
+            </dt>
+            <dd className={`space-y-1.5 leading-6 ${warn ? "text-attack-strong" : "text-ink"}`}>
+              {sec.sentences.map((line, j) => (
+                <p key={j}>{line}</p>
+              ))}
+            </dd>
+          </div>
+        );
+      })}
+    </dl>
+  );
+}
+
+/** Usuario y clave para entrar a la app desplegada, a la vista y con botón de copiar. */
+function AccessCard({ url, users }: { url: string | null; users: Sandbox["credentials"]["seed_users"] }) {
+  return (
+    <div className="rounded-md border border-defense bg-bg-100 p-4 text-sm shadow-[0_0_24px_#2EE6FF1A]">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <span className="font-medium">Acceso a tu app</span>
+        {url && (
+          <a className="text-defense underline" href={url} target="_blank" rel="noreferrer">
+            Abrir la app ↗
+          </a>
+        )}
+      </div>
+      <ul className="space-y-2">
+        {users.map((u) => (
+          <li key={u.email} className="grid gap-2 rounded border border-line bg-bg-200 p-3 font-mono text-xs sm:grid-cols-[1fr_1fr_auto]">
+            <Copyable label="Usuario" value={u.email} />
+            <Copyable label="Clave" value={u.password} />
+            {u.role && <span className="self-center text-ink-muted">rol {u.role}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Copyable({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      title="Copiar"
+      onClick={() =>
+        navigator.clipboard
+          ?.writeText(value)
+          .then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          })
+          .catch(() => undefined)
+      }
+      className="flex min-w-0 items-baseline gap-2 rounded px-1 text-left hover:bg-bg-300"
+    >
+      <span className="shrink-0 font-sans text-ink-faint">{label}</span>
+      <span className="truncate text-ink">{value}</span>
+      <span className="ml-auto shrink-0 font-sans text-[11px] text-defense">{copied ? "copiado" : ""}</span>
+    </button>
   );
 }
 
