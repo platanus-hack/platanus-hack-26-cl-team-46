@@ -14,7 +14,7 @@ export function EngineFirstPass({
   onStart,
 }: {
   sim: Simulation;
-  onStart: (vulns: string[]) => Promise<unknown>;
+  onStart: StartFn;
 }) {
   const engine = sim.engine;
   if (engine?.status === "done" && sim.status === "ready") return <EngineReport sim={sim} onStart={onStart} />;
@@ -200,7 +200,10 @@ const SEVERITY: Record<string, { label: string; cls: string }> = {
 
 const MAX_INCIDENTS = 3;
 
-export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: (vulns: string[]) => Promise<unknown> }) {
+/** Parte el simulacro. `from` es el centro del botón (coordenadas de la ventana): de ahí sale la transición. */
+export type StartFn = (vulns: string[], from?: { x: number; y: number }) => Promise<unknown>;
+
+export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: StartFn }) {
   const engine = sim.engine!;
   const confirmed = useMemo(
     () => engine.findings.filter((f) => f.confirmed).sort((a, b) => a.order - b.order),
@@ -279,10 +282,11 @@ export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: (vuln
           variant="primary"
           className="w-full shrink-0 justify-center"
           disabled={!picked.length || starting}
-          onClick={() => {
+          onClick={(e) => {
             setStarting(true);
+            const r = e.currentTarget.getBoundingClientRect();
             // Si falla, el error se muestra arriba y el botón vuelve a quedar disponible.
-            void onStart(picked).finally(() => setStarting(false));
+            void onStart(picked, { x: r.left + r.width / 2, y: r.top + r.height / 2 }).finally(() => setStarting(false));
           }}
         >
           {starting ? "Partiendo…" : "Empezar simulacro"}

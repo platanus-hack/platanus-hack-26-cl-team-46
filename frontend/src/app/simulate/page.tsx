@@ -8,7 +8,7 @@ import { AgentChat } from "@/components/agent/AgentChat";
 import { setClickySimulation } from "@/clicky/active-sim";
 import { BrowserWindow } from "@/components/workspace/BrowserWindow";
 import { ChannelIcon } from "@/components/workspace/ChannelIcon";
-import { Logo } from "@/components/mayday";
+import { Logo, PixelTransition } from "@/components/mayday";
 import { CmdK, RenameInput, repoShortName, SandboxPicker, type SandboxEntry } from "@/components/sandbox/SandboxPicker";
 import { api, type Sandbox } from "@/lib/api";
 import { EngineFirstPass } from "@/components/engine/EngineFirstPass";
@@ -67,6 +67,8 @@ function SimulateConsole() {
   const godMode = searchParams.get("view") === "all";
   const [log, setLog] = useState<{ key: string; list: TimelineEvent[] }>({ key: "", list: [] });
   const [error, setError] = useState<string | null>(null);
+  // "Empezar simulacro": pixeles cian que salen del botón; la pantalla queda tapada hasta que el simulacro parte.
+  const [startFx, setStartFx] = useState<{ key: number; origin?: { x: number; y: number }; hold: boolean }>({ key: 0, hold: false });
   const creating = useRef(new Set<string>());
 
   const refresh = useCallback(async () => {
@@ -293,13 +295,24 @@ function SimulateConsole() {
             </button>
           </>
         )}
-        <div className="flex items-center gap-4 max-md:w-full md:ml-auto">{sim && <FlowControls sim={sim} run={run} onNewRun={newRun} />}</div>
+        {/* En la primera pasada el estado y el botón de partir ya están en la página (fases e informe). */}
+        <div className="flex items-center gap-4 max-md:w-full md:ml-auto">
+          {sim && !(firstPass && (sim.status === "starting" || sim.status === "ready")) && (
+            <FlowControls sim={sim} run={run} onNewRun={newRun} />
+          )}
+        </div>
       </header>
 
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
 
       {sim && firstPass && (
-        <EngineFirstPass sim={sim} onStart={(vulns) => run(() => simApi.start(sim.sim_id, vulns))} />
+        <EngineFirstPass
+          sim={sim}
+          onStart={(vulns, origin) => {
+            setStartFx((fx) => ({ key: fx.key + 1, origin, hold: true }));
+            return run(() => simApi.start(sim.sim_id, vulns)).finally(() => setStartFx((fx) => ({ ...fx, hold: false })));
+          }}
+        />
       )}
 
       {sim && !firstPass && (
@@ -358,6 +371,7 @@ function SimulateConsole() {
           onRename={rename}
         />
       )}
+      <PixelTransition runKey={startFx.key} cell="lg" fixed duration={900} origin={startFx.origin} hold={startFx.hold} />
     </main>
   );
 }

@@ -12,6 +12,9 @@ import { readPx, readToken } from "./tokens";
  * Se pinta en un <canvas> (una sola capa, sin miles de nodos): no traba aunque sea a pantalla completa.
  * Con prefers-reduced-motion es un corte directo (onCovered + onDone al tiro).
  *
+ * Con `origin` el barrido sale desde ese punto hacia todos lados (p. ej. desde el botón que la dispara),
+ * y con `hold` la zona queda tapada hasta que se suelte (mientras carga lo que viene).
+ *
  * Uso: cambia `runKey` para dispararla.
  *   <PixelTransition runKey={n} cell="lg" fixed onCovered={() => setScene(2)} />
  *
@@ -35,11 +38,14 @@ export function createPixelSweep({
   height,
   cell,
   duration,
+  origin,
 }: {
   width: number;
   height: number;
   cell: PixelCell;
   duration: number;
+  /** Punto (en px del área) desde donde se expande. Sin origin: de izquierda a derecha. */
+  origin?: { x: number; y: number };
 }) {
   const size = pixelCellPx(cell);
   const bg = readToken("bg-000");
@@ -47,14 +53,16 @@ export function createPixelSweep({
   const cols = Math.max(1, Math.ceil(width / size));
   const rows = Math.max(1, Math.ceil(height / size));
 
-  // Orden precalculado por columna + ruido.
+  // Orden precalculado por columna (o por distancia al origen) + ruido.
   const half = duration / 2;
   const cellTime = Math.min(90, half / 3);
   const spread = half - cellTime;
   const delays = new Float32Array(cols * rows);
   let max = 0.0001;
   for (let i = 0; i < delays.length; i++) {
-    delays[i] = (i % cols) / cols + Math.random() * 0.18;
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    delays[i] = (origin ? Math.hypot((col + 0.5) * size - origin.x, (row + 0.5) * size - origin.y) : col) + Math.random() * 0.18 * (origin ? Math.hypot(width, height) : cols);
     max = Math.max(max, delays[i]);
   }
   for (let i = 0; i < delays.length; i++) delays[i] = (delays[i] / max) * spread;
@@ -96,6 +104,8 @@ export function PixelTransition({
   cell = "lg",
   fixed = false,
   duration = 600,
+  origin,
+  hold = false,
   onCovered,
   onDone,
 }: {
@@ -104,6 +114,10 @@ export function PixelTransition({
   /** true = pantalla completa; false = dentro del contenedor (que debe ser relative). */
   fixed?: boolean;
   duration?: number;
+  /** Punto de partida en px del canvas (con `fixed`, coordenadas de la ventana). Se lee al disparar. */
+  origin?: { x: number; y: number };
+  /** true = al quedar tapada espera (máx. 10 s) antes de destapar. */
+  hold?: boolean;
   onCovered?: () => void;
   onDone?: () => void;
 }) {
@@ -112,9 +126,13 @@ export function PixelTransition({
   // Callbacks en refs para no reiniciar la animación si cambian.
   const coveredRef = useRef(onCovered);
   const doneRef = useRef(onDone);
+  const holdRef = useRef(hold);
+  const originRef = useRef(origin);
   useEffect(() => {
     coveredRef.current = onCovered;
     doneRef.current = onDone;
+    holdRef.current = hold;
+    originRef.current = origin;
   });
 
   useEffect(() => {
@@ -128,16 +146,30 @@ export function PixelTransition({
     if (!canvas) return;
     const { ctx, width, height } = fitCanvas(canvas);
     if (!ctx) return;
-    const sweep = createPixelSweep({ width, height, cell, duration });
+    const sweep = createPixelSweep({ width, height, cell, duration, origin: originRef.current });
 
     setRunning(true);
     let raf = 0;
     let covered = false;
     const start = performance.now();
+    const half = duration / 2;
+    let heldSince: number | null = null;
+    let released = false;
+    let paused = 0;
 
     const frame = (now: number) => {
       ctx.clearRect(0, 0, width, height);
-      const phase = sweep.draw(ctx, now - start);
+      let t = now - start - paused;
+      if (!released && t >= half && holdRef.current && (heldSince === null || now - heldSince < 10_000)) {
+        heldSince ??= now;
+        t = half;
+      } else if (heldSince !== null) {
+        paused += now - heldSince;
+        heldSince = null;
+        released = true;
+        t = now - start - paused;
+      }
+      const phase = sweep.draw(ctx, t);
       if (phase !== "covering" && !covered) {
         covered = true;
         coveredRef.current?.();
