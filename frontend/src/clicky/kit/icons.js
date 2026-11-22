@@ -24,6 +24,46 @@ export const HEADSET_COLORS = { C: '#2EE6FF', H: '#7FF0FF', M: '#2EE6FF' };
 // Sobre el tile cian todas las letras van en on-defense.
 export const ON_DEFENSE = '#021216';
 
+// Micrófono para el botón de hablar de la barra de Hinty.
+export const MIC = [
+  '................',
+  '......MMMM......',
+  '.....MMMMMM.....',
+  '.....MMMMMM.....',
+  '.....MMMMMM.....',
+  '.....MMMMMM.....',
+  '..M..MMMMMM..M..',
+  '..M..MMMMMM..M..',
+  '..M...MMMM...M..',
+  '...M........M...',
+  '....MMMMMMMM....',
+  '.......MM.......',
+  '.......MM.......',
+  '.....MMMMMM.....',
+  '................',
+  '................',
+];
+
+// Lápiz para el botón de marcar la pantalla.
+export const PENCIL = [
+  '................',
+  '............PP..',
+  '...........PPPP.',
+  '..........P.PPP.',
+  '.........PPP.P..',
+  '........PPPPP...',
+  '.......PPPPP....',
+  '......PPPPP.....',
+  '.....PPPPP......',
+  '....PPPPP.......',
+  '...PPPPP........',
+  '..PPPP..........',
+  '..PPP...........',
+  '..PP............',
+  '................',
+  '................',
+];
+
 // Check de 8×8 para las conclusiones (reemplaza al ✓ de texto).
 export const CHECK = [
   '........',
@@ -63,6 +103,15 @@ function pixelSvg(map, colors, size, { cls = {}, defs = '' } = {}) {
 export function headsetSvg(size = 16, { mic = false, dark = false } = {}) {
   const colors = dark ? { C: ON_DEFENSE, H: ON_DEFENSE, M: ON_DEFENSE } : HEADSET_COLORS;
   return pixelSvg(HEADSET, colors, size, mic ? { cls: { M: 'm' } } : {});
+}
+
+// Va con fill currentColor para que el botón cambie de color según el estado.
+export function micSvg(size = 16) {
+  return pixelSvg(MIC, { M: 'currentColor' }, size);
+}
+
+export function pencilSvg(size = 16) {
+  return pixelSvg(PENCIL, { P: 'currentColor' }, size);
 }
 
 export function checkSvg(size = 16) {

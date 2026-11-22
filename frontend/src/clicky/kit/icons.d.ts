@@ -6,3 +6,7 @@ export const CHECK: string[];
 export function pixelRuns(map: string[]): { x: number; y: number; w: number; c: string }[];
 export function headsetSvg(size?: number, options?: { mic?: boolean; dark?: boolean }): string;
 export function checkSvg(size?: number): string;
+export const MIC: string[];
+export function micSvg(size?: number): string;
+export const PENCIL: string[];
+export function pencilSvg(size?: number): string;

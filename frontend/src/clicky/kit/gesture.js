@@ -1,6 +1,6 @@
 import { svgEl, smoothD } from './geometry.js';
 
-// Lo que el usuario marca mientras mantiene Control + Option, como en HeyClicky: el cursor deja un
+// Lo que el usuario marca mientras mantiene Control + Option (o con el modo marcar y shift), como en HeyClicky: el cursor deja un
 // trazo blanco (el del usuario; el cian es de Hinty). Puede hacer varios trazos: si el cursor se
 // queda quieto un momento, el trazo se cierra y el siguiente movimiento empieza otro. Cada trazo
 // se lee como una forma (encerrar, subrayar o señalar), se cruza con los elementos que cubre y
@@ -78,7 +78,7 @@ export function createGesture(parent, { words = () => 0 } = {}) {
     setTimeout(() => { svg.innerHTML = ''; svg.classList.remove('fading'); }, 420);
   }
 
-  return { start, add, stop, finish, clear, get drawing() { return on; }, get count() { return strokes.length + (cur && classify(cur.pts) ? 1 : 0); } };
+  return { start, add, stop, finish, clear, lift, get drawing() { return on; }, get count() { return strokes.length + (cur && classify(cur.pts) ? 1 : 0); } };
 }
 
 const roundBox = b => ({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) });
