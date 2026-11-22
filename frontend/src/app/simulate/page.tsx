@@ -13,6 +13,7 @@ import { TopBarSlot } from "@/components/app/AppSidebar";
 import { CmdK, RenameInput, repoShortName, SandboxPicker, type SandboxEntry } from "@/components/sandbox/SandboxPicker";
 import { api, type Sandbox } from "@/lib/api";
 import { EngineFirstPass } from "@/components/engine/EngineFirstPass";
+import { StartCountdown } from "@/components/engine/StartCountdown";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
 import { eventToMessage, seedMessages } from "@/lib/workspace-chat";
 import { eventToMail, seedMails } from "@/lib/workspace-mail";
@@ -70,6 +71,12 @@ function SimulateConsole() {
   const [error, setError] = useState<string | null>(null);
   // "Empezar simulacro": pixeles cian que salen del botón; la pantalla queda tapada hasta que el simulacro parte.
   const [startFx, setStartFx] = useState<{ key: number; origin?: { x: number; y: number }; hold: boolean }>({ key: 0, hold: false });
+  // Al destaparse el escritorio: cuenta regresiva 3 · 2 · 1. Espera las dos cosas: que el simulacro
+  // haya partido y que la transición haya terminado (con movimiento reducido termina al tiro).
+  const started = useRef(false);
+  const fxDone = useRef(false);
+  const [countdown, setCountdown] = useState(false);
+  const endCountdown = useCallback(() => setCountdown(false), []);
   const creating = useRef(new Set<string>());
 
   const refresh = useCallback(async () => {
@@ -309,7 +316,13 @@ function SimulateConsole() {
           sim={sim}
           onStart={(vulns, origin) => {
             setStartFx((fx) => ({ key: fx.key + 1, origin, hold: true }));
-            return run(() => simApi.start(sim.sim_id, vulns)).finally(() => setStartFx((fx) => ({ ...fx, hold: false })));
+            started.current = false;
+            fxDone.current = false;
+            return run(async () => {
+              await simApi.start(sim.sim_id, vulns);
+              started.current = true;
+              if (fxDone.current) setCountdown(true);
+            }).finally(() => setStartFx((fx) => ({ ...fx, hold: false })));
           }}
         />
       )}
@@ -370,7 +383,19 @@ function SimulateConsole() {
           onRename={rename}
         />
       )}
-      <PixelTransition runKey={startFx.key} cell="lg" fixed duration={900} origin={startFx.origin} hold={startFx.hold} />
+      <PixelTransition
+        runKey={startFx.key}
+        cell="lg"
+        fixed
+        duration={900}
+        origin={startFx.origin}
+        hold={startFx.hold}
+        onDone={() => {
+          fxDone.current = true;
+          if (started.current) setCountdown(true);
+        }}
+      />
+      {countdown && <StartCountdown onDone={endCountdown} />}
     </main>
   );
 }
