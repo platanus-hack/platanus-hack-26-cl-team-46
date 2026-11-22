@@ -1,6 +1,6 @@
-import { svgEl, htmlEl, rectOf, sleep, animate, tipD } from './geometry.js';
+import { svgEl, htmlEl, rectOf, sleep, animate, tipD, reducedMotion } from './geometry.js';
 import { planLayout, cellRect, route, roundedPath, endDir, segmentBoxes, placeLabel, freeSpot } from './flow.js';
-import { headsetSvg, checkSvg } from './icons.js';
+import { headsetSvg, checkSvg, iconSvg } from './icons.js';
 
 // Paneles en espacio libre (DESIGN.md › Hinty › 6, 7 y 11): la pizarra (board/node/edge y chart)
 // y una columna para la card de conclusión, las notas y los botones de la siguiente pregunta.
@@ -84,7 +84,7 @@ export function createCards(ctx) {
     ctx.board?.classList.add('clicky-out');
     const r = boardRegion();
     const el = panel('clicky-board', r);
-    el.innerHTML = `<div class="bar">${headsetSvg(16)}<span>Pizarra</span></div><div class="hd"><div class="ttl">${esc(title || '')}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>`;
+    el.innerHTML = `<div class="bar">${headsetSvg(16)}<span>Pizarra</span><span class="meta"></span></div><div class="hd"><div class="ttl">${esc(title || '')}</div>${sub ? `<div class="sub">${esc(sub)}</div>` : ''}</div>`;
     const svg = svgEl('svg', {}, el);
     ctx.board = el;
     const hd = el.querySelector('.hd');
@@ -104,6 +104,19 @@ export function createCards(ctx) {
     Object.assign(B.el.style, { height: want + 'px', top: B.r.y + 'px' });
     return true;
   }
+  // Crece hacia abajo (un ejemplo, la leyenda de ATT&CK) sin pasar el alto de su región.
+  async function growBoard(B, want) {
+    want = Math.ceil(want);
+    if (want > B.region.h) return false;
+    if (want <= B.H) return true;
+    const { stage } = regions();
+    B.H = want;
+    B.r.h = want;
+    if (!(stage && stage.w < STACK_BELOW)) B.r.y = Math.round(B.region.y + (B.region.h - want) / 2);
+    Object.assign(B.el.style, { height: want + 'px', top: B.r.y + 'px' });
+    await sleep(260);
+    return true;
+  }
   function fitBoard(B, L) {
     const gridH = L.r * L.h + (L.r - 1) * L.gy;
     if (!shrinkBoard(B, L.top + gridH + Math.max(32, L.gy / 2 + 12))) return L;
@@ -118,16 +131,7 @@ export function createCards(ctx) {
     const w = Math.min(gridW, 460);
     const el = htmlEl('div', 'clicky-example on-board below clicky-pop', B.el, html);
     Object.assign(el.style, { width: w + 'px', left: Math.round(L.x0 + (gridW - w) / 2) + 'px', top: y + 'px' });
-    const want = y + el.offsetHeight + 22;
-    if (want > B.region.h) { el.remove(); return false; }
-    if (want > B.H) {
-      const { stage } = regions();
-      B.H = want;
-      B.r.h = want;
-      if (!(stage && stage.w < STACK_BELOW)) B.r.y = Math.round(B.region.y + (B.region.h - want) / 2);
-      Object.assign(B.el.style, { height: want + 'px', top: B.r.y + 'px' });
-      await sleep(260);
-    }
+    if (!(await growBoard(B, y + el.offsetHeight + 22 + (F.foot ? FOOT : 0)))) { el.remove(); return false; }
     await pen.travel(B.r.x + parseFloat(el.style.left) + 12, B.r.y + y + 12);
     await sleep(500 * s);
     return true;
@@ -137,6 +141,38 @@ export function createCards(ctx) {
     const e = svgEl('text', { x, y, 'text-anchor': 'middle' }, svg, t);
     e.setAttribute('style', style);
     return e;
+  }
+
+  // La barra de la pizarra lleva la ficha técnica del dibujo: cuántos componentes y zonas tiene y en
+  // cuántos pasos va el ataque (solo cuando es una arquitectura: con zonas, íconos o pasos numerados).
+  function meta(F) {
+    const arch = F.zoneN || F.icons || F.steps;
+    const parts = arch ? [`${Object.keys(F.pos).length} componentes`] : [];
+    if (F.zoneN) parts.push(`${F.zoneN} ${F.zoneN === 1 ? 'zona' : 'zonas'}`);
+    if (F.steps) parts.push(`ataque en ${F.steps} ${F.steps === 1 ? 'paso' : 'pasos'}`);
+    F.B.el.querySelector('.bar .meta').textContent = parts.join(' · ');
+  }
+
+  // La leyenda de MITRE ATT&CK al pie: cada técnica o mitigación que aparece en una caja, con su nombre
+  // oficial (validado contra la copia local de ATT&CK en el backend). La pizarra crece para llevarla.
+  async function legend(F, id, name) {
+    if (F.refs.has(id) || F.refs.size >= 3) return;
+    if (!F.foot) {
+      if (!(await growBoard(F.B, F.B.H + FOOT))) return;
+      F.foot = htmlEl('div', 'foot clicky-pop', F.B.el, `<span class="src">MITRE ATT&amp;CK</span>`);
+    }
+    F.refs.set(id, name);
+    htmlEl('span', `ref ${id[0] === 'M' ? 'mit' : 'tech'}`, F.foot, `<b>${esc(id)}</b>${name ? ` ${esc(name)}` : ''}`);
+  }
+
+  // Un paquete (cuadrado, como todo en Hinty) que recorre una flecha en bucle: el flujo de datos de la
+  // flecha que se está explicando y, siempre, el del camino del atacante.
+  function packet(F, d, len, color) {
+    if (reducedMotion()) return null;
+    const g = svgEl('rect', { x: -3, y: -3, width: 6, height: 6, rx: 1, fill: color, class: 'clicky-packet' }, F.under);
+    g.style.color = color;
+    svgEl('animateMotion', { dur: `${Math.max(1.2, Math.min(3.2, len / 110)).toFixed(2)}s`, repeatCount: 'indefinite', path: d, rotate: 'auto' }, g);
+    return g;
   }
 
   return {
@@ -173,12 +209,42 @@ export function createCards(ctx) {
     async board({ title, subtitle, cols = 3, rows = 2 }, s = 1) {
       const B = board(title, subtitle);
       const L = fitBoard(B, planLayout({ W: B.W, H: B.H, top: B.top }, cols, rows));
+      const zones = svgEl('g', { class: 'clicky-flow-zones' }, B.svg);
       const under = svgEl('g', { class: 'clicky-flow-lines' }, B.svg), over = svgEl('g', { class: 'clicky-flow-boxes' }, B.svg);
-      ctx.flow = { B, L, under, over, pos: {}, occupied: new Set(), used: {}, labels: [], lines: [], active: null };
+      ctx.flow = { B, L, zones, under, over, pos: {}, occupied: new Set(), used: {}, labels: [], lines: [], active: null, zoneN: 0, icons: 0, steps: 0, refs: new Map(), foot: null };
       await sleep(200 * s);
     },
 
-    async node({ id, text: label, col = 0, row = 0, tone, hot }, s = 1) {
+    // Una zona de la arquitectura (Internet, tu app, la base de datos): el límite de confianza que
+    // agrupa celdas vecinas, como en un diagrama de amenazas. Un recuadro punteado fino detrás de las
+    // cajas, con su nombre en mono sobre el borde; las flechas que lo cruzan cruzan ese límite.
+    async zone({ label, cols = [0, 0], rows = [0, 0], tone }, s = 1) {
+      const F = ctx.flow;
+      if (!F || !label) return;
+      const { B, L } = F, t = theme();
+      const a = cellRect(L, cols[0], rows[0]), b = cellRect(L, cols[1] ?? cols[0], rows[1] ?? rows[0]);
+      // con la grilla girada las esquinas se cruzan: el recuadro va de la menor a la mayor
+      const x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y), x1 = Math.max(a.x, b.x) + L.w, y1 = Math.max(a.y, b.y) + L.h;
+      const px = Math.max(6, Math.min(L.gx / 2 - 8, 22, x0 - 6, B.W - x1 - 6)), py = Math.max(8, Math.min(L.gy / 2 - 8, 18));
+      const Z = { x: x0 - px, y: y0 - py, w: x1 - x0 + 2 * px, h: y1 - y0 + 2 * py };
+      const kind = tone === 'attack' || tone === 'defense' ? tone : 'plain';
+      const color = kind === 'attack' ? t.attack : kind === 'defense' ? t.mark : t.line;
+      const bg = svgEl('rect', { x: Z.x, y: Z.y, width: Z.w, height: Z.h, rx: 14, fill: ZONE_FILL[kind], opacity: 0 }, F.zones);
+      const p = svgEl('path', { d: boxPath(Z, 14), fill: 'none', stroke: color, 'stroke-width': 1.25, 'stroke-linecap': 'round', class: `clicky-zone ${kind}` }, F.zones);
+      p.dataset.dash = '3 5';
+      F.zoneN++;
+      meta(F);
+      await pen.draw(p, s, B.r.x, B.r.y, { onStart: () => animate(0.4, u => bg.setAttribute('opacity', u)) });
+      const tag = htmlEl('div', `clicky-zone-tag ${kind} clicky-pop`, B.el, esc(label));
+      Object.assign(tag.style, { left: Z.x + 14 + 'px', top: Z.y - 8 + 'px', maxWidth: Math.max(60, Z.w - 28) + 'px' });
+      F.labels.push({ x: Z.x + 10, y: Z.y - 9, w: tag.offsetWidth + 8, h: 18 });
+      // su borde cuenta como línea: las etiquetas de las flechas no se escriben encima de él
+      F.lines.push({ x: Z.x - 2, y: Z.y - 2, w: Z.w + 4, h: 4 }, { x: Z.x - 2, y: Z.y + Z.h - 2, w: Z.w + 4, h: 4 },
+        { x: Z.x - 2, y: Z.y - 2, w: 4, h: Z.h + 4 }, { x: Z.x + Z.w - 2, y: Z.y - 2, w: 4, h: Z.h + 4 });
+      await sleep(140 * Math.min(1, s));
+    },
+
+    async node({ id, text: label, col = 0, row = 0, tone, hot, icon, mitre, mitreName }, s = 1) {
       const F = ctx.flow;
       if (!F) return;
       const { B, L } = F, t = theme();
@@ -192,9 +258,12 @@ export function createCards(ctx) {
       if (st.dash) edge.dataset.dash = st.dash;
       // el relleno aparece en 0,35 s, 0,18 s después de que el lápiz empieza el borde (como HeyClicky)
       await pen.draw(edge, s, B.r.x, B.r.y, { onStart: () => sleep(180).then(() => animate(0.35, u => fill.setAttribute('opacity', u))) });
-      // las cajas con color dicen qué son (ataque, defensa, la idea clave) en una línea chica arriba,
-      // así el color se lee sin leyenda; si la caja es baja, el color basta
-      const tag = TAGS[kind] && R.h >= 60 ? `<i class="tag">${TAGS[kind]}</i>` : '';
+      // Una línea chica arriba dice qué es la caja: su ícono de componente (servidor, base de datos,
+      // atacante…) y su técnica o mitigación de ATT&CK, o si no qué significa su color (ataque, defensa,
+      // la idea clave), o si no qué componente es. Si la caja es baja, el color basta.
+      const ico = iconSvg(icon), word = mitre || TAGS[kind] || ICON_WORDS[icon] || '';
+      if (ico) F.icons++;
+      const tag = (ico || word) && R.h >= 56 ? `<i class="tag">${ico}${word ? `<b>${esc(word)}</b>` : ''}</i>` : '';
       const el = htmlEl('div', `clicky-node ${kind}`, B.el, `${tag}<span>${esc(label)}</span>`);
       Object.assign(el.style, { left: R.x + 'px', top: R.y + 'px', width: R.w + 'px', height: R.h + 'px' });
       // el texto se achica antes de cortarse: se mide sin cortar palabras ni límite de líneas, y solo si
@@ -206,19 +275,23 @@ export function createCards(ctx) {
       const fits = () => {
         const cs = getComputedStyle(el), padY = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
         const tagH = tagEl && getComputedStyle(tagEl).display !== 'none' ? tagEl.offsetHeight + 3 : 0;
-        return words.offsetHeight + tagH + padY <= R.h + 1 && words.scrollWidth <= words.clientWidth + 1;
+        const tagW = !tagH || tagEl.scrollWidth <= tagEl.clientWidth + 1;
+        return words.offsetHeight + tagH + padY <= R.h + 1 && words.scrollWidth <= words.clientWidth + 1 && tagW;
       };
       let ok = false;
-      for (const size of ['', 'small', 'tiny', 'notag']) {
+      // sin lugar, primero se achica la letra, después la línea de arriba queda solo con el ícono
+      for (const size of ['', 'small', ...(ico && word ? ['iconly'] : []), 'tiny', 'notag']) {
         if (size) el.classList.add(size);
         if ((ok = fits())) break;
       }
       if (!ok) el.classList.add('hyph');
       el.classList.remove('measuring');
+      meta(F);
+      if (mitre) await legend(F, mitre, mitreName);
       await sleep(160 * Math.min(1, s));
     },
 
-    async edge({ from, to, label, tone }, s = 1) {
+    async edge({ from, to, label, tone, n }, s = 1) {
       const F = ctx.flow, A = F?.pos[from], Bn = F?.pos[to];
       if (!A || !Bn) return;
       const t = theme(), { B, L } = F, attack = tone === 'attack';
@@ -226,32 +299,54 @@ export function createCards(ctx) {
       if (F.active) {
         F.active.p.setAttribute('stroke', t.line);
         F.active.tip.setAttribute('fill', t.line);
+        F.active.dot?.remove();
         F.active = null;
       }
       const pts = route(L, A, Bn, F.used, F.labels);
       const color = attack ? t.attack : t.arrow;
-      const p = svgEl('path', { d: roundedPath(pts, 8), fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, F.under);
+      const d = roundedPath(pts, 8);
+      const p = svgEl('path', { d, fill: 'none', stroke: color, 'stroke-width': 2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' }, F.under);
       if (attack) p.dataset.dash = '6 6';
       await pen.draw(p, s, B.r.x, B.r.y);
+      // el camino del atacante queda andando (el punteado avanza hacia su punta)
+      if (attack) p.classList.add('clicky-ants');
       // la punta, después del trazo
       const end = pts[pts.length - 1];
       const tip = svgEl('path', { d: tipD({ x: end[0], y: end[1] }, endDir(pts), 9), fill: color, class: 'clicky-tip' }, F.under);
-      if (!attack) F.active = { p, tip };
+      const dot = packet(F, d, p.getTotalLength(), color);
+      if (!attack) F.active = { p, tip, dot };
       F.lines.push(...segmentBoxes(pts, 3));
-      if (!label) return sleep(120 * s);
-      const e = text(B.svg, 0, 0, label, `font: 500 13px var(--f-ui); letter-spacing: .01em; fill: ${attack ? 'var(--attack-strong)' : 'var(--ink-muted)'}; paint-order: stroke; stroke: ${t.board}; stroke-width: 6px; stroke-linejoin: round;`);
-      e.setAttribute('opacity', 0);
-      let w = label.length * 7;
-      try { w = e.getBBox().width || w; } catch { /* sin layout todavía */ }
-      const boxes = Object.values(F.pos).map(r => ({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 8 }));
-      const spot = placeLabel(pts, { w: w + 10, h: 19 }, {
-        obstacles: [...boxes, ...F.labels, ...F.lines],
-        bounds: { x: 4, y: B.top - 8, w: B.W - 8, h: B.H - B.top + 4 },
-      });
-      F.labels.push(spot);
-      e.setAttribute('x', spot.x + spot.w / 2);
-      e.setAttribute('y', spot.y + 14);
-      animate(0.3, u => e.setAttribute('opacity', u));
+      if (attack && n) { F.steps = Math.max(F.steps, n); meta(F); }
+      const show = [];
+      // el número de paso va sobre la línea, en el medio de su tramo más largo (un cuadrado de 16 px,
+      // ámbar en el ataque, recortado sobre la pizarra); la etiqueta busca lugar a su lado
+      let badge = null;
+      if (n) {
+        const [a, b] = longestSegment(pts), cx = (a[0] + b[0]) / 2, cy = (a[1] + b[1]) / 2;
+        badge = { x: cx - 9, y: cy - 9, w: 18, h: 18 };
+        const g = svgEl('g', { class: 'clicky-step', opacity: 0 }, B.svg);
+        svgEl('rect', { x: cx - 8, y: cy - 8, width: 16, height: 16, rx: 3, fill: attack ? t.attack : t.arrow, stroke: t.board, 'stroke-width': 2, 'paint-order': 'stroke' }, g);
+        text(g, cx, cy + 4, String(n), `font: 700 11px var(--f-mono); fill: ${attack ? '#1A0E00' : '#021216'};`);
+        F.labels.push(badge);
+        show.push(g);
+      }
+      if (label) {
+        const e = text(B.svg, 0, 0, label, `font: 500 13px var(--f-ui); letter-spacing: .01em; fill: ${attack ? 'var(--attack-strong)' : 'var(--ink-muted)'}; paint-order: stroke; stroke: ${t.board}; stroke-width: 6px; stroke-linejoin: round;`);
+        e.setAttribute('opacity', 0);
+        let w = label.length * 7;
+        try { w = e.getBBox().width || w; } catch { /* sin layout todavía */ }
+        const boxes = Object.values(F.pos).map(r => ({ x: r.x - 4, y: r.y - 4, w: r.w + 8, h: r.h + 8 }));
+        const spot = placeLabel(pts, { w: w + 10, h: 19 }, {
+          obstacles: [...boxes, ...F.labels, ...F.lines],
+          bounds: { x: 4, y: B.top - 8, w: B.W - 8, h: B.H - B.top + 4 },
+        });
+        F.labels.push(spot);
+        e.setAttribute('x', spot.x + spot.w / 2);
+        e.setAttribute('y', spot.y + 14);
+        show.push(e);
+      }
+      if (!show.length) return sleep(120 * s);
+      animate(0.3, u => show.forEach(x => x.setAttribute('opacity', u)));
       await sleep(180 * s);
     },
 
@@ -316,10 +411,30 @@ export function createCards(ctx) {
   };
 }
 
+// El tramo más largo de un camino de flecha (ahí va su número de paso).
+function longestSegment(pts) {
+  let best = [pts[0], pts[1]], len = -1;
+  for (let i = 1; i < pts.length; i++) {
+    const l = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (l > len) { len = l; best = [pts[i - 1], pts[i]]; }
+  }
+  return best;
+}
+
 // Estilo de cada caja según lo que significa (DESIGN.md › Hinty: cian para lo de Hinty, ámbar
 // punteado solo para lo del atacante).
 const NODE_KINDS = ['key', 'defense', 'attack'];
 const TAGS = { key: 'Idea clave', defense: 'Defensa', attack: 'Ataque' };
+// Qué componente es una caja neutra con ícono (la línea chica de arriba).
+const ICON_WORDS = {
+  user: 'Usuario', attacker: 'Atacante', browser: 'Navegador', internet: 'Internet', cloud: 'Nube', server: 'Servidor',
+  api: 'API', db: 'Base de datos', code: 'Código', repo: 'Repositorio', key: 'Llave', secret: 'Secreto', token: 'Token',
+  lock: 'Cifrado', shield: 'Control', log: 'Registro', alert: 'Alerta', mail: 'Correo',
+};
+// Velo de cada zona: apenas distinto de la pizarra, para que se lea el límite sin tapar la grilla.
+const ZONE_FILL = { plain: '#FFFFFF05', defense: '#2EE6FF0A', attack: '#FF8A000C' };
+// Alto de la leyenda de ATT&CK al pie de la pizarra.
+const FOOT = 30;
 // Como las cajas de HeyClicky (rellenas de su color, con el borde del mismo tono más intenso), en la
 // paleta de Mayday: la clave llena de cian profundo, la defensa con un velo cian, el ataque con un velo
 // ámbar y su borde punteado; un paso neutro, una hoja apenas más clara que la pizarra.

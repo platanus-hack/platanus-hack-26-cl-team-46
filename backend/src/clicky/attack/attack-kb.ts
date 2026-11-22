@@ -222,6 +222,20 @@ export function attackKb(): AttackKb {
   return kb;
 }
 
+/**
+ * Una técnica (T1552, T1552.001) o mitigación (M1041) de ATT&CK por su ID, con su nombre oficial;
+ * null si no existe en la copia local (así la pizarra nunca muestra un ID inventado).
+ */
+export function attackRef(id: unknown): { id: string; name: string } | null {
+  const key = typeof id === 'string' ? id.trim().toUpperCase() : '';
+  if (!/^(T\d{4}(\.\d{3})?|M\d{4})$/.test(key)) return null;
+  const k = attackKb();
+  const hit = key.startsWith('M')
+    ? k.mitigations.find((m) => m.id === key)
+    : k.techniques.find((t) => t.id === key);
+  return hit ? { id: hit.id, name: hit.name } : null;
+}
+
 /** Lo que el texto pide, en términos de ATT&CK: sus palabras más las del puente. */
 export function queryTerms(text: string): string[] {
   const f = fold(text);

@@ -132,7 +132,7 @@ Como un profe con plumón: no muestres el diagrama terminado, constrúyelo mient
 - La grilla: cols = pasos de la cadena principal (2 a 4); rows = 1 si es una sola cadena, 2 si hay una rama (lo que sale mal, la defensa) y 3 solo si hay dos ramas. No declares filas ni columnas que no vas a usar.
 - La cadena principal va en la fila 0, de izquierda a derecha (col 0, 1, 2…). Una rama va en la fila de abajo, justo bajo la caja de la que sale. Una caja por celda.
 - Las flechas unen cajas vecinas (al lado o justo abajo) y solo cajas que ya dibujaste: nunca saltes por encima de otra caja. Su label es un verbo de 1 o 2 palabras (máx 12 letras); en una cadena de 4 cajas, una sola palabra corta (máx 8 letras), porque el pasillo entre cajas es angosto.
-- Cajas de 2 a 4 palabras, sin repetir el título. Entre 3 y 6 cajas.
+- Cajas de 2 a 4 palabras, sin repetir el título. Entre 3 y 6 cajas (hasta 8 en una arquitectura).
 - Color con significado: tone "attack" para lo del atacante o lo que sale mal, "defense" para la defensa o lo que está bien, "key" para LA idea central (una sola). El resto, sin tone.
 - Si el concepto es abstracto, pega un example con una analogía de la vida diaria ("Es como…"), después de las cajas.
 Ejemplo:
@@ -142,6 +142,18 @@ Ejemplo:
 {"say":"Con ese token entras a la app sin volver a escribir la clave.","marks":[{"type":"node","id":"app","text":"Entras a la app","col":2,"row":0,"tone":"defense","at":"entras a la app"},{"type":"edge","from":"token","to":"app","label":"abre","at":"con ese token"}]}
 {"say":"Si alguien roba ese secreto, puede firmar tokens falsos.","marks":[{"type":"node","id":"robo","text":"Tokens falsos","col":1,"row":1,"tone":"attack","at":"tokens falsos"},{"type":"edge","from":"token","to":"robo","label":"si filtran","tone":"attack","at":"roba ese secreto"}]}
 {"say":"Es como la pulsera de un festival: el guardia mira la pulsera, no tu cara.","marks":[{"type":"example","text":"Es como la pulsera de un festival: el guardia mira la pulsera, no tu cara.","at":"la pulsera"}]}
+
+Pizarra de arquitectura: cuando explicas un ataque o cómo se defiende un sistema (por dónde entra el atacante, por dónde viaja un dato, dónde corta una defensa), dibújala como un ingeniero de seguridad, no como un esquema escolar:
+- Zonas (zone) para los límites de confianza: lo que está en Internet o controla el atacante (tone "attack"), tu app, tus datos. Dibújalas justo después de abrir la pizarra, antes que sus cajas; cada una cubre celdas vecinas y no se enciman. Máx 3.
+- Cada caja con su icon: qué componente es (attacker, user, browser, api, server, db, secret, token, repo, log…).
+- La ruta del ataque numerada: tone "attack" en las cajas y flechas del atacante, y n = 1, 2, 3… en sus flechas, en el orden en que pasa. Una flecha puede llevar el protocolo o el dato que viaja ("HTTPS", "SQL", "JWT falso", ".env").
+- mitre en la caja que lo amerita: la técnica de ATT&CK (T…) en la caja del ataque y la mitigación (M…) en la de la defensa. Solo IDs que estén en la referencia ATT&CK de este mensaje; si no hay uno que calce, no pongas mitre.
+- La defensa en cian (tone "defense") justo donde corta la ruta, y dila al final: es la idea que se lleva.
+Ejemplo (ids de ATT&CK de ejemplo):
+{"say":"Te dibujo por dónde entró: a la izquierda Internet, a la derecha tu app.","marks":[{"type":"board","title":"Ruta del ataque","subtitle":"De un secreto filtrado a tus datos","cols":3,"rows":2,"at":"te dibujo"},{"type":"zone","label":"Internet","cols":[0,0],"rows":[0,1],"tone":"attack","at":"Internet"},{"type":"zone","label":"Tu app · Render","cols":[1,2],"rows":[0,1],"at":"tu app"}]}
+{"say":"Tu repo público tenía el JWT_SECRET en un .env, y el atacante lo leyó.","marks":[{"type":"node","id":"repo","text":"Repo con .env","col":0,"row":1,"tone":"attack","icon":"repo","mitre":"T1552.001","at":"tu repo público"},{"type":"node","id":"atk","text":"Atacante","col":0,"row":0,"tone":"attack","icon":"attacker","at":"el atacante"},{"type":"edge","from":"repo","to":"atk","label":"lee .env","tone":"attack","n":1,"at":"lo leyó"}]}
+{"say":"Con ese secreto firma un token falso, tu API lo acepta y le abre la base de datos.","marks":[{"type":"node","id":"api","text":"Tu API","col":1,"row":0,"icon":"api","at":"tu API"},{"type":"edge","from":"atk","to":"api","label":"JWT falso","tone":"attack","n":2,"at":"un token falso"},{"type":"node","id":"db","text":"Base de clientes","col":2,"row":0,"tone":"key","icon":"db","at":"la base de datos"},{"type":"edge","from":"api","to":"db","label":"SQL","tone":"attack","n":3,"at":"le abre"}]}
+{"say":"Se corta aquí: el secreto va en un vault y se rota, así el token falso deja de servir.","marks":[{"type":"node","id":"vault","text":"Secreto rotado","col":1,"row":1,"tone":"defense","icon":"lock","mitre":"M1027","at":"en un vault"},{"type":"edge","from":"vault","to":"api","label":"firma","at":"se rota"}]}
 
 Marcas disponibles (agrega "at" a cada una):
 ${Object.entries(MARKS)
