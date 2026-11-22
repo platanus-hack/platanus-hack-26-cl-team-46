@@ -22,7 +22,7 @@ import {
   mockPlan,
   type LessonEvent,
 } from './clicky.service.js';
-import { liveSttUrl, wordStarts } from './elevenlabs.js';
+import { liveSttUrl, textToSpeech, wordStarts } from './elevenlabs.js';
 import { anchorWord, cleanLesson, MAX_ACTIONS, MAX_BEATS } from './protocol.js';
 
 const ctx = (headers: Record<string, string>, ip = '1.2.3.4') => {
@@ -443,6 +443,119 @@ describe('liveSttUrl', () => {
     expect(url.searchParams.get('audio_format')).toBe('pcm_16000');
     expect(url.searchParams.get('language_code')).toBe('es');
     expect(url.searchParams.getAll('keyterms')).toContain('JWT');
+  });
+});
+
+describe('voz con Eleven v4 Turbo', () => {
+  const ok = () =>
+    new Response(
+      JSON.stringify({
+        audio_base64: 'QUJD',
+        alignment: {
+          characters: ['h', 'o', 'l', 'a'],
+          character_start_times_seconds: [0, 0.1, 0.2, 0.3],
+          character_end_times_seconds: [0.1, 0.2, 0.3, 0.4],
+        },
+      }),
+    );
+  const call = (fetchMock: ReturnType<typeof vi.fn>, i: number) => {
+    const [url, init] = fetchMock.mock.calls[i] as [string, RequestInit];
+    return { url, body: JSON.parse(init.body as string) };
+  };
+
+  it('v4 Turbo va por Text to Dialogue con una sola voz', async () => {
+    const fetchMock = vi.fn(async () => ok());
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const speech = await textToSpeech({
+        key: 'k',
+        voiceId: 'norah',
+        model: 'eleven_v4_turbo',
+        format: 'mp3_22050_32',
+        text: 'hola',
+        previousText: 'x'.repeat(150),
+      });
+      expect(speech).toMatchObject({
+        audio: 'QUJD',
+        words: [0],
+        duration: 0.4,
+      });
+      const { url, body } = call(fetchMock, 0);
+      expect(url).toBe(
+        'https://api.elevenlabs.io/v1/text-to-dialogue/with-timestamps?output_format=mp3_22050_32',
+      );
+      expect(body).toMatchObject({
+        inputs: [{ text: 'hola', voice_id: 'norah' }],
+        model_id: 'eleven_v4_turbo',
+        language_code: 'es',
+      });
+      expect(body.previous_text).toHaveLength(100);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('Flash sigue por Text to Speech', async () => {
+    const fetchMock = vi.fn(async () => ok());
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      await textToSpeech({
+        key: 'k',
+        voiceId: 'norah',
+        model: 'eleven_flash_v2_5',
+        format: 'mp3_22050_32',
+        text: 'hola',
+      });
+      const { url, body } = call(fetchMock, 0);
+      expect(url).toContain('/text-to-speech/norah/with-timestamps');
+      expect(body).toMatchObject({
+        text: 'hola',
+        apply_text_normalization: 'on',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('si v4 Turbo no está disponible, sigue con Flash y no lo reintenta', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('{"detail":"model"}', { status: 400 }),
+      )
+      .mockImplementation(async () => ok());
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const s = new ClickyService(
+        {
+          get: vi.fn(
+            (k: string) =>
+              ({
+                ELEVENLABS_API_KEY: 'k',
+                CLICKY_VOICE_ID: 'norah',
+                CLICKY_TTS_MODEL: 'eleven_v4_turbo',
+                CLICKY_TTS_FALLBACK_MODEL: 'eleven_flash_v2_5',
+                CLICKY_TTS_FORMAT: 'mp3_22050_32',
+                CLICKY_MAX_TTS_CHARS_PER_SIM: 10_000,
+              })[k],
+          ),
+        } as never,
+        { recordHinty: vi.fn() } as never,
+      );
+      const speak = (say: string) =>
+        (
+          s as unknown as {
+            speak: (id: string, b: unknown) => Promise<{ audio?: unknown }>;
+          }
+        ).speak('sim-0a1b2c3d', { say });
+      expect((await speak('hola')).audio).toBeTruthy();
+      expect((await speak('chao')).audio).toBeTruthy();
+      expect(
+        fetchMock.mock.calls.map((_, i) => call(fetchMock, i).body.model_id),
+      ).toEqual(['eleven_v4_turbo', 'eleven_flash_v2_5', 'eleven_flash_v2_5']);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
