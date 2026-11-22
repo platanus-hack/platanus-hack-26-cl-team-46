@@ -1,0 +1,114 @@
+/* Mayday — tokens. Generado desde el sistema visual (tokens.json). No editar a mano: cambia el sistema y regenera. */
+/* Uso: importar en app/globals.css después de @import "tailwindcss"; */
+
+:root {
+  --bg-000: #050A0D;
+  --bg-100: #0A1217;
+  --bg-200: #111C22;
+  --bg-300: #18262E;
+  --line: #1E2C34;
+  --line-strong: #50687A;
+  --ink: #DDF7FA;
+  --ink-muted: #8FA6AE;
+  --ink-faint: #67808A;
+  --defense: #2EE6FF;
+  --defense-strong: #7FF0FF;
+  --defense-soft: #2EE6FF1F;
+  --defense-deep: #0A3540;
+  --on-defense: #021216;
+  --attack: #FF8A00;
+  --attack-strong: #FFB04D;
+  --attack-soft: #FF8A001F;
+  --attack-deep: #3A1F00;
+  --on-attack: #140A00;
+  --focus-ring: var(--defense);
+  --sim-000: #131416;
+  --sim-100: #1C1D20;
+  --sim-200: #26282B;
+  --sim-300: #34363A;
+  --sim-line: #2E3034;
+  --sim-ink: #E8E8EA;
+  --sim-ink-muted: #A0A3A8;
+  --sim-ink-faint: #858A91;
+  --sim-close: #FF5F57;
+  --sim-minimize: #FEBC2E;
+  --sim-zoom: #28C840;
+  --shadow-window: 0 24px 64px #000000B3, 0 0 0 1px #1E2C34;
+  --shadow-toast: 0 12px 32px #00000099, 0 0 0 1px #34363A;
+  --glow-defense: 0 0 0 1px #2EE6FF66, 0 0 24px #2EE6FF33;
+  --glow-attack: 0 0 0 1px #FF8A0080, 0 0 28px #FF8A0040;
+  /* Hinty (DESIGN.md › Hinty › 12) */
+  --hinty-board: #071116;
+  --hinty-grid: #12222A;
+  --hinty-highlight: #2EE6FF40;
+  --hinty-spotlight: #050A0DB8;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-24: 96px;
+  --radius-0: 0px;
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 999px;
+  --pixel-sm: 8px;
+  --pixel-md: 16px;
+  --pixel-lg: 32px;
+}
+
+/* Tailwind v4: clases como bg-bg-100, text-ink, text-defense, border-line-strong, font-mono, rounded-lg, shadow-window */
+@theme inline {
+  --color-bg-000: var(--bg-000);
+  --color-bg-100: var(--bg-100);
+  --color-bg-200: var(--bg-200);
+  --color-bg-300: var(--bg-300);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-defense: var(--defense);
+  --color-defense-strong: var(--defense-strong);
+  --color-defense-soft: var(--defense-soft);
+  --color-defense-deep: var(--defense-deep);
+  --color-on-defense: var(--on-defense);
+  --color-attack: var(--attack);
+  --color-attack-strong: var(--attack-strong);
+  --color-attack-soft: var(--attack-soft);
+  --color-attack-deep: var(--attack-deep);
+  --color-on-attack: var(--on-attack);
+  --color-focus-ring: var(--focus-ring);
+  --color-sim-000: var(--sim-000);
+  --color-sim-100: var(--sim-100);
+  --color-sim-200: var(--sim-200);
+  --color-sim-300: var(--sim-300);
+  --color-sim-line: var(--sim-line);
+  --color-sim-ink: var(--sim-ink);
+  --color-sim-ink-muted: var(--sim-ink-muted);
+  --color-sim-ink-faint: var(--sim-ink-faint);
+  --color-sim-close: var(--sim-close);
+  --color-sim-minimize: var(--sim-minimize);
+  --color-sim-zoom: var(--sim-zoom);
+  --color-hinty-board: var(--hinty-board);
+  --color-hinty-grid: var(--hinty-grid);
+  --color-hinty-highlight: var(--hinty-highlight);
+  --color-hinty-spotlight: var(--hinty-spotlight);
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius-0: var(--radius-0);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-full: var(--radius-full);
+  --shadow-window: var(--shadow-window);
+  --shadow-toast: var(--shadow-toast);
+  --shadow-glow-defense: var(--glow-defense);
+  --shadow-glow-attack: var(--glow-attack);
+}
+
+html { background: var(--bg-000); color: var(--ink); color-scheme: dark; }

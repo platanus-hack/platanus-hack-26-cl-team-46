@@ -1,0 +1,12 @@
+{
+  "openapi": "3.0.0",
+  "info": { "title": "demo", "version": "1.0" },
+  "paths": {
+    "/api/notes/{id}": {
+      "get": {
+        "security": [{ "bearer": [] }],
+        "parameters": [{ "name": "id", "in": "path", "schema": { "type": "integer" } }]
+      }
+    }
+  }
+}

@@ -1,0 +1,405 @@
+/* Hinty · tema mayday (frontend/DESIGN.md › Hinty).
+   Capa Mayday: fondos bg-*, texto ink*, acento defense (cian) y ámbar solo para lo del atacante.
+   Solo Geist y Geist Mono: el kit corre en el mismo documento y usa las variables del layout.
+   Todo cuadrado o con los radios de Mayday: sin círculos ni píldoras (salvo los botones de hablar y marcar). */
+
+.clicky-root {
+  --f-ui: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --f-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  --ease-in: cubic-bezier(.2, .8, .2, 1);
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2147483000;
+  font-family: var(--f-ui);
+  color: var(--ink);
+}
+
+.clicky-layer { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.clicky-panels { position: absolute; inset: 0; }
+.clicky-spot { transition: opacity .3s ease; }
+
+/* Lápiz: el blip del radar (Hinty › 4) */
+.clicky-pen { opacity: 0; transition: opacity .2s; filter: drop-shadow(0 0 1px rgba(46, 230, 255, .4)) drop-shadow(0 0 10px rgba(46, 230, 255, .35)); }
+.clicky-pen.on { opacity: 1; }
+.clicky-pen .blip { fill: var(--defense); stroke: var(--bg-000); stroke-width: 1; shape-rendering: crispEdges; }
+
+/* Movimiento (Hinty › 9): entra subiendo 8 px en 200 ms, sale bajando 4 px en 150 ms. Sin escala ni rebote. */
+.clicky-pop { animation: clicky-in .2s var(--ease-in) both; }
+@keyframes clicky-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.clicky-out { transition: opacity .15s ease-in, transform .15s ease-in; opacity: 0 !important; transform: translateY(4px) !important; }
+
+/* Etiquetas (Hinty › 5): rectángulos radius-sm, cian sólido, texto on-defense */
+.clicky-pill { position: absolute; white-space: nowrap; padding: 4px 8px; border-radius: var(--radius-sm); background: var(--defense); color: var(--on-defense); font: 500 13px/16px var(--f-ui); box-shadow: 0 8px 24px #00000080; }
+
+/* num: cuadrado de 24 px, sin radio */
+.clicky-badge { position: absolute; width: 24px; height: 24px; margin: -12px 0 0 -12px; display: grid; place-items: center; background: var(--defense); color: var(--on-defense); font: 600 13px/1 var(--f-mono); box-shadow: 0 0 0 2px var(--bg-000); }
+
+/* target: cuatro esquinas de mira (lock-on de HUD) que laten cada 1,2 s */
+.clicky-target { position: absolute; }
+.clicky-target .lock { position: absolute; inset: 0; animation: clicky-lock 1.2s ease-in-out infinite; }
+.clicky-target .lock i { position: absolute; width: 12px; height: 12px; border: 0 solid var(--defense); }
+.clicky-target .lock i:nth-child(1) { left: 0; top: 0; border-left-width: 3px; border-top-width: 3px; }
+.clicky-target .lock i:nth-child(2) { right: 0; top: 0; border-right-width: 3px; border-top-width: 3px; }
+.clicky-target .lock i:nth-child(3) { left: 0; bottom: 0; border-left-width: 3px; border-bottom-width: 3px; }
+.clicky-target .lock i:nth-child(4) { right: 0; bottom: 0; border-right-width: 3px; border-bottom-width: 3px; }
+@keyframes clicky-lock { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+
+/* Paneles */
+.clicky-panel { position: absolute; pointer-events: auto; box-sizing: border-box; }
+
+/* Pizarra (Hinty › 6): la pantalla del radar */
+.clicky-board {
+  overflow: hidden;
+  background-color: var(--hinty-board);
+  /* la grilla apenas se ve (como el papel cuadriculado de HeyClicky) y una luz suave baja desde la barra */
+  background-image:
+    radial-gradient(120% 70% at 50% 0%, #0D1E25 0%, transparent 62%),
+    linear-gradient(#0E1C23 1px, transparent 1px), linear-gradient(90deg, #0E1C23 1px, transparent 1px);
+  background-size: 100% 100%, 24px 24px, 24px 24px;
+  background-position: 0 0, -1px 35px, -1px 35px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-window), inset 0 1px 0 #ffffff08;
+  transition: height .25s var(--ease-in), top .25s var(--ease-in);
+}
+.clicky-board svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+/* la barra de la ventana */
+.clicky-board .bar { position: absolute; left: 0; right: 0; top: 0; height: 36px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px; background: #0A171D; border-bottom: 1px solid var(--line); font: 500 11px/16px var(--f-mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-faint); }
+.clicky-board .bar svg { position: static; width: 16px; height: 16px; flex: none; }
+.clicky-board .hd { position: absolute; left: 24px; right: 24px; top: 52px; }
+.clicky-board .ttl { font: 600 22px/28px var(--f-ui); letter-spacing: -.015em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clicky-board .sub { margin-top: 2px; font: 400 15px/22px var(--f-ui); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Cajas: texto claro y firme en todas (el color lo pone la caja y su línea de tono) */
+.clicky-node { position: absolute; box-sizing: border-box; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 8px 12px; text-align: center; color: var(--ink); font: 600 15px/20px var(--f-ui); letter-spacing: -.005em; hyphens: manual; overflow-wrap: normal; animation: clicky-fade .22s var(--ease-in) both; }
+.clicky-node span { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; max-width: 100%; }
+.clicky-node .tag { font: 500 10px/12px var(--f-mono); font-style: normal; letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; }
+.clicky-node.key .tag { color: var(--defense-strong); }
+.clicky-node.defense .tag { color: var(--defense); }
+.clicky-node.attack .tag { color: var(--attack); }
+.clicky-node.narrow { padding-left: 8px; padding-right: 8px; }
+.clicky-node.small { padding: 6px 8px; font-size: 13px; line-height: 17px; }
+.clicky-node.tiny { padding: 4px 6px; font-size: 12px; line-height: 15px; }
+.clicky-node.notag .tag { display: none; }
+/* solo si ni el tamaño más chico alcanza, se parte una palabra larga con guion */
+.clicky-node.hyph { hyphens: auto; overflow-wrap: break-word; }
+.clicky-node.measuring span { display: block; overflow: visible; -webkit-line-clamp: unset; }
+.clicky-box.key { filter: drop-shadow(0 0 8px #2EE6FF59); }
+.clicky-box.attack { filter: drop-shadow(0 0 6px #FF8A0033); }
+.clicky-tip { shape-rendering: geometricPrecision; }
+@keyframes clicky-fade { from { opacity: 0; } to { opacity: 1; } }
+
+.clicky-example { box-sizing: border-box; padding: 10px 14px 12px; background: var(--bg-200); border: 1px solid var(--line-strong); border-left: 3px solid var(--defense); border-radius: var(--radius-md); color: var(--ink); }
+.clicky-example.on-board { position: absolute; box-shadow: var(--shadow-window); }
+.clicky-example.below { box-shadow: 0 1px 0 #ffffff06 inset; background: #0E1A21; }
+.clicky-example .k { display: block; margin-bottom: 4px; font: 500 11px/16px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--defense); }
+.clicky-example p { margin: 0; font: 400 14px/20px var(--f-ui); color: var(--ink); }
+@keyframes clicky-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* chart: barras horizontales */
+.clicky-chart { position: absolute; left: 24px; right: 24px; display: flex; flex-direction: column; gap: 14px; }
+.clicky-chart .row { display: grid; grid-template-columns: minmax(64px, min(30%, 160px)) 1fr minmax(48px, auto); align-items: center; gap: 14px; min-height: 22px; }
+.clicky-chart .lbl { font: 400 14px/20px var(--f-ui); color: var(--ink-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.clicky-chart .track { position: relative; height: 18px; background: var(--bg-300); border-radius: 2px; overflow: hidden; }
+.clicky-chart .track i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--line-strong); }
+.clicky-chart .val { font: 500 13px/20px var(--f-mono); color: var(--ink-muted); text-align: right; white-space: nowrap; }
+.clicky-chart .val em { font: 500 11px/16px var(--f-mono); font-style: normal; letter-spacing: .12em; text-transform: uppercase; color: var(--defense); }
+.clicky-chart .row.hot .lbl { color: var(--ink); }
+.clicky-chart .row.hot .track i { background: var(--defense); }
+.clicky-chart .row.hot .val { font-size: 16px; color: var(--defense); }
+
+/* card (Hinty › 7): conclusión */
+.clicky-card { padding: 20px; background: var(--bg-100); border: 1px solid var(--line); border-radius: var(--radius-md); box-shadow: var(--shadow-toast); }
+.clicky-card .eyebrow { display: flex; align-items: center; gap: 8px; font: 500 11px/16px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+.clicky-card h4 { margin: 12px 0 0; font: 600 16px/24px var(--f-ui); color: var(--ink); }
+.clicky-card ul { margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.clicky-card li { list-style: none; display: flex; gap: 10px; align-items: flex-start; font: 400 15px/22px var(--f-ui); color: var(--ink); opacity: 0; transform: translateY(8px); transition: opacity .2s var(--ease-in), transform .2s var(--ease-in); }
+.clicky-card li.on { opacity: 1; transform: none; }
+.clicky-card svg { flex: none; }
+.clicky-card li svg { margin-top: 3px; }
+
+/* note: nota de bitácora. defense-soft sobre bg-100 para que se lea encima de cualquier cosa. */
+.clicky-note { padding: 14px; background: linear-gradient(var(--defense-soft), var(--defense-soft)), var(--bg-100); border-radius: var(--radius-sm); box-shadow: var(--shadow-toast); font: 400 15px/22px var(--f-ui); color: var(--ink); }
+.clicky-note .k { display: block; margin-bottom: 6px; font: 500 11px/16px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--defense); }
+
+/* button: el secundario de Mayday */
+.clicky-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.clicky-btn { pointer-events: auto; cursor: pointer; height: 40px; padding: 0 16px; background: var(--bg-100); border: 1px solid var(--line-strong); border-radius: var(--radius-md); color: var(--ink); font: 500 13px/1 var(--f-ui); box-shadow: var(--shadow-toast); transition: border-color .15s; }
+.clicky-btn:hover { border-color: var(--defense); }
+.clicky-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+/* Barra de Hinty (Hinty › 3): baja desde arriba y se pone encima del header, de borde a borde,
+   toda en cian (el color de Mayday) para que se note que Hinty está activo. Los inputs van en negro.
+   Mide lo mismo que el header (ClickyDock pone --hinty-bar-h) para no tapar las apps de abajo:
+   nunca crece; un subtítulo largo deja a la vista sus últimas 2 líneas. */
+.clicky-island {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  box-sizing: border-box;
+  height: var(--hinty-bar-h, 64px);
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  pointer-events: auto;
+  cursor: text;
+  background: var(--defense);
+  border-bottom: 1px solid var(--defense-strong);
+  box-shadow: 0 4px 16px rgb(46 230 255 / .25);
+  color: var(--on-defense);
+  font: 500 15px/20px var(--f-ui);
+  animation: clicky-bar-in .32s var(--ease-in) both;
+}
+@keyframes clicky-bar-in { from { transform: translateY(-100%); } to { transform: none; } }
+
+.clicky-island .av { flex: none; width: 40px; height: 40px; display: grid; place-items: center; background: var(--on-defense); border-radius: var(--radius-sm); }
+.clicky-island .av svg { display: block; overflow: visible; }
+.clicky-island .av .m { transition: fill .15s; }
+.clicky-island[data-state='speaking'] .av .m { fill: var(--defense-strong); filter: drop-shadow(0 0 1.5px var(--defense-strong)); }
+
+.clicky-island .wave { flex: none; display: flex; align-items: center; gap: 2px; height: 40px; }
+.clicky-island .wave i { width: 4px; height: 4px; background: var(--on-defense); }
+
+.clicky-island .dots { flex: none; display: none; align-items: center; gap: 4px; height: 40px; }
+.clicky-island .dots i { width: 4px; height: 4px; background: rgb(2 18 22 / .3); animation: clicky-think .9s steps(1, end) infinite; }
+.clicky-island .dots i:nth-child(2) { animation-delay: .3s; }
+.clicky-island .dots i:nth-child(3) { animation-delay: .6s; }
+@keyframes clicky-think { 0% { background: var(--on-defense); } 33.333% { background: rgb(2 18 22 / .3); } }
+
+.clicky-island[data-state='thinking'] .dots { display: flex; }
+.clicky-island[data-state='thinking'] .wave, .clicky-island[data-state='idle'] .wave { display: none; }
+
+/* El subtítulo va al centro de la barra (de la pantalla), centrado en alto, en un bloque de un poco más
+   de media pantalla. Si no cabe, quedan a la vista sus últimas 2 líneas. */
+.clicky-island .cap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: max(200px, min(58vw, calc(100vw - 440px))); max-height: 40px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; overflow-wrap: anywhere; pointer-events: none; }
+.clicky-island .cap-in { flex: none; text-align: center; }
+.clicky-island .cap span { display: none; }
+.clicky-island .cap span.on { display: inline; color: var(--on-defense); }
+/* la palabra que se acaba de decir: en negro sólido con letra cian */
+.clicky-island .cap span.now { background: var(--on-defense); color: var(--defense); box-shadow: 3px 0 0 var(--on-defense), -3px 0 0 var(--on-defense); }
+.clicky-island .cap.muted span.on { color: rgb(2 18 22 / .72); }
+
+.clicky-island input { flex: 1; min-width: 0; height: 44px; box-sizing: border-box; padding: 0 14px; background: #000; border: 2px solid #000; border-radius: var(--radius-md); outline: 0; color: var(--ink); font: 400 16px var(--f-ui); caret-color: var(--defense); }
+.clicky-island input::placeholder { color: var(--ink-faint); }
+.clicky-island input:focus { border-color: var(--on-defense); box-shadow: 0 0 0 2px var(--defense-strong); }
+
+/* Hablar: botón redondo negro con el micrófono cian, del mismo alto que el input (44 px).
+   Mientras escucha aparece a su derecha el lápiz (mismo tamaño) y empuja todo a la izquierda.
+   Los atajos no están a la vista: van en una nube que baja al pasar el cursor. */
+.clicky-island .hint { flex: none; margin-left: auto; display: flex; align-items: center; gap: 0; cursor: default; }
+.clicky-island .tool { position: relative; display: flex; }
+.clicky-island .talk, .clicky-island .mark {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--on-defense);
+  color: var(--defense);
+  cursor: pointer;
+  touch-action: none;
+  box-shadow: 0 0 0 3px rgb(2 18 22 / .18), 0 6px 16px rgb(2 18 22 / .35);
+  transition: transform .1s, background-color .15s, color .15s, box-shadow .15s;
+}
+.clicky-island .talk svg, .clicky-island .mark svg { display: block; position: relative; z-index: 1; width: 24px; height: 24px; }
+.clicky-island .talk:hover, .clicky-island .mark:hover { transform: scale(1.06); box-shadow: 0 0 0 4px rgb(2 18 22 / .28), 0 8px 20px rgb(2 18 22 / .4); }
+.clicky-island .talk:focus-visible, .clicky-island .mark:focus-visible { outline: 2px solid var(--on-defense); outline-offset: 3px; }
+
+/* halo que respira mientras está libre: invita a apretarlo */
+.clicky-island .talk::before, .clicky-island .talk::after { content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+.clicky-island[data-state='idle'] .talk::before { border: 2px solid var(--on-defense); animation: clicky-talk-halo 2.4s ease-out infinite; }
+@keyframes clicky-talk-halo { 0% { opacity: .55; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.45); } }
+/* escuchando (botón o fn): se invierte a blanco con ondas que salen */
+.clicky-island .talk.held, .clicky-island[data-state='listening'] .talk { background: #fff; color: var(--on-defense); }
+.clicky-island[data-state='listening'] .talk::before,
+.clicky-island[data-state='listening'] .talk::after { border: 2px solid #fff; animation: clicky-talk-wave 1.1s ease-out infinite; }
+.clicky-island[data-state='listening'] .talk::after { animation-delay: .55s; }
+@keyframes clicky-talk-wave { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.6); } }
+.clicky-island[data-state='thinking'] .talk, .clicky-island[data-state='speaking'] .talk { opacity: .55; }
+
+/* El lápiz del modo marcar: siempre a la derecha del micrófono. Encendido queda en blanco;
+   con el modo encendido se dibuja manteniendo shift (el cursor pasa a cruz). */
+.clicky-island .mark-wrap { margin-left: 12px; }
+.clicky-island[data-marking] .mark { background: #fff; color: var(--on-defense); box-shadow: 0 0 0 3px var(--on-defense), 0 6px 16px rgb(2 18 22 / .35); }
+html.clicky-drawing, html.clicky-drawing * { cursor: crosshair !important; }
+
+/* La X: cierra a Hinty (igual que apretar el audífono). Separada de los botones de hablar por una línea. */
+.clicky-island .sep { width: 1px; height: 28px; margin: 0 6px 0 16px; background: rgb(2 18 22 / .25); }
+.clicky-island .close { flex: none; width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--on-defense); cursor: pointer; transition: background-color .15s; }
+.clicky-island .close:hover { background: rgb(2 18 22 / .14); }
+.clicky-island .close:active { background: rgb(2 18 22 / .24); }
+.clicky-island .close:focus-visible { outline: 2px solid var(--on-defense); outline-offset: 2px; }
+.clicky-island .close svg { display: block; }
+
+/* Nube con el atajo: baja bajo el botón al pasar el cursor (o con foco de teclado). */
+.clicky-island .tip {
+  position: absolute;
+  top: calc(100% + 14px);
+  right: -8px;
+  z-index: 2;
+  width: max-content;
+  max-width: 280px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bg-000);
+  border: 1px solid var(--defense);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glow-defense), 0 12px 32px #000000b0;
+  color: var(--ink);
+  font: 400 13px/19px var(--f-ui);
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .15s var(--ease-in), transform .15s var(--ease-in);
+}
+/* la puntita de la nube apunta al botón */
+.clicky-island .tip::before { content: ''; position: absolute; top: -6px; right: 23px; width: 10px; height: 10px; background: var(--bg-000); border-left: 1px solid var(--defense); border-top: 1px solid var(--defense); transform: rotate(45deg); }
+.clicky-island .tip b { font: 600 13px/18px var(--f-ui); color: var(--defense); }
+.clicky-island .tip .m { color: var(--ink-muted); font-size: 12px; line-height: 17px; }
+.clicky-island .tool:hover .tip, .clicky-island .tool:focus-within .tip { opacity: 1; transform: none; transition-delay: .25s; }
+/* mientras se mantiene apretado no tapa lo que estás marcando */
+.clicky-island .talk.held + .tip { opacity: 0 !important; }
+.clicky-island kbd { display: inline-block; padding: 0 6px; margin: 0 1px; background: var(--bg-200); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--radius-sm); font: 500 11px/17px var(--f-mono); letter-spacing: .04em; color: var(--defense); white-space: nowrap; }
+
+/* Error: borde inferior attack, un pixel de 6×6 attack a la izquierda. El texto sigue oscuro para leerse sobre el cian. */
+.clicky-island .err { display: none; flex: none; width: 8px; height: 8px; background: var(--attack); box-shadow: 0 0 0 2px var(--on-defense); }
+.clicky-island[data-error] { border-bottom-color: var(--attack); }
+.clicky-island[data-error] .err { display: block; }
+
+/* Marco cian en los bordes de la pantalla mientras Hinty está activo. */
+.clicky-frame {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 4px var(--defense), inset 0 0 60px rgb(46 230 255 / .28);
+  animation: clicky-frame-in .4s var(--ease-in) both;
+}
+@keyframes clicky-frame-in { from { opacity: 0; } to { opacity: 1; } }
+.clicky-root.clicky-capturing .clicky-frame { visibility: hidden; }
+
+/* En mobile la página hace scroll y el header se va: la barra mide lo mismo que la barra de la app (56 px). */
+@media (max-width: 767px) {
+  .clicky-island { height: 56px; }
+}
+@media (max-width: 640px) {
+  .clicky-island { padding: 0 12px; gap: 10px; }
+  /* en pantallas chicas el subtítulo va en el espacio libre, no centrado encima de los botones */
+  .clicky-island .cap { position: static; transform: none; width: auto; flex: 1; }
+  .clicky-island .wave, .clicky-island .dots { display: none !important; }
+  .clicky-island .sep { margin: 0 2px 0 6px; }
+  .clicky-island .mark-wrap { margin-left: 8px; }
+}
+
+/* Cada marca vive en un grupo que se mueve con su elemento cuando la página hace scroll. */
+.clicky-anchor { position: absolute; inset: 0; }
+
+/* Mientras el usuario habla encima de una explicación, lo dibujado se atenúa (no se borra). */
+.clicky-root.clicky-dimmed > .clicky-layer:not(.clicky-penlayer), .clicky-root.clicky-dimmed > .clicky-panels { filter: opacity(.3); transition: filter .15s; }
+/* En la captura no sale el blip (sí el trazo del usuario: el modelo tiene que verlo). */
+.clicky-root.clicky-capturing .clicky-penlayer { visibility: hidden; }
+
+/* El trazo del usuario (modo marcar + shift): blanco (ink), a mano alzada; el cian es de Hinty. */
+.clicky-user { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; transition: opacity .4s; }
+.clicky-user path { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 1px var(--bg-000)) drop-shadow(0 1px 3px #000000a0); }
+.clicky-user.fading { opacity: 0; }
+
+
+/* check y "?": cuadros de 24 px con borde cian junto al elemento */
+.clicky-tick, .clicky-q { position: absolute; width: 24px; height: 24px; display: grid; place-items: center; background: var(--bg-000); box-shadow: 0 0 0 2px var(--defense); }
+.clicky-tick svg { display: block; }
+.clicky-q { color: var(--defense); font: 600 15px/1 var(--f-mono); }
+
+/* Acciones: el pulso del clic, el chip de confirmación y el paso de la guía */
+.clicky-pulse { position: absolute; outline: 2px solid var(--defense); outline-offset: 2px; border-radius: var(--radius-sm); }
+
+.clicky-confirm, .clicky-stepper { position: absolute; pointer-events: auto; display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; background: var(--bg-100); border: 1px solid var(--line-strong); border-radius: var(--radius-md); box-shadow: var(--shadow-toast); white-space: nowrap; font: 500 13px/18px var(--f-ui); color: var(--ink); }
+.clicky-confirm { border-color: var(--defense); }
+.clicky-confirm .k, .clicky-stepper .k { font: 500 11px/16px var(--f-mono); letter-spacing: .12em; text-transform: uppercase; color: var(--defense); }
+.clicky-confirm .t, .clicky-stepper .t { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.clicky-confirm button, .clicky-stepper button { height: 28px; padding: 0 10px; border-radius: var(--radius-sm); font: 500 12px/1 var(--f-ui); cursor: pointer; }
+.clicky-confirm .yes, .clicky-stepper .do { background: var(--defense); color: var(--on-defense); border: 0; }
+.clicky-confirm .no { background: transparent; color: var(--ink); border: 1px solid var(--line-strong); }
+.clicky-confirm button:focus-visible, .clicky-stepper button:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+.clicky-stepper .esc { font: 400 11px/16px var(--f-ui); color: var(--ink-faint); }
+.clicky-stepper .esc kbd { padding: 1px 4px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); font: 500 10px/14px var(--f-mono); color: var(--ink-muted); }
+.clicky-stepper.done { gap: 8px; padding-right: 12px; border-color: var(--defense); }
+.clicky-stepper.done svg { display: block; }
+
+/* La mira del paso brilla más a medida que el cursor se acerca (--near de 0 a 1). */
+.clicky-step .glow { position: absolute; inset: 0; border-radius: var(--radius-sm); background: var(--defense); opacity: calc(var(--near, 0) * .14); }
+.clicky-step .lock i { filter: drop-shadow(0 0 calc(var(--near, 0) * 8px) var(--defense)); }
+.clicky-step.done .lock { animation: none; opacity: .4; }
+
+/* Aviso proactivo: la etiqueta se puede apretar para que Hinty lo explique. */
+.clicky-pill.clicky-nudge { pointer-events: auto; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+.clicky-nudge kbd { padding: 0 4px; border: 1px solid var(--on-defense); border-radius: 2px; font: 500 11px/14px var(--f-mono); }
+.clicky-nudge span { font-weight: 400; }
+
+/* Movimiento reducido: todo aparece completo y quieto (los trazos los resuelve el kit). */
+@media (prefers-reduced-motion: reduce) {
+  .clicky-root *, .clicky-root { animation: none !important; transition: none !important; }
+  .clicky-island .wave i { height: 12px !important; }
+  .clicky-island .talk::before, .clicky-island .talk::after { display: none; }
+  .clicky-island .dots i:first-child { background: var(--defense); }
+}
+
+/* La X de los dibujos (como el «Cerrar (esc)» de HeyClicky): flota en la esquina de arriba a la
+   derecha de todo lo que dibujó Hinty y lo hace desaparecer. Entra con un pop; al pasar el cursor
+   se pone cian, la × gira y aparece la etiqueta «Cerrar · esc». */
+.clicky-dismiss {
+  position: fixed;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  margin: 0;
+  padding: 0;
+  display: none;
+  place-items: center;
+  border: 2px solid var(--defense);
+  border-radius: 50%;
+  background: var(--bg-000);
+  color: var(--ink);
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: 0 0 0 4px rgb(46 230 255 / .14), 0 8px 24px #000000b0;
+  transition: background-color .15s, color .15s, box-shadow .15s, transform .12s;
+}
+.clicky-dismiss[data-on] { display: grid; animation: clicky-dismiss-in .32s cubic-bezier(.2, .9, .3, 1.4) both; }
+.clicky-dismiss svg { display: block; transition: transform .2s var(--ease-in); }
+.clicky-dismiss:hover { background: var(--defense); color: var(--on-defense); box-shadow: 0 0 0 6px rgb(46 230 255 / .22), var(--glow-defense), 0 8px 24px #000000b0; transform: scale(1.08); }
+.clicky-dismiss:hover svg { transform: rotate(90deg); }
+.clicky-dismiss:active { transform: scale(.94); }
+.clicky-dismiss:focus-visible { outline: 2px solid var(--defense); outline-offset: 3px; }
+.clicky-dismiss .lbl {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translate(4px, -50%);
+  padding: 5px 9px;
+  background: var(--bg-000);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  color: var(--ink);
+  font: 500 12px/16px var(--f-ui);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s, transform .15s var(--ease-in);
+}
+.clicky-dismiss .lbl kbd { margin-left: 6px; }
+.clicky-dismiss:hover .lbl, .clicky-dismiss:focus-visible .lbl { opacity: 1; transform: translate(0, -50%); }
+/* a la izquierda no hay lugar: la etiqueta va a la derecha */
+.clicky-dismiss[data-side='right'] .lbl { right: auto; left: calc(100% + 10px); transform: translate(-4px, -50%); }
+.clicky-dismiss[data-side='right']:hover .lbl { transform: translate(0, -50%); }
+.clicky-root.clicky-capturing .clicky-dismiss { visibility: hidden; }
+@keyframes clicky-dismiss-in { from { opacity: 0; transform: scale(.4) rotate(-90deg); } to { opacity: 1; transform: none; } }

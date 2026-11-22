@@ -1,0 +1,27 @@
+<%- include('header') %>
+<h1>Administración</h1>
+
+<h2>Usuarios (<%= users.length %>)</h2>
+<p><a href="/api/admin/users/export">Descargar respaldo (JSON)</a></p>
+<table>
+  <tr><th>#</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Rol</th><th>Creado</th></tr>
+  <% users.forEach(function (u) { %>
+    <tr>
+      <td><%= u.id %></td>
+      <td><%= u.name %></td>
+      <td><%= u.email %></td>
+      <td><%= u.phone || '' %></td>
+      <td><%= u.role %></td>
+      <td><%= new Date(u.created_at).toLocaleDateString('es-CL') %></td>
+    </tr>
+  <% }) %>
+</table>
+
+<h2>Últimas notas</h2>
+<% notes.forEach(function (n) { %>
+  <div class="note">
+    <strong><%= n.title %></strong> <span class="muted">— <%= n.author_name %> (<%= n.author_email %>)</span>
+    <div style="white-space: pre-wrap"><%- n.body %></div>
+  </div>
+<% }) %>
+<%- include('footer') %>

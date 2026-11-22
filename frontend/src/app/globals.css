@@ -1,0 +1,170 @@
+@import "tailwindcss";
+/* Sistema de diseño Mayday. Reglas en frontend/DESIGN.md. */
+@import "./mayday-tokens.css";
+@import "./mayday-components.css";
+
+/* Siempre oscuro: no existe modo claro (DESIGN.md › Fundamentos). */
+body {
+  background: var(--bg-000);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+::selection {
+  background: var(--defense-soft);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/* Tailwind v4 deja los botones con cursor: default. Todo lo clickeable muestra la manito; lo deshabilitado, no.
+   En @layer base para que las utilidades (cursor-not-allowed, cursor-default…) sigan ganando. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="option"],
+  [role="menuitem"],
+  [role="radio"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="link"],
+  select:not(:disabled),
+  summary,
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  input[type="range"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled,
+  input:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* .md-btn y .md-option fijan cursor: pointer fuera de capas: deshabilitados también muestran que no se puede. */
+.md-btn:disabled,
+.md-option:disabled {
+  cursor: not-allowed;
+}
+
+/* Barra de carga del navegador simulado (WebView). */
+@keyframes md-load {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+
+/* Entrada de las secciones con scroll normal (Rise): el md-rise del sistema, un poco más largo. */
+.md-reveal[data-rise="pending"] { opacity: 0; }
+.md-reveal[data-rise="in"] { animation: md-rise .45s cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) { .md-reveal[data-rise] { opacity: 1; } }
+
+/* Espacio reservado de DemoVideo: grilla de puntos (pixeles de 2 px, cuadrados). */
+.md-video-slot {
+  background-color: var(--bg-100);
+  background-image: conic-gradient(from 270deg at 2px 2px, var(--line-strong) 25%, transparent 0);
+  background-size: 16px 16px;
+  background-position: 7px 7px;
+}
+
+/* Cursor de bloque de TypedLog: parpadeo lento (1 por segundo, DESIGN.md › seguridad fotosensible). */
+@keyframes md-caret-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+.md-caret-blink { animation: md-caret-blink 1s steps(1) infinite; }
+@media (prefers-reduced-motion: reduce) { .md-caret-blink { animation: none; } }
+
+/* Menú del Select: entra corto desde arriba. */
+@keyframes md-select-pop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.md-select-pop { animation: md-select-pop .12s cubic-bezier(.2,.8,.2,1) both; transform-origin: top; }
+@media (prefers-reduced-motion: reduce) { .md-select-pop { animation: none; } }
+
+/* Cortina de navegación en mobile: entra desde la derecha sobre un fondo que se oscurece. */
+@keyframes md-drawer-in { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes md-drawer-fade { from { opacity: 0; } to { opacity: 1; } }
+.md-drawer-in { animation: md-drawer-in .22s cubic-bezier(.2,.8,.2,1) both; }
+.md-drawer-fade { animation: md-drawer-fade .22s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .md-drawer-in, .md-drawer-fade { animation: none; } }
+
+/* Barra fija de abajo en mobile (paso 3): sube desde el borde. */
+@keyframes md-bar-in { from { transform: translateY(100%); } to { transform: none; } }
+.md-bar-in { animation: md-bar-in .2s cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) { .md-bar-in { animation: none; } }
+
+/* Panel del agente de deploy (AgentPanel): barrido de luz lento mientras trabaja, pulso del punto
+   de estado, barra del paso en curso que va y viene, y líneas que entran. Es movimiento, no luz. */
+@keyframes md-agent-sweep { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.md-agent-sweep::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(100deg, transparent 30%, #2EE6FF12 50%, transparent 70%);
+  animation: md-agent-sweep 3.6s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes md-agent-ping { from { transform: scale(1); opacity: .6; } to { transform: scale(2.6); opacity: 0; } }
+.md-agent-ping { animation: md-agent-ping 1.8s cubic-bezier(0, 0, .2, 1) infinite; }
+@keyframes md-agent-progress { from { left: -33%; } to { left: 100%; } }
+.md-agent-progress { animation: md-agent-progress 1.6s ease-in-out infinite; }
+@keyframes md-agent-line { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.md-agent-line { animation: md-agent-line .35s cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .md-agent-sweep::before, .md-agent-ping, .md-agent-line { animation: none; }
+  .md-agent-ping { display: none; }
+  .md-agent-progress { animation: none; left: 0; width: 50%; opacity: .6; }
+}
+
+/* Historial de sucesos: luz de encendido. Un pixel cian que parpadea y la etiqueta ON, como el led de un equipo. */
+.md-power { display: inline-flex; align-items: center; gap: 8px; height: 16px; }
+.md-power i {
+  width: 6px; height: 6px; background: var(--defense);
+  /* Glow de led: un halo pegado y otro más difuso, del mismo color de la luz. */
+  box-shadow: 0 0 3px 0 color-mix(in srgb, var(--defense) 80%, transparent), 0 0 8px 1px color-mix(in srgb, var(--defense) 45%, transparent);
+  animation: md-power 1.2s steps(1, end) infinite;
+}
+/* text-box recorta el interlineado a la altura de las mayúsculas: así "ON" queda centrado ópticamente con el pixel. */
+.md-power span { font: 300 11px/1 var(--font-geist-mono), ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-muted); text-box: trim-both cap alphabetic; }
+/* Luz baja: el mismo cian, más tenue, y el glow casi desaparece, como un led que baja su intensidad. */
+@keyframes md-power {
+  50% { background: color-mix(in srgb, var(--defense) 40%, transparent); box-shadow: 0 0 2px 0 color-mix(in srgb, var(--defense) 18%, transparent), 0 0 4px 0 color-mix(in srgb, var(--defense) 8%, transparent); }
+}
+/* En pausa: la luz queda roja y fija y la etiqueta dice OFF, como un equipo en standby. */
+.md-power.is-paused i {
+  background: var(--sim-close); animation: none;
+  box-shadow: 0 0 3px 0 color-mix(in srgb, var(--sim-close) 80%, transparent), 0 0 8px 1px color-mix(in srgb, var(--sim-close) 45%, transparent);
+}
+@media (prefers-reduced-motion: reduce) { .md-power i { animation: none; } }
+
+/* Diálogo Mayday (ConfirmDialog): reemplaza los pop-ups nativos (confirm/alert).
+   Capa Mayday: superficie bg-100, borde line, radius-md; entra corto desde abajo. */
+.md-dialog {
+  margin: auto; padding: 0; border: 0; background: transparent; color: var(--ink);
+  width: min(440px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px);
+  overflow: visible;
+}
+.md-dialog::backdrop { background: #050A0DB3; backdrop-filter: blur(2px); animation: md-drawer-fade .18s ease-out both; }
+.md-dialog__card {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-6); background: var(--bg-100); border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md); box-shadow: var(--shadow-window);
+  animation: md-dialog-in .2s cubic-bezier(.2,.8,.2,1) both;
+}
+.md-dialog__label { display: inline-flex; align-items: center; gap: var(--space-2); font: 500 11px/16px var(--font-geist-mono), ui-monospace, monospace; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); }
+.md-dialog__label::before { content: ""; width: 6px; height: 6px; background: var(--defense); flex: none; }
+.md-dialog__title { margin: 0; font: 600 20px/26px var(--font-geist-sans), system-ui, sans-serif; letter-spacing: -.01em; color: var(--ink); overflow-wrap: anywhere; }
+.md-dialog__desc { margin: 0; font: 400 15px/22px var(--font-geist-sans), system-ui, sans-serif; color: var(--ink-muted); }
+.md-dialog__desc code { font: 400 13px/20px var(--font-geist-mono), ui-monospace, monospace; color: var(--ink); }
+.md-dialog__actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-3); }
+@media (max-width: 480px) { .md-dialog__actions > .md-btn { flex: 1 1 auto; justify-content: center; } }
+@keyframes md-dialog-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .md-dialog__card, .md-dialog::backdrop { animation: none; } }

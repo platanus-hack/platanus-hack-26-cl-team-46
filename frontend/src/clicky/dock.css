@@ -1,0 +1,83 @@
+/* El tile de Hinty (DESIGN.md › Hinty › 2): abajo a la derecha de la columna principal.
+   ClickyDock pone --hinty-dock-* según la columna; sin ella, en la esquina de la pantalla. */
+.clicky-dock {
+  position: fixed;
+  right: var(--hinty-dock-right, 24px);
+  bottom: var(--hinty-dock-bottom, 24px);
+  z-index: 2147483001; /* sobre las capas de dibujo de Hinty */
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  pointer-events: none;
+}
+.clicky-dock-side {
+  position: fixed;
+  right: var(--hinty-dock-right, 24px);
+  top: 88px;
+  bottom: 120px;
+  width: min(320px, calc(100vw - 48px));
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.clicky-dock-plane {
+  pointer-events: auto;
+  position: relative;
+  box-sizing: border-box;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  background: var(--bg-100);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-toast);
+  transition: background-color .15s, border-color .15s, box-shadow .15s, transform .1s;
+}
+.clicky-dock-plane svg { display: block; }
+.clicky-dock-plane:hover { background: var(--bg-200); border-color: rgb(46 230 255 / .6); }
+.clicky-dock-plane:active { background: var(--bg-300); border-color: var(--defense); transform: translateY(1px); }
+.clicky-dock-plane:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+.clicky-dock[data-status="starting"] .clicky-dock-plane,
+.clicky-dock[data-ended][data-status="off"] .clicky-dock-plane { background: var(--bg-100); border-color: var(--defense); }
+.clicky-dock[data-status="on"] .clicky-dock-plane { background: var(--defense-deep); border: 2px solid var(--defense); }
+.clicky-dock[data-status="on"][data-seeing] .clicky-dock-plane { box-shadow: var(--glow-defense), var(--shadow-toast); }
+
+/* Activando: una línea de escaneo de 2 px baja por el tile (600 ms, en loop). Es movimiento, no luz. */
+.clicky-dock-scan { position: absolute; left: 4px; right: 4px; top: 3px; height: 2px; background: var(--defense); animation: clicky-scan .6s linear infinite; }
+@keyframes clicky-scan { from { transform: translateY(0); } to { transform: translateY(46px); } }
+
+/* Al encenderse: un solo pulso de radio que crece hasta 1,15× y se desvanece en 400 ms. */
+.clicky-dock-pulse { position: absolute; inset: -2px; border: 1px solid var(--defense); border-radius: var(--radius-md); pointer-events: none; opacity: 0; animation: clicky-radio .4s cubic-bezier(.2, .8, .2, 1); }
+@keyframes clicky-radio { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(1.15); } }
+
+/* Pixel de estado: lleno = ve la pantalla, vacío = solo texto. Fijo, no parpadea. */
+.clicky-dock-led { position: absolute; right: 4px; top: 4px; box-sizing: border-box; width: 6px; height: 6px; border: 1.5px solid var(--defense); background: transparent; }
+.clicky-dock-led.seeing { background: var(--defense); }
+
+/* Etiqueta: aparece en hover, en el foco, en la primera visita y mientras se conecta. */
+.clicky-dock-tip {
+  pointer-events: none;
+  padding: 6px 10px;
+  background: var(--bg-100);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-toast);
+  font: 400 13px/18px var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(4px);
+  transition: opacity .2s cubic-bezier(.2, .8, .2, 1), transform .2s cubic-bezier(.2, .8, .2, 1);
+}
+.clicky-dock-tip.on { opacity: 1; transform: none; }
+
+@media (max-width: 640px) {
+  .clicky-dock { right: 14px; bottom: 14px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .clicky-dock *, .clicky-dock-plane { animation: none !important; transition: none !important; }
+}

@@ -1,0 +1,20 @@
+<%- include('header') %>
+<h1>Mi perfil</h1>
+<% if (message) { %><p class="ok"><%= message %></p><% } %>
+<% if (error) { %><p class="error"><%= error %></p><% } %>
+
+<form method="post" action="/profile">
+  <label>Nombre <input name="name" value="<%= user.name %>"></label>
+  <label>Email <input type="email" name="email" value="<%= user.email %>"></label>
+  <label>Teléfono <input name="phone" value="<%= user.phone || '' %>"></label>
+  <label>Bio <textarea name="bio"><%= user.bio || '' %></textarea></label>
+  <button>Guardar perfil</button>
+</form>
+
+<h2>Cambiar contraseña</h2>
+<form method="post" action="/profile/password">
+  <label>Contraseña actual <input type="password" name="current_password" required></label>
+  <label>Nueva contraseña <input type="password" name="new_password" required></label>
+  <button>Cambiar contraseña</button>
+</form>
+<%- include('footer') %>

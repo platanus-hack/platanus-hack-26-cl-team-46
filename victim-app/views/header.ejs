@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Apuntes</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; color: #222; }
+    nav { display: flex; gap: 1rem; align-items: center; border-bottom: 1px solid #ddd; padding-bottom: .75rem; margin-bottom: 1.5rem; }
+    nav .spacer { flex: 1; }
+    input, textarea { width: 100%; padding: .4rem; margin: .25rem 0 .75rem; box-sizing: border-box; font: inherit; }
+    textarea { min-height: 6rem; }
+    button { padding: .4rem .9rem; cursor: pointer; }
+    .note { border: 1px solid #e3e3e3; border-radius: 6px; padding: .75rem 1rem; margin-bottom: .75rem; }
+    .muted { color: #777; font-size: .9em; }
+    .error { color: #b00020; }
+    .ok { color: #1b7f3b; }
+    table { width: 100%; border-collapse: collapse; }
+    td, th { border-bottom: 1px solid #eee; padding: .35rem; text-align: left; font-size: .92em; }
+    pre { background: #f6f6f6; padding: 1rem; overflow: auto; font-size: .8em; }
+    .inline { display: inline; }
+  </style>
+</head>
+<body>
+<nav>
+  <strong><a href="/">📓 Apuntes</a></strong>
+  <span class="spacer"></span>
+  <% if (user) { %>
+    <% if (user.role === 'admin') { %><a href="/admin">Admin</a><% } %>
+    <a href="/profile"><%= user.name %></a>
+    <form class="inline" method="post" action="/logout"><button>Salir</button></form>
+  <% } else { %>
+    <a href="/login">Entrar</a>
+    <a href="/register">Crear cuenta</a>
+  <% } %>
+</nav>

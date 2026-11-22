@@ -1,0 +1,13 @@
+/* Solo para la vista previa de Hinty en /design: saca las piezas del kit de su posición fija. */
+.hinty-preview-scroll { overflow-x: auto; }
+.hinty-preview { position: relative; overflow: hidden; border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--bg-000); }
+.hinty-preview-dock .clicky-dock { position: absolute; }
+
+.hinty-states .clicky-dock { position: relative; right: auto; bottom: auto; }
+.hinty-states .clicky-dock-tip { display: none; }
+.hinty-states [data-force="hover"] .clicky-dock-plane { background: var(--bg-200); border-color: rgb(46 230 255 / .6); }
+.hinty-states [data-force="active"] .clicky-dock-plane { background: var(--bg-300); border-color: var(--defense); transform: translateY(1px); }
+.hinty-states [data-force="focus"] .clicky-dock-plane { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+
+.hinty-pieces.clicky-root { position: relative; inset: auto; z-index: auto; pointer-events: auto; }
+.hinty-pieces .clicky-panel { position: relative; }

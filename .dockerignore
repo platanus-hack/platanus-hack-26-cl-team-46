@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/dist
+**/.data
+**/.data-test
+**/.env
+**/.env.*
+!**/.env.example
+.context
+.git
+victim-app
+docs

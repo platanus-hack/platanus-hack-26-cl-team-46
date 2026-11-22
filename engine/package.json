@@ -1,0 +1,18 @@
+{
+  "name": "@hack26/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Motor de hacking: pasada de diagnóstico real contra una app controlada y autorizada; produce la guía del hackeo y escenarios preconfigurados para el simulador.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "diagnose": "node src/cli/run.ts",
+    "help": "node src/cli/run.ts --help",
+    "test": "node --test test/*.test.ts",
+    "modal:selftest": "cd .. && ENGINE_MODAL_SECRETS= modal run engine/modal_app.py::selftest",
+    "modal:serve": "cd .. && modal serve engine/modal_app.py",
+    "modal:deploy": "cd .. && modal deploy engine/modal_app.py"
+  }
+}
