@@ -394,12 +394,13 @@ function FlowControls({
       {(sim.status === "finished" || sim.status === "failed" || sim.status === "stopped") && (
         <Btn onClick={onNewRun}>Nuevo simulacro</Btn>
       )}
-      {sim.status === "finished" && (
+      {/* Toda simulación que cierra (terminada, o cortada después de partir) deja un reporte. */}
+      {(sim.status === "finished" || sim.report) && (
         <Link
           href={`/result?sim=${sim.sim_id}`}
           className="rounded-md bg-defense px-3 py-1 font-medium text-on-defense hover:bg-defense-strong"
         >
-          Ver resultado
+          {sim.report?.status === "ready" ? "Ver reporte" : "Ver reporte (preparándose…)"}
         </Link>
       )}
     </div>

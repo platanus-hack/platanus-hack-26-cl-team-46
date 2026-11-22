@@ -1,4 +1,5 @@
 /** Cliente de /simulations (orquestación multi-agente). Tipos alineados con backend/src/simulations. */
+import type { ResultRank, ResultVerdict, SimulationResult } from "@/components/result/types";
 import { API_URL, authedEventSource, goToLogin } from "./api";
 
 export type SimStatus = "starting" | "ready" | "running" | "paused" | "finished" | "failed" | "stopped";
@@ -59,7 +60,46 @@ export interface Simulation {
     compromised?: string[];
   } | null;
   debrief: Record<string, unknown> | null;
+  /** Reporte final (lo arma el agente de reportes al cerrar). null = la simulación no tiene. */
+  report: { status: ReportStatus; verdict: ResultVerdict | null; rank: ResultRank | null; degraded: boolean } | null;
   created_at: string;
+}
+
+export type ReportStatus = "pending" | "generating" | "ready" | "failed";
+
+/** Una fila del historial (GET /reports). */
+export interface ReportSummary {
+  sim_id: string;
+  title: string;
+  repo_url: string;
+  status: ReportStatus;
+  /** Cómo se cerró la simulación: finished, stopped o failed. */
+  trigger: string;
+  started_at: string;
+  closed_at: string;
+  generated_at: string | null;
+  degraded: boolean;
+  verdict: ResultVerdict | null;
+  rank: ResultRank | null;
+  score: number | null;
+  diagnosis: string | null;
+  time: number | null;
+  /** "contenidos/jugados". */
+  vectors: string | null;
+}
+
+/** GET /simulations/:id/report. */
+export interface ReportView {
+  sim_id: string;
+  title: string;
+  status: ReportStatus;
+  trigger: string;
+  requested_at: string;
+  generated_at: string | null;
+  model: string | null;
+  degraded: boolean;
+  error: string | null;
+  result: SimulationResult | null;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -88,6 +128,10 @@ export const simApi = {
   action: (id: string, action: string, params: Record<string, unknown> = {}, free_text?: string) =>
     post<TimelineEvent>(`/simulations/${id}/actions`, { action, params, free_text }),
   stop: (id: string) => post<Simulation>(`/simulations/${id}/stop`, {}),
+  /** Historial de reportes del usuario (los suyos; con el login apagado, todos). */
+  reports: () => request<ReportSummary[]>("/reports"),
+  report: (id: string) => request<ReportView>(`/simulations/${id}/report`),
+  regenerateReport: (id: string) => post<{ sim_id: string; status: ReportStatus }>(`/simulations/${id}/report`),
   /** SSE del timeline. view=user: lo que ve el developer. view=all: también lo interno. */
   subscribe(id: string, view: "user" | "all", onEvent: (e: TimelineEvent) => void): () => void {
     const es = authedEventSource(`${API_URL}/simulations/${id}/stream?view=${view}`);

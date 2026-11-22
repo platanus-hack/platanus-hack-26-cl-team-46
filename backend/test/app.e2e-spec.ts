@@ -88,6 +88,15 @@ describe('API (e2e)', () => {
       .expect(404);
   });
 
+  it('GET /reports responde el historial (login apagado: todos)', async () => {
+    const res = await request(app.getHttpServer()).get('/reports').expect(200);
+    expect(Array.isArray(res.body)).toBe(true);
+  });
+
+  it('GET /simulations/:id/report de una simulación que no existe es 404', () => {
+    return request(app.getHttpServer()).get('/simulations/sim-00000000/report').expect(404);
+  });
+
   it('POST /simulations valida el body', () => {
     return request(app.getHttpServer())
       .post('/simulations')

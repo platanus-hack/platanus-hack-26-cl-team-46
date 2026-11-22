@@ -1,13 +1,17 @@
 import type { Metadata } from "next";
-import { mockResult, ResultDashboard } from "@/components/result";
+import { Suspense } from "react";
+import { ResultLoader } from "@/components/result/ResultLoader";
 
 export const metadata: Metadata = { title: "Mayday · Resultado" };
 
 /**
- * Resultado del simulacro. Se llega acá al terminar la simulación.
- * Por ahora usa el resultado de ejemplo; cuando el backend entregue el resultado real
- * (a partir del debrief de `sim.finished`), se carga por `?sim=` y se pasa igual.
+ * Resultado del simulacro. Con `?sim=` carga el reporte real que arma el agente de reportes
+ * al cerrar la simulación (GET /simulations/:id/report); sin `?sim=`, el resultado de ejemplo.
  */
 export default function ResultPage() {
-  return <ResultDashboard result={mockResult} />;
+  return (
+    <Suspense>
+      <ResultLoader />
+    </Suspense>
+  );
 }
