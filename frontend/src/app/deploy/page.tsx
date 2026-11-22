@@ -90,6 +90,8 @@ function DeployConsole() {
 
   // Sigue el despliegue hacia abajo: con cada evento nuevo (y al final, con el resumen y los
   // usuarios de prueba) baja la página, salvo que el usuario haya subido a mirar algo.
+  // Al elegir un sandbox de la lista no se sigue: la página se queda donde está hasta que el
+  // usuario baje por su cuenta al final del log.
   const bottomRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   useEffect(() => {
@@ -100,9 +102,6 @@ function DeployConsole() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-  useEffect(() => {
-    stick.current = true;
-  }, [selected]);
   useEffect(() => {
     if (!stick.current || !bottomRef.current) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -122,7 +121,10 @@ function DeployConsole() {
           {sandboxes.map((s) => (
             <li key={s.sandbox_id}>
               <button
-                onClick={() => setSelected(s.sandbox_id)}
+                onClick={() => {
+                  stick.current = false;
+                  setSelected(s.sandbox_id);
+                }}
                 className={`w-full rounded border p-3 text-left text-sm ${
                   s.sandbox_id === selected ? "border-ink bg-bg-200" : "border-line hover:bg-bg-100"
                 }`}
