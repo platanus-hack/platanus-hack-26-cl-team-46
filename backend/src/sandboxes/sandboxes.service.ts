@@ -100,6 +100,8 @@ export class SandboxesService
   private readonly heartbeats = new Map<string, NodeJS.Timeout>();
   private recoveryTimer?: NodeJS.Timeout;
   private recovering = false;
+  /** Último intento de aislar la base de cada sandbox existente (para no reintentar en cada vuelta). */
+  private readonly isolationAttempts = new Map<string, number>();
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -160,7 +162,26 @@ export class SandboxesService
     this.recovering = true;
     try {
       await this.store.refreshFromDatabase((id) => this.locks.has(id));
+      await this.databases
+        .lockdownSharedInstance()
+        .catch((err: Error) =>
+          this.logger.warn(`Cierre de la instancia compartida: ${err.message}`),
+        );
       for (const s of this.store.list()) {
+        // Bases creadas antes del aislamiento: se migran de a una, sin pisar operaciones en curso.
+        if (
+          this.needsDatabaseIsolation(s) &&
+          !this.isBusy(s.sandbox_id) &&
+          !this.agentActive(s) &&
+          Date.now() - (this.isolationAttempts.get(s.sandbox_id) ?? 0) >
+            ISOLATION_RETRY_MS
+        ) {
+          this.logger.log(`[${s.sandbox_id}] aislando base de datos existente`);
+          this.runExclusive(s.sandbox_id, () =>
+            this.migrateDatabase(s.sandbox_id),
+          );
+          continue;
+        }
         if (this.locks.has(s.sandbox_id)) continue;
         const action = decideRecovery(s, this.instanceId);
         if (action.kind === 'skip') continue;
@@ -193,6 +214,70 @@ export class SandboxesService
       this.logger.warn(`Recuperación de sandboxes: ${(err as Error).message}`);
     } finally {
       this.recovering = false;
+    }
+  }
+
+  /** Aísla la base del sandbox (idempotente) y guarda su rol. */
+  private async isolateDatabaseRecord(id: string) {
+    const db = this.get(id).database!;
+    const creds = await this.databases.ensureIsolated(db);
+    if (creds.role && db.role !== creds.role) {
+      this.store.update(id, (r) => {
+        r.database!.role = creds.role;
+      });
+    }
+    return creds;
+  }
+
+  /**
+   * Sandboxes con base creada antes del aislamiento (sin rol propio): su app
+   * todavía se conecta con las credenciales de administrador de la instancia.
+   */
+  private needsDatabaseIsolation(s: SandboxRecord): boolean {
+    return Boolean(
+      s.status !== 'deleted' && s.database?.database_name && !s.database.role,
+    );
+  }
+
+  /**
+   * Migra un sandbox existente: rol propio dueño de su base, la app pasa a
+   * conectarse con ese rol y se redespliega para que tome la nueva URL.
+   */
+  private async migrateDatabase(id: string) {
+    this.isolationAttempts.set(id, Date.now());
+    const before = this.get(id);
+    try {
+      const creds = await this.databases.ensureIsolated(before.database!);
+      if (before.render) {
+        const key = before.manifest?.database_url_env ?? 'DATABASE_URL';
+        await this.render.setEnvVar(
+          before.render.service_id,
+          key,
+          creds.internal_url,
+        );
+      }
+      // Recién ahora cuenta como migrado: si algo de lo anterior falla, se reintenta.
+      this.store.update(id, (r) => {
+        r.database!.role = creds.role;
+      });
+    } catch (err) {
+      // No se toca el estado del sandbox (la app sigue funcionando como antes).
+      this.logger.warn(
+        `[${id}] no se pudo aislar la base (reintento en ${ISOLATION_RETRY_MS / 60_000} min): ${(err as Error).message}`,
+      );
+      return;
+    }
+    this.events.emit(
+      id,
+      'info',
+      'Base de datos aislada',
+      'La app ahora se conecta con un usuario propio que solo tiene acceso a su base.',
+    );
+    // Solo se redespliega lo que está arriba. Lo demás toma la URL nueva en su
+    // próximo deploy (el agente siempre pasa por applyPlan).
+    if (before.render && this.get(id).status === 'ready') {
+      this.store.update(id, { status: 'deploying', error: undefined });
+      await this.deployAndFollow(id, 'aislamiento de la base de datos', {});
     }
   }
 
@@ -508,6 +593,7 @@ export class SandboxesService
           database: {
             postgres_id: db.postgres_id,
             database_name: db.database_name,
+            ...(db.role ? { role: db.role } : {}),
           },
         });
         databaseUrl = db.internal_url;
@@ -518,7 +604,9 @@ export class SandboxesService
           db.database_name ?? db.postgres_id,
         );
       } else {
-        databaseUrl = (await this.databases.urlsFor(s.database)).internal_url;
+        // Antes de cada deploy: rol propio, contraseña al día y base cerrada.
+        // También migra bases creadas antes del aislamiento.
+        databaseUrl = (await this.isolateDatabaseRecord(id)).internal_url;
       }
     }
 
@@ -1228,6 +1316,8 @@ function stripAnsi(s: string): string {
 /** Primera pasada de recuperación tras arrancar, y cada cuánto se repite. */
 const RECOVERY_FIRST_DELAY_MS = 5_000;
 const RECOVERY_INTERVAL_MS = 15_000;
+/** Si aislar la base de un sandbox existente falla, se reintenta después de esto. */
+const ISOLATION_RETRY_MS = 10 * 60_000;
 /**
  * Máximo que se espera a las operaciones en curso al apagar. En Render free el
  * proceso se mata a los ~30 s (maxShutdownDelaySeconds no es configurable); con
