@@ -20,7 +20,7 @@ import {
 } from "@/components/mayday";
 import { ATTACK_SCRIPT, QUESTION, RESULT, type OptionId } from "./content";
 import { CurtainPixels, type CurtainHandle } from "./CurtainPixels";
-import { StartCta } from "@/components/onboarding/StartCta";
+import { LandingEnterButton, StartCta } from "@/components/onboarding/StartCta";
 import { HeroSplit } from "./HeroSplit";
 import { AfterClose } from "./AfterClose";
 import { IntroHack } from "./intro/IntroHack";
@@ -229,9 +229,20 @@ export function Landing() {
         <div className="relative flex-1 overflow-hidden motion-reduce:flex-none motion-reduce:overflow-visible">
           {/* Capa de arriba: el hero partido + el canvas de los bordes. No recibe clics. */}
           <div className="pointer-events-none absolute inset-0 z-20 overflow-hidden motion-reduce:relative motion-reduce:h-svh">
-            <HeroSplit firstRef={firstRef} secondRef={secondRef} overlayRef={overlayRef}>
+            <HeroSplit
+              firstRef={firstRef}
+              secondRef={secondRef}
+              overlayRef={overlayRef}
+              cta={<LandingEnterButton />}
+            >
               <CurtainPixels ref={curtain} firstRef={firstRef} secondRef={secondRef} />
             </HeroSplit>
+          </div>
+
+          {/* Con sesión de GitHub: atajo a la app arriba a la derecha (donde la intro tenía "Saltar").
+              En mobile ahí está el panel de arriba: va bajo "Baja para empezar" (HeroSplit › cta). */}
+          <div className="absolute top-4 right-4 z-30 max-md:hidden">
+            <LandingEnterButton />
           </div>
 
           {/* Capa de abajo: el AttackTerminal corriendo infinito y la pregunta encima. */}
