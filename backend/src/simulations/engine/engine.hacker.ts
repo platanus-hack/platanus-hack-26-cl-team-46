@@ -30,6 +30,8 @@ const OPENING_FIRST_MS = 500;
 const OPENING_STEP_MS = 6_000;
 const OPENING_FAST_STEPS = 3;
 const CLOSED = ['finished', 'failed', 'stopped'];
+/** Cambios del developer que pueden cortar un ataque en curso (con env o código, el deploy ya terminó). */
+const MITIGATIONS = new Set(['change.deployed', 'change.db']);
 
 interface Queue {
   vuln: string;
@@ -48,6 +50,9 @@ interface Queue {
  *    de verdad y deja el informe. Con él se publica el attack.plan.
  * 2. Repetición: en control.start / control.next, los pasos reales de una vuln
  *    se publican como attack.* con reloj humano (el ataque real dura segundos).
+ *    Si el developer despliega un cambio antes del attack.success, la repetición
+ *    se detiene y el motor vuelve a atacar esa vuln de verdad: si la defensa
+ *    resiste, el ataque termina sin éxito (attack.blocked); si no, sigue.
  * 3. Verificación: en control.verify el motor vuelve a atacar solo esa vuln.
  *    Si sigue explotable lo dice el tráfico real; si el atacante sigue adentro
  *    se decide por el acceso que consiguió y los cambios desplegados después.
@@ -102,6 +107,7 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
           this.playNext(
             s.sim_id,
             str(e.raw?.vuln_id) ?? e.vuln_id ?? undefined,
+            e.seq,
           );
           break;
         case 'control.pause':
@@ -273,7 +279,7 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
 
   // ------------------------------------------------------- 2 · repetición
 
-  playNext(simId: string, vulnId?: string) {
+  playNext(simId: string, vulnId?: string, startSeq?: number) {
     const s = this.sims.get(simId);
     const e = s.engine;
     if (!e || e.status !== 'done' || !e.replay) return;
@@ -290,6 +296,9 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     this.store.update(simId, (r) => {
       if (!r.engine!.played.includes(vuln)) r.engine!.played.push(vuln);
       r.engine!.current = vuln;
+      // Solo cuentan los cambios hechos después de que parte este ataque.
+      r.engine!.current_checked_seq = startSeq ?? r.next_seq - 1;
+      r.engine!.holding = null;
     });
     this.enqueue(simId, vuln, e.replay[vuln], opening);
   }
@@ -322,6 +331,13 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     if (q.paused || this.queues.get(simId) !== q) return;
     const s = this.store.get(simId);
     if (!s || CLOSED.includes(s.status)) return this.drop(simId);
+    // Esperando la verificación de un cambio del developer.
+    if (s.engine?.holding) return;
+    // ¿El developer cambió algo antes de que el ataque lograra su objetivo?
+    const change = q.events.some((x) => x.type === 'attack.success')
+      ? latestMitigation(s)
+      : undefined;
+    if (change) return this.holdForCheck(simId, q, change);
     const ev = q.events.shift();
     if (!ev) {
       this.queues.delete(simId);
@@ -340,6 +356,22 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       if (fast) q.fast -= 1;
       this.schedule(simId, q, fast ? OPENING_STEP_MS : this.stepMs());
     } else this.queues.delete(simId);
+  }
+
+  /**
+   * Detiene la repetición y vuelve a atacar esa vuln de verdad contra lo que está
+   * desplegado ahora. verifyDone decide si el ataque sigue o termina sin éxito.
+   */
+  private holdForCheck(simId: string, q: Queue, changeSeq: number) {
+    clearTimeout(q.timer);
+    this.store.update(simId, (r) => {
+      r.engine!.holding = changeSeq;
+      r.engine!.current_checked_seq = changeSeq;
+    });
+    this.logger.log(
+      `[${simId}] cambio #${changeSeq} a mitad del ataque a ${q.vuln}: verificando antes de seguir`,
+    );
+    void this.verify(simId, q.vuln, changeSeq, true);
   }
 
   private stepMs() {
@@ -373,6 +405,18 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     const e = s.engine;
     if (!e?.current || !e.replay || this.queues.has(s.sim_id)) return;
     if (!['running'].includes(s.status)) return;
+    // Detenida esperando una verificación: la retoma verifyDone (o este mismo sondeo, ya liberada).
+    if (e.holding) return;
+    // Ya terminó (con éxito o bloqueada por un cambio del developer).
+    if (
+      s.timeline.some(
+        (x) =>
+          x.actor === 'hacker' &&
+          x.vuln_id === e.current &&
+          x.type === 'attack.done',
+      )
+    )
+      return;
     const posted = s.timeline.filter(
       (x) =>
         x.actor === 'hacker' &&
@@ -386,7 +430,7 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
 
   // ----------------------------------------------------- 3 · verificación
 
-  async verify(simId: string, vuln: string, seq: number) {
+  async verify(simId: string, vuln: string, seq: number, duringReplay = false) {
     const s = this.sims.get(simId);
     if (!s.engine || s.engine.status !== 'done') return;
     const v = {
@@ -394,6 +438,7 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       seq,
       requested_at: new Date().toISOString(),
       status: 'running' as const,
+      ...(duringReplay ? { during_replay: true } : {}),
     };
     this.store.update(simId, (r) => {
       r.engine!.verifies.push(v);
@@ -439,6 +484,11 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     const live = Boolean(result?.ok && d && d.verdict !== 'inconclusive');
     // Sin verificación en vivo se asume lo peor: mejor que el developer siga buscando.
     const stillExploitable = live ? d!.verdict === 'confirmed' : true;
+    if (v.during_replay)
+      return this.replayCheckDone(simId, v, live, stillExploitable, {
+        evidence: d?.impact ?? null,
+        error: error ?? result?.stderr?.slice(-300),
+      });
     const judged = attackerStillInside(s, v.vuln_id, stillExploitable);
     this.store.update(simId, (r) => {
       const x = r.engine!.verifies.find((y) => y.seq === seq)!;
@@ -467,6 +517,79 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
         verified_live: live,
         evidence: d?.impact ?? null,
       },
+    });
+  }
+
+  /**
+   * Resultado de la verificación que detuvo la repetición. Si la defensa resistió,
+   * el ataque termina sin éxito: el atacante no alcanza su objetivo ni queda adentro.
+   */
+  private replayCheckDone(
+    simId: string,
+    v: { vuln_id: string; seq: number },
+    live: boolean,
+    stillExploitable: boolean,
+    info: { evidence: string | null; error?: string },
+  ) {
+    const blocked = live && !stillExploitable;
+    this.store.update(simId, (r) => {
+      const x = r.engine!.verifies.find((y) => y.seq === v.seq)!;
+      x.status = live ? 'done' : 'failed';
+      if (!live) x.error = info.error ?? 'sin resultado';
+      if (r.engine!.holding === v.seq) r.engine!.holding = null;
+    });
+    const reason = blocked
+      ? 'El developer desplegó un cambio antes de que el ataque lograra su objetivo, y al volver a atacar con tráfico real la defensa resistió.'
+      : live
+        ? 'El developer cambió algo a mitad del ataque, pero al volver a atacar con tráfico real la vuln sigue explotable: el ataque continúa.'
+        : `No se pudo verificar con tráfico real (${info.error ?? 'error del motor'}): se asume que el cambio no detuvo el ataque.`;
+    this.sims.postFromAgent(simId, 'hacker', {
+      type: 'attack.verify',
+      vuln_id: v.vuln_id,
+      severity: 'info',
+      title: blocked
+        ? `El cambio cortó el ataque: ${v.vuln_id}`
+        : `El cambio no detuvo el ataque: ${v.vuln_id}`,
+      body: reason,
+      raw: {
+        vuln_id: v.vuln_id,
+        still_exploitable: stillExploitable,
+        // El ataque no había logrado su objetivo: todavía no tiene acceso por esta vuln.
+        attacker_active: false,
+        footholds: [],
+        reason,
+        during_attack: true,
+        change_seq: v.seq,
+        verified_live: live,
+        evidence: info.evidence,
+      },
+    });
+    const q = this.queues.get(simId);
+    if (!blocked) {
+      // Sigue el ataque donde quedó (si está en pausa, lo retoma control.resume).
+      if (q && q.vuln === v.vuln_id && !q.paused)
+        this.schedule(simId, q, this.stepMs());
+      return;
+    }
+    this.drop(simId);
+    this.sims.postFromAgent(simId, 'hacker', {
+      type: 'attack.blocked',
+      vuln_id: v.vuln_id,
+      severity: 'info',
+      title: 'El ataque falló: la defensa resistió',
+      body: info.evidence ?? '',
+      raw: {
+        vuln_id: v.vuln_id,
+        blocked_by_change: v.seq,
+        verified_live: true,
+      },
+    });
+    this.sims.postFromAgent(simId, 'hacker', {
+      type: 'attack.done',
+      vuln_id: v.vuln_id,
+      severity: 'info',
+      title: `Terminado sin éxito: ${v.vuln_id}`,
+      raw: { vuln_id: v.vuln_id, attacker_active: false, blocked: true },
     });
   }
 
@@ -614,6 +737,15 @@ const START_GRACE_MS = 2 * 60_000;
 const RUN_MAX_MS = 40 * 60_000;
 function stale(iso: string, ms: number) {
   return Date.now() - Date.parse(iso) > ms;
+}
+
+/** Último cambio del developer (deploy o base) que la repetición en curso todavía no consideró. */
+function latestMitigation(s: SimulationRecord): number | undefined {
+  const since = s.engine?.current_checked_seq ?? Infinity;
+  const last = s.timeline.findLast(
+    (x) => x.seq > since && MITIGATIONS.has(x.type),
+  );
+  return last?.seq;
 }
 
 function str(v: unknown): string | undefined {

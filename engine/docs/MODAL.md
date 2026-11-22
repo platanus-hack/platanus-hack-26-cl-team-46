@@ -302,6 +302,15 @@ y el motor no la toca. Lo maneja
 3. **Repetición.** En `control.start` y `control.next`, los pasos reales de una vuln
    (`artifacts.replay`) se publican como `attack.*`, uno cada
    `ENGINE_REPLAY_STEP_SECONDS` (±30 %). Respeta `control.pause` y `control.resume`.
+   **Si el developer mitiga a mitad del ataque**, es decir, aparece un `change.deployed` o un `change.db`
+   después de que partió y antes del `attack.success`, la repetición se detiene y el motor vuelve
+   a atacar esa vuln de verdad contra lo desplegado (`only: [vuln_id]`):
+   - **La defensa resiste:** publica `attack.verify` (`during_attack: true`), `attack.blocked` y
+     `attack.done` con `attacker_active: false`. El ataque no se completa y el director lo cuenta
+     como arreglado.
+   - **Sigue explotable o el veredicto es `inconclusive`:** la repetición continúa donde quedó.
+   - Los cambios anteriores al ataque o posteriores a su éxito no lo detienen.
+
 4. **Verificación real.** En `control.verify`, el motor vuelve a atacar solo esa vuln
    (`only: [vuln_id]`). Si sigue explotable lo dice el tráfico real. Si el atacante
    sigue adentro se decide por el acceso que consiguió: un token robado sirve hasta
