@@ -77,15 +77,24 @@ Si una llamada falla, se reintenta (10 s, 20 s); al tercer fallo se saltan esos 
 
 1. `POST /simulations {repo_url | sandbox_id}`: crea el sandbox (o reusa uno) y el workspace con los threads de Conductor (hacker y coder; los 5 si no hay `ANTHROPIC_API_KEY`). Estado `starting`.
 2. Con el deploy listo, el **backend** escanea el código del mirror (`tools-detector.ts`) y fija `tools_detected`: solo las herramientas con evidencia de setup (dependencia del SDK o su inicialización: `@sentry/*`, `posthog-*`, `dd-trace`, `@slack/*`, `.github/dependabot.yml`…). Los canales de la simulación son esas herramientas más los base (email, soporte, teléfono, Render). El developer no las elige y ningún LLM las agrega. En paralelo, **infra** publica `context.ready` (stack, arquitectura, personas, sin análisis de seguridad: también lo lee el coder) y **hacker** analiza el código y publica `attack.plan`.
-3. Con la app arriba, las herramientas detectadas y el plan listo, el estado pasa a `ready`.
-4. `POST /simulations/:id/start` → `control.start`. El hacker ataca una vuln y publica `attack.step`, `attack.success` y `attack.done`. Después:
+3. El estado pasa a `ready` recién cuando **todos los agentes** pueden partir: app arriba, herramientas detectadas, plan del atacante, contexto, el agente de código en línea (su saludo) y las **alertas de apertura** escritas. Esas alertas las escribe el generador antes de partir, a partir del primer ataque del plan (los pasos reales del motor). Si el coder o la apertura tardan más de 3 min, se parte igual. La UI muestra la preparación y, en `ready`, un solo botón: **Comenzar simulación**.
+4. `POST /simulations/:id/start` → `control.start`. Las alertas de apertura salen al tiro (0,8 s, 7 s y 14 s) y el primer ataque arranca en medio segundo, con sus primeros pasos rápidos. Después:
    - el **observer** actualiza `state.update`,
-   - el **generator** manda `notify` solo por los canales activos (correos y, si el repo los tiene, Sentry, PostHog…).
-5. El developer actúa:
+   - el **generator** manda `notify` solo por los canales activos.
+5. **La simulación es continua** (director en `brain/facts.ts › direct`, sin LLM):
+   - Cuando termina un ataque, el siguiente parte solo a los `SIM_ATTACK_GAP_SECONDS` (45 s) de **tiempo activo**, sin esperar al developer.
+   - El atacante se detiene únicamente si **robó la base** (`foothold.type: "db"` o `db_complete`) o **se le acabaron los ataques** del plan.
+   - Mientras siga adentro y no haya ataques nuevos, cada `SIM_PULSE_SECONDS` (75 s) se publica `incident.pulse` y el generador cuenta una consecuencia nueva.
+   - **Pausa:** solo mientras el dock de Hinty está encendido (`control.pause/resume` con `reason: "hinty"`). El reloj del incidente descuenta las pausas, y una pausa que dura más de 10 min se reanuda sola.
+6. El developer actúa:
    - **Chat:** `POST /messages`. El **coder** ejecuta y emite `change.commit`, `change.env` o `change.db`, y después llega `change.deployed`.
    - **Acciones directas por API:** `POST /actions` (rotar un secreto, reiniciar). La consola no las muestra como botones porque regalan la respuesta: el developer actúa solo a través del chat.
-6. Con cada cambio desplegado, el **observer** pide `control.verify <vuln>`. El hacker responde `attack.verify {still_exploitable, attacker_active}` y el observer evalúa la acción (`assessments`). El observer decide cuándo hacer `control.next`.
-7. `POST /control {action:"finish"}`, o cuando todo queda contenido: el observer publica `sim.finished` con el **debrief**.
+   - Con cada cambio desplegado, el director pide `control.verify <vuln>` y el hacker responde `attack.verify {still_exploitable, attacker_active}`.
+7. Hay **dos formas de terminar**:
+   - **Amenaza eliminada:** el atacante quedó afuera, todo lo que atacó está contenido o arreglado y ya no tiene nada más que intentar. Se cierra sola.
+   - **El developer presiona Terminar** (`POST /control {action:"finish"}`).
+
+   En ambos casos el observer publica `sim.finished` con el **debrief**, y el agente de reportes arma el reporte final.
 
 ## API para la UI (producto)
 

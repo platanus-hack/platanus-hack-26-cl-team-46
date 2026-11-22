@@ -1,7 +1,7 @@
 /* Hinty · tema mayday (frontend/DESIGN.md › Hinty).
    Capa Mayday: fondos bg-*, texto ink*, acento defense (cian) y ámbar solo para lo del atacante.
    Solo Geist y Geist Mono: el kit corre en el mismo documento y usa las variables del layout.
-   Todo cuadrado o con los radios de Mayday: sin círculos ni píldoras. */
+   Todo cuadrado o con los radios de Mayday: sin círculos ni píldoras (salvo los botones de hablar y marcar). */
 
 .clicky-root {
   --f-ui: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
@@ -103,77 +103,211 @@
 .clicky-btn:hover { border-color: var(--defense); }
 .clicky-btn:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; }
 
-/* Isla (Hinty › 3): arriba al centro de la columna principal, 12 px bajo el header.
-   ClickyDock pone --hinty-col-* según la columna; sin ella, arriba al centro de la pantalla. */
+/* Barra de Hinty (Hinty › 3): baja desde arriba y se pone encima del header, de borde a borde,
+   toda en cian (el color de Mayday) para que se note que Hinty está activo. Los inputs van en negro.
+   Mide lo mismo que el header (ClickyDock pone --hinty-bar-h) para no tapar las apps de abajo:
+   nunca crece; un subtítulo largo deja a la vista sus últimas 2 líneas. */
 .clicky-island {
   position: fixed;
-  left: var(--hinty-col-cx, 50%);
-  top: var(--hinty-col-top, 12px);
-  transform: translateX(-50%);
+  left: 0;
+  right: 0;
+  top: 0;
   box-sizing: border-box;
-  width: clamp(360px, 42vw, 560px);
-  max-width: calc(var(--hinty-col-w, 100vw) - 32px);
-  min-height: 48px;
-  padding: 7px 12px 7px 7px;
+  height: var(--hinty-bar-h, 64px);
+  padding: 0 24px;
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  gap: 14px;
   pointer-events: auto;
   cursor: text;
-  background: color-mix(in srgb, var(--bg-100) 96%, transparent);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-toast);
-  color: var(--ink);
-  font: 400 16px/24px var(--f-ui);
+  background: var(--defense);
+  border-bottom: 1px solid var(--defense-strong);
+  box-shadow: 0 4px 16px rgb(46 230 255 / .25);
+  color: var(--on-defense);
+  font: 500 15px/20px var(--f-ui);
+  animation: clicky-bar-in .32s var(--ease-in) both;
 }
-.clicky-island .av { flex: none; width: 32px; height: 32px; display: grid; place-items: center; background: var(--defense-deep); border-radius: var(--radius-sm); }
+@keyframes clicky-bar-in { from { transform: translateY(-100%); } to { transform: none; } }
+
+.clicky-island .av { flex: none; width: 40px; height: 40px; display: grid; place-items: center; background: var(--on-defense); border-radius: var(--radius-sm); }
 .clicky-island .av svg { display: block; overflow: visible; }
 .clicky-island .av .m { transition: fill .15s; }
 .clicky-island[data-state='speaking'] .av .m { fill: var(--defense-strong); filter: drop-shadow(0 0 1.5px var(--defense-strong)); }
 
-.clicky-island .wave { flex: none; display: flex; align-items: center; gap: 2px; height: 32px; }
-.clicky-island .wave i { width: 4px; height: 4px; background: var(--ink); }
-.clicky-island[data-state='speaking'] .wave i { background: var(--defense); }
+.clicky-island .wave { flex: none; display: flex; align-items: center; gap: 2px; height: 40px; }
+.clicky-island .wave i { width: 4px; height: 4px; background: var(--on-defense); }
 
-.clicky-island .dots { flex: none; display: none; align-items: center; gap: 4px; height: 32px; }
-.clicky-island .dots i { width: 4px; height: 4px; background: var(--line-strong); animation: clicky-think .9s steps(1, end) infinite; }
+.clicky-island .dots { flex: none; display: none; align-items: center; gap: 4px; height: 40px; }
+.clicky-island .dots i { width: 4px; height: 4px; background: rgb(2 18 22 / .3); animation: clicky-think .9s steps(1, end) infinite; }
 .clicky-island .dots i:nth-child(2) { animation-delay: .3s; }
 .clicky-island .dots i:nth-child(3) { animation-delay: .6s; }
-@keyframes clicky-think { 0% { background: var(--defense); } 33.333% { background: var(--line-strong); } }
+@keyframes clicky-think { 0% { background: var(--on-defense); } 33.333% { background: rgb(2 18 22 / .3); } }
 
 .clicky-island[data-state='thinking'] .dots { display: flex; }
 .clicky-island[data-state='thinking'] .wave, .clicky-island[data-state='idle'] .wave { display: none; }
 
-.clicky-island .cap { flex: 1; min-width: 0; padding: 4px 0; overflow-wrap: anywhere; }
+/* El subtítulo va al centro de la barra (de la pantalla), centrado en alto, en un bloque de un poco más
+   de media pantalla. Si no cabe, quedan a la vista sus últimas 2 líneas. */
+.clicky-island .cap { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: max(200px, min(58vw, calc(100vw - 440px))); max-height: 40px; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; overflow-wrap: anywhere; pointer-events: none; }
+.clicky-island .cap-in { flex: none; text-align: center; }
 .clicky-island .cap span { display: none; }
-.clicky-island .cap span.on { display: inline; color: var(--ink); }
-.clicky-island .cap span.now { color: var(--defense); }
-.clicky-island .cap.muted span.on { color: var(--ink-muted); }
+.clicky-island .cap span.on { display: inline; color: var(--on-defense); }
+/* la palabra que se acaba de decir: en negro sólido con letra cian */
+.clicky-island .cap span.now { background: var(--on-defense); color: var(--defense); box-shadow: 3px 0 0 var(--on-defense), -3px 0 0 var(--on-defense); }
+.clicky-island .cap.muted span.on { color: rgb(2 18 22 / .72); }
 
-.clicky-island .hint { flex: none; display: flex; align-items: center; gap: 8px; height: 32px; font: 400 12px/16px var(--f-ui); color: var(--ink-faint); white-space: nowrap; }
-.clicky-island .hint kbd { padding: 3px 6px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); font: 500 11px/14px var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-muted); }
-/* mientras escucha, piensa, habla o muestra un error, el atajo queda solo como tecla para dejarle espacio al texto */
-.clicky-island:not([data-state='idle']) .hint span, .clicky-island[data-error] .hint span { display: none; }
-
-/* La × (borrar todo): solo con algo dibujado. Cuadrada, a la derecha, attack al pasar el cursor. */
-.clicky-island .x { flex: none; display: none; place-items: center; width: 32px; height: 32px; margin-left: -4px; padding: 0; background: transparent; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink-muted); cursor: pointer; transition: color .15s, border-color .15s, background-color .15s; }
-.clicky-island[data-clearable] .x { display: grid; }
-.clicky-island .x:hover { color: var(--attack-strong); border-color: var(--attack); background: var(--attack-soft); }
-.clicky-island .x:focus-visible { outline: 2px solid var(--defense); outline-offset: 2px; }
-.clicky-island input { flex: 1; min-width: 0; height: 32px; box-sizing: border-box; padding: 0 10px; background: var(--bg-200); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); outline: 0; color: var(--ink); font: 400 16px var(--f-ui); }
+.clicky-island input { flex: 1; min-width: 0; height: 44px; box-sizing: border-box; padding: 0 14px; background: #000; border: 2px solid #000; border-radius: var(--radius-md); outline: 0; color: var(--ink); font: 400 16px var(--f-ui); caret-color: var(--defense); }
 .clicky-island input::placeholder { color: var(--ink-faint); }
-.clicky-island input:focus { border-color: var(--defense); }
+.clicky-island input:focus { border-color: var(--on-defense); box-shadow: 0 0 0 2px var(--defense-strong); }
 
-/* Error: borde attack, un pixel de 6×6 a la izquierda y el texto en attack-strong */
-.clicky-island .err { display: none; flex: none; width: 6px; height: 6px; margin-top: 13px; background: var(--attack); }
-.clicky-island[data-error] { border-color: var(--attack); }
+/* Hablar: botón redondo negro con el micrófono cian, del mismo alto que el input (44 px).
+   Mientras escucha aparece a su derecha el lápiz (mismo tamaño) y empuja todo a la izquierda.
+   Los atajos no están a la vista: van en una nube que baja al pasar el cursor. */
+.clicky-island .hint { flex: none; margin-left: auto; display: flex; align-items: center; gap: 0; cursor: default; }
+.clicky-island .tool { position: relative; display: flex; }
+.clicky-island .talk, .clicky-island .mark {
+  position: relative;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--on-defense);
+  color: var(--defense);
+  cursor: pointer;
+  touch-action: none;
+  box-shadow: 0 0 0 3px rgb(2 18 22 / .18), 0 6px 16px rgb(2 18 22 / .35);
+  transition: transform .1s, background-color .15s, color .15s, box-shadow .15s;
+}
+.clicky-island .talk svg, .clicky-island .mark svg { display: block; position: relative; z-index: 1; width: 24px; height: 24px; }
+.clicky-island .talk:hover, .clicky-island .mark:hover { transform: scale(1.06); box-shadow: 0 0 0 4px rgb(2 18 22 / .28), 0 8px 20px rgb(2 18 22 / .4); }
+.clicky-island .talk:focus-visible, .clicky-island .mark:focus-visible { outline: 2px solid var(--on-defense); outline-offset: 3px; }
+
+/* halo que respira mientras está libre: invita a apretarlo */
+.clicky-island .talk::before, .clicky-island .talk::after { content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; }
+.clicky-island[data-state='idle'] .talk::before { border: 2px solid var(--on-defense); animation: clicky-talk-halo 2.4s ease-out infinite; }
+@keyframes clicky-talk-halo { 0% { opacity: .55; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.45); } }
+/* escuchando (botón o fn): se invierte a blanco con ondas que salen */
+.clicky-island .talk.held, .clicky-island[data-state='listening'] .talk { background: #fff; color: var(--on-defense); }
+.clicky-island[data-state='listening'] .talk::before,
+.clicky-island[data-state='listening'] .talk::after { border: 2px solid #fff; animation: clicky-talk-wave 1.1s ease-out infinite; }
+.clicky-island[data-state='listening'] .talk::after { animation-delay: .55s; }
+@keyframes clicky-talk-wave { from { opacity: .9; transform: scale(1); } to { opacity: 0; transform: scale(1.6); } }
+.clicky-island[data-state='thinking'] .talk, .clicky-island[data-state='speaking'] .talk { opacity: .55; }
+
+/* El lápiz del modo marcar: siempre a la derecha del micrófono. Encendido queda en blanco;
+   con el modo encendido se dibuja manteniendo shift (el cursor pasa a cruz). */
+.clicky-island .mark-wrap { margin-left: 12px; }
+.clicky-island[data-marking] .mark { background: #fff; color: var(--on-defense); box-shadow: 0 0 0 3px var(--on-defense), 0 6px 16px rgb(2 18 22 / .35); }
+html.clicky-drawing, html.clicky-drawing * { cursor: crosshair !important; }
+
+/* «Borrar todo»: píldora negra con letra cian, a la izquierda del micrófono. Solo aparece cuando hay
+   algo dibujado (data-clearable) y entra con un pop corto. Distinta de la X, que apaga a Hinty. */
+.clicky-island .clear-wrap { display: none; margin-right: 12px; }
+.clicky-island[data-clearable] .clear-wrap { display: flex; }
+.clicky-island .clear {
+  flex: none;
+  height: 44px;
+  padding: 0 16px 0 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--on-defense);
+  color: var(--defense);
+  font: 600 13px/1 var(--f-ui);
+  white-space: nowrap;
+  cursor: pointer;
+  box-shadow: 0 0 0 3px rgb(2 18 22 / .18), 0 6px 16px rgb(2 18 22 / .35);
+  transition: transform .1s, box-shadow .15s, color .15s;
+  animation: clicky-clear-in .28s cubic-bezier(.2, .9, .3, 1.35) both;
+}
+.clicky-island .clear svg { display: block; flex: none; transition: transform .2s; }
+.clicky-island .clear:hover { transform: scale(1.04); color: #fff; box-shadow: 0 0 0 4px rgb(2 18 22 / .28), 0 8px 20px rgb(2 18 22 / .4); }
+.clicky-island .clear:hover svg { transform: rotate(90deg); }
+.clicky-island .clear:active { transform: scale(.96); }
+.clicky-island .clear:focus-visible { outline: 2px solid var(--on-defense); outline-offset: 3px; }
+@keyframes clicky-clear-in { from { opacity: 0; transform: scale(.6); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .clicky-island .clear { animation: none; }
+  .clicky-island .clear:hover svg { transform: none; }
+}
+
+/* La X: cierra a Hinty (igual que apretar el audífono). Separada de los botones de hablar por una línea. */
+.clicky-island .sep { width: 1px; height: 28px; margin: 0 6px 0 16px; background: rgb(2 18 22 / .25); }
+.clicky-island .close { flex: none; width: 32px; height: 32px; padding: 0; display: grid; place-items: center; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--on-defense); cursor: pointer; transition: background-color .15s; }
+.clicky-island .close:hover { background: rgb(2 18 22 / .14); }
+.clicky-island .close:active { background: rgb(2 18 22 / .24); }
+.clicky-island .close:focus-visible { outline: 2px solid var(--on-defense); outline-offset: 2px; }
+.clicky-island .close svg { display: block; }
+
+/* Nube con el atajo: baja bajo el botón al pasar el cursor (o con foco de teclado). */
+.clicky-island .tip {
+  position: absolute;
+  top: calc(100% + 14px);
+  right: -8px;
+  z-index: 2;
+  width: max-content;
+  max-width: 280px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--bg-000);
+  border: 1px solid var(--defense);
+  border-radius: var(--radius-md);
+  box-shadow: var(--glow-defense), 0 12px 32px #000000b0;
+  color: var(--ink);
+  font: 400 13px/19px var(--f-ui);
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity .15s var(--ease-in), transform .15s var(--ease-in);
+}
+/* la puntita de la nube apunta al botón */
+.clicky-island .tip::before { content: ''; position: absolute; top: -6px; right: 23px; width: 10px; height: 10px; background: var(--bg-000); border-left: 1px solid var(--defense); border-top: 1px solid var(--defense); transform: rotate(45deg); }
+.clicky-island .tip b { font: 600 13px/18px var(--f-ui); color: var(--defense); }
+.clicky-island .tip .m { color: var(--ink-muted); font-size: 12px; line-height: 17px; }
+.clicky-island .tool:hover .tip, .clicky-island .tool:focus-within .tip { opacity: 1; transform: none; transition-delay: .25s; }
+/* mientras se mantiene apretado no tapa lo que estás marcando */
+.clicky-island .talk.held + .tip { opacity: 0 !important; }
+.clicky-island kbd { display: inline-block; padding: 0 6px; margin: 0 1px; background: var(--bg-200); border: 1px solid var(--line-strong); border-bottom-width: 2px; border-radius: var(--radius-sm); font: 500 11px/17px var(--f-mono); letter-spacing: .04em; color: var(--defense); white-space: nowrap; }
+
+/* Error: borde inferior attack, un pixel de 6×6 attack a la izquierda. El texto sigue oscuro para leerse sobre el cian. */
+.clicky-island .err { display: none; flex: none; width: 8px; height: 8px; background: var(--attack); box-shadow: 0 0 0 2px var(--on-defense); }
+.clicky-island[data-error] { border-bottom-color: var(--attack); }
 .clicky-island[data-error] .err { display: block; }
-.clicky-island[data-error] .cap span.on { color: var(--attack-strong); }
 
+/* Marco cian en los bordes de la pantalla mientras Hinty está activo. */
+.clicky-frame {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 4px var(--defense), inset 0 0 60px rgb(46 230 255 / .28);
+  animation: clicky-frame-in .4s var(--ease-in) both;
+}
+@keyframes clicky-frame-in { from { opacity: 0; } to { opacity: 1; } }
+.clicky-root.clicky-capturing .clicky-frame { visibility: hidden; }
+
+/* En mobile la página hace scroll y el header se va: la barra mide lo mismo que la barra de la app (56 px). */
+@media (max-width: 767px) {
+  .clicky-island { height: 56px; }
+}
 @media (max-width: 640px) {
-  .clicky-island { width: calc(100vw - 24px); }
-  .clicky-island .hint { display: none; }
+  .clicky-island { padding: 0 12px; gap: 10px; }
+  /* en pantallas chicas el subtítulo va en el espacio libre, no centrado encima de los botones */
+  .clicky-island .cap { position: static; transform: none; width: auto; flex: 1; }
+  .clicky-island .wave, .clicky-island .dots { display: none !important; }
+  .clicky-island .sep { margin: 0 2px 0 6px; }
+  .clicky-island .mark-wrap { margin-left: 8px; }
+  .clicky-island .clear-wrap { margin-right: 8px; }
+  .clicky-island .clear { width: 44px; padding: 0; justify-content: center; }
+  .clicky-island .clear span { display: none; }
 }
 
 /* Cada marca vive en un grupo que se mueve con su elemento cuando la página hace scroll. */
@@ -181,18 +315,14 @@
 
 /* Mientras el usuario habla encima de una explicación, lo dibujado se atenúa (no se borra). */
 .clicky-root.clicky-dimmed > .clicky-layer:not(.clicky-penlayer), .clicky-root.clicky-dimmed > .clicky-panels { filter: opacity(.3); transition: filter .15s; }
-/* En la captura no salen el blip ni la cápsula (sí el trazo del usuario: el modelo tiene que verlo). */
-.clicky-root.clicky-capturing .clicky-penlayer, .clicky-root.clicky-capturing .clicky-capsule { visibility: hidden; }
+/* En la captura no sale el blip (sí el trazo del usuario: el modelo tiene que verlo). */
+.clicky-root.clicky-capturing .clicky-penlayer { visibility: hidden; }
 
-/* El trazo del usuario (Control + Option): blanco (ink), a mano alzada; el cian es de Hinty. */
+/* El trazo del usuario (modo marcar + shift): blanco (ink), a mano alzada; el cian es de Hinty. */
 .clicky-user { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; transition: opacity .4s; }
 .clicky-user path { fill: none; stroke: var(--ink); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 1px var(--bg-000)) drop-shadow(0 1px 3px #000000a0); }
 .clicky-user.fading { opacity: 0; }
 
-/* Cápsula junto al cursor con lo que el usuario va diciendo mientras marca. */
-.clicky-capsule { position: fixed; display: none; max-width: 260px; padding: 4px 8px; background: var(--bg-100); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); box-shadow: var(--shadow-toast); font: 400 13px/18px var(--f-ui); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.clicky-capsule.on { display: block; animation: clicky-in .2s var(--ease-in) both; }
-.clicky-capsule.muted { color: var(--ink-muted); }
 
 /* check y "?": cuadros de 24 px con borde cian junto al elemento */
 .clicky-tick, .clicky-q { position: absolute; width: 24px; height: 24px; display: grid; place-items: center; background: var(--bg-000); box-shadow: 0 0 0 2px var(--defense); }
@@ -229,5 +359,6 @@
 @media (prefers-reduced-motion: reduce) {
   .clicky-root *, .clicky-root { animation: none !important; transition: none !important; }
   .clicky-island .wave i { height: 12px !important; }
+  .clicky-island .talk::before, .clicky-island .talk::after { display: none; }
   .clicky-island .dots i:first-child { background: var(--defense); }
 }

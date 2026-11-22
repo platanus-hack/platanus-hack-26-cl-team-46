@@ -123,3 +123,11 @@ body {
   .md-agent-ping { display: none; }
   .md-agent-progress { animation: none; left: 0; width: 50%; opacity: .6; }
 }
+
+/* Historial de sucesos: tres pixeles que se encienden en cian uno tras otro mientras la simulación corre. */
+.md-feed-dots { display: inline-flex; align-items: center; gap: 6px; height: 16px; }
+.md-feed-dots i { width: 6px; height: 6px; background: var(--line-strong); animation: md-feed-dot .9s steps(1, end) infinite; }
+.md-feed-dots i:nth-child(2) { animation-delay: .3s; }
+.md-feed-dots i:nth-child(3) { animation-delay: .6s; }
+@keyframes md-feed-dot { 0% { background: var(--defense); } 33.333% { background: var(--line-strong); } }
+@media (prefers-reduced-motion: reduce) { .md-feed-dots i { animation: none; } .md-feed-dots i:first-child { background: var(--defense); } }

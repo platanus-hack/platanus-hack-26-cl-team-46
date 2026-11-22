@@ -52,3 +52,55 @@ test('discovery (Python/Flask): stack y rutas', async () => {
   assert.ok(repo.signals.some((s) => s.kind === 'raw-sql' && /app\.py$/.test(s.ref.file)));
   assert.ok(correlate('weak-password-no-rate-limit', repo), 'login no correlacionó');
 });
+
+// Monorepo como hack-26: la app desplegada vive en una subcarpeta (root_dir del manifest)
+// y al lado hay código del propio motor, fixtures vulnerables y un HMAC con template string.
+test('discovery: en un monorepo correlaciona solo con la app desplegada', async () => {
+  const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const root = await mkdtemp(path.join(tmpdir(), 'mono-'));
+  const put = async (rel: string, body: string) => {
+    await mkdir(path.dirname(path.join(root, rel)), { recursive: true });
+    await writeFile(path.join(root, rel), body);
+  };
+  await put('.sandbox/manifest.json', JSON.stringify({ runtime: 'docker', root_dir: 'victim-app' }));
+  await put(
+    'victim-app/src/models/notes.ts',
+    "export async function list(q) {\n  let sql = `SELECT * FROM notes WHERE user_id = 1`;\n  sql += ` AND (title ILIKE '%${q}%')`;\n}\n",
+  );
+  await put('victim-app/test/fixtures/evil.ts', "db.query(`SELECT * FROM users WHERE id = ${id}`);\n");
+  await put('engine/src/signals.ts', "if (/<%-\\s/.test(line)) push('unescaped-render');\ndb.query(`SELECT * FROM t WHERE a = ${x}`);\n");
+  await put('backend/src/token.ts', "createHmac('sha256', s).update(`agent:${id}`).digest('base64url');\n");
+
+  const repo = await discoverRepo(root);
+  const files = new Set(repo.signals.map((s) => s.ref.file));
+  assert.ok([...files].every((f) => f.startsWith('victim-app/src/')), `señales fuera de la app: ${[...files].join(', ')}`);
+  assert.equal(correlate('sql-injection', repo)?.file, path.join('victim-app', 'src', 'models', 'notes.ts'));
+  assert.ok(repo.notes.some((n) => n.includes('victim-app')));
+});
+
+test('discovery: un .update(`…${x}`) de un HMAC no es SQL', async () => {
+  const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const root = await mkdtemp(path.join(tmpdir(), 'hmac-'));
+  await mkdir(path.join(root, 'src'), { recursive: true });
+  await writeFile(path.join(root, 'src/token.ts'), "createHmac('sha256', s).update(`agent:${id}`).digest('base64url');\nqb.where(`a = ${b}`);\n");
+  const repo = await discoverRepo(root);
+  assert.equal(repo.signals.filter((s) => s.kind === 'raw-sql').length, 0);
+});
+
+test('discovery: chequeo de rol en el handler y <%- include %> no son hallazgos', async () => {
+  const { mkdtemp, mkdir, writeFile } = await import('node:fs/promises');
+  const { tmpdir } = await import('node:os');
+  const root = await mkdtemp(path.join(tmpdir(), 'inline-'));
+  await mkdir(path.join(root, 'src'), { recursive: true });
+  await mkdir(path.join(root, 'views'), { recursive: true });
+  await writeFile(
+    path.join(root, 'src/web.ts'),
+    "web.get('/admin', requireLogin, async (req, res) => {\n  if (req.user!.role !== 'admin') {\n    return res.status(403).end();\n  }\n});\nadmin.get('/api/admin/users/export', requireAuth, async (req, res) => {\n  res.json(await all());\n});\n",
+  );
+  await writeFile(path.join(root, 'views/admin.ejs'), "<%- include('header') %>\n<div><%- note.body %></div>\n");
+  const repo = await discoverRepo(root);
+  assert.equal(correlate('admin-endpoint-no-authz', repo)?.line, 6);
+  assert.equal(correlate('stored-xss', repo)?.line, 2);
+});

@@ -1,23 +1,58 @@
 import { htmlEl, reducedMotion } from './geometry.js';
-import { headsetSvg } from './icons.js';
+import { headsetSvg, micSvg, pencilSvg } from './icons.js';
 
-// La isla de Hinty (DESIGN.md › Hinty › 3): un rectángulo arriba al centro de la columna principal.
-// Estados: idle, listening (barras en ink según el micrófono), thinking (3 pixeles en secuencia)
-// y speaking (barras cian a ~8 fps y la punta del micrófono encendida; el subtítulo sigue a la voz).
+// La barra de Hinty (DESIGN.md › Hinty › 3): baja desde arriba y tapa el header mientras Hinty está
+// activo, toda en cian para que se note. Junto con el marco cian de la pantalla dice "estás con Hinty".
+// Estados: idle, listening (barras según el micrófono), thinking (3 pixeles en secuencia)
+// y speaking (barras a ~8 fps y la punta del micrófono encendida; el subtítulo sigue a la voz).
+// A la derecha, el botón redondo para hablar (mismo alto que el input) y el lápiz del modo marcar.
+// Los atajos van en una nube que aparece al pasar el cursor.
 const BAR_SHAPE = [0.6, 0.9, 1, 0.85, 0.65];
 const step4 = v => Math.max(4, Math.min(20, Math.round(v / 4) * 4)); // alturas en pasos de 4 px
 
-export function createIsland(parent, { hint = '⌃⌥ / ESPACIO · Mantén apretado para hablar', onType, onClear } = {}) {
-  const [key, label] = String(hint).split(' · ');
+// talkKey: la tecla que se mantiene para hablar (fn). onClose: la X que apaga a Hinty.
+// onTalk('down' | 'up'): el botón de hablar. onMark(): el lápiz (enciende y apaga el modo marcar; con él, shift dibuja).
+// onClear(): «Borrar todo» (marcas, tarjetas, pizarra y guía), sin apagar a Hinty.
+export function createIsland(parent, { talkKey = 'fn', onType, onTalk, onMark, onClose, onClear, talkCode = 'Fn' } = {}) {
+  const kbd = k => `<kbd>${esc(k)}</kbd>`;
+  // El marco cian de los bordes de la pantalla: va primero para quedar debajo de los dibujos.
+  const frame = htmlEl('div', 'clicky-frame', parent);
+  parent.prepend(frame);
   const el = htmlEl('div', 'clicky-island', parent, `
     <div class="av">${headsetSvg(16, { mic: true })}</div>
     <div class="wave">${'<i></i>'.repeat(5)}</div>
     <div class="dots"><i></i><i></i><i></i></div>
     <span class="err"></span>
-    <div class="cap"></div>
-    <span class="hint">${String(key).split(' / ').map(k => `<kbd>${esc(k)}</kbd>`).join('')}${label ? `<span>${esc(label)}</span>` : ''}</span>
-    <button type="button" class="x" aria-label="Borrar todo lo que marcó Hinty (Esc)" title="Borrar todo (Esc)">${X_SVG}</button>`);
-  const cap = el.querySelector('.cap'), bars = [...el.querySelectorAll('.wave i')];
+    <div class="cap"><div class="cap-in"></div></div>
+    <div class="hint">
+      <span class="tool clear-wrap">
+        <button type="button" class="clear" aria-label="Borrar todo lo que marcó Hinty (Esc)">${ERASE_SVG}<span>Borrar todo</span></button>
+        <span class="tip" role="tooltip">
+          <b>Borrar todo</b>
+          <span>Saca las marcas, etiquetas, tarjetas y la pizarra, y corta la explicación. ${kbd('esc')}</span>
+          <span class="m">Hinty sigue prendido: pregúntale otra cosa cuando quieras.</span>
+        </span>
+      </span>
+      <span class="tool talk-wrap">
+        <button type="button" class="talk" aria-label="Hablar con Hinty: mantén ${esc(talkKey)} o este botón">${micSvg(32)}</button>
+        <span class="tip" role="tooltip">
+          <b>Hablar con Hinty</b>
+          <span>Mantén ${kbd(talkKey)} (o este botón) mientras hablas y suelta para enviar.</span>
+          <span class="m">Un clic corto lo deja escuchando hasta que vuelvas a apretarlo.</span>
+        </span>
+      </span>
+      <span class="tool mark-wrap">
+        <button type="button" class="mark" aria-label="Modo marcar: con él encendido, mantén shift para marcar la pantalla" aria-pressed="false">${pencilSvg(32)}</button>
+        <span class="tip" role="tooltip">
+          <b>Modo marcar</b>
+          <span>Un clic lo enciende. Con el modo encendido, mantén ${kbd('⇧ shift')} y mueve el cursor sobre lo que quieras mostrarle.</span>
+          <span class="m">Lo marcado va con tu próxima pregunta, hablada o escrita. Otro clic lo apaga.</span>
+        </span>
+      </span>
+      ${onClose ? `<span class="sep" aria-hidden="true"></span><button type="button" class="close" aria-label="Cerrar Hinty" title="Cerrar Hinty"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="2.5" stroke-linecap="square"/></svg></button>` : ''}
+    </div>`);
+  // capIn lleva las palabras; cap recorta y deja a la vista las últimas líneas (la barra no crece).
+  const cap = el.querySelector('.cap'), capIn = el.querySelector('.cap-in'), bars = [...el.querySelectorAll('.wave i')];
   let words = [], speakTimer = 0;
 
   function state(s) {
@@ -41,10 +76,10 @@ export function createIsland(parent, { hint = '⌃⌥ / ESPACIO · Mantén apret
   function caption(text, { dim = false, error = false, muted = false } = {}) {
     el.toggleAttribute('data-error', error);
     cap.classList.toggle('muted', muted);
-    cap.innerHTML = '';
+    capIn.innerHTML = '';
     const whole = !dim || reducedMotion();
     words = String(text).split(/\s+/).filter(Boolean).map(w => {
-      const s = htmlEl('span', whole ? 'on' : '', cap);
+      const s = htmlEl('span', whole ? 'on' : '', capIn);
       s.textContent = w + ' ';
       return s;
     });
@@ -71,9 +106,11 @@ export function createIsland(parent, { hint = '⌃⌥ / ESPACIO · Mantén apret
     el.insertBefore(input, el.querySelector('.hint'));
     el.dataset.input = '';
     input.focus();
-    const close = () => { input.remove(); cap.style.display = ''; delete el.dataset.input; };
-    // Control y Option pasan: con el input abierto igual se puede mantener ⌃⌥ para hablar y marcar
-    const modifier = e => e.key === 'Control' || e.key === 'Alt';
+    const close = () => { if (!input.isConnected) return; input.remove(); cap.style.display = ''; delete el.dataset.input; };
+    closeInput = close;
+    // Shift pasa (con el modo marcar dibuja) y la tecla de hablar también (fn no escribe; si fuera
+    // espacio, solo con el input vacío): con el input abierto igual se puede hablar y marcar.
+    const modifier = e => e.key === 'Shift' || ((e.code === talkCode || e.key === talkCode) && !input.value);
     input.addEventListener('keydown', e => {
       if (modifier(e)) return;
       e.stopPropagation();
@@ -84,18 +121,58 @@ export function createIsland(parent, { hint = '⌃⌥ / ESPACIO · Mantén apret
     // se cierra al perder el foco, salvo que vuelva (un clic en la misma isla lo devuelve al input)
     input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== input) close(); }, 150));
   }
+  let closeInput = () => {};
   el.addEventListener('click', openInput);
-  // La ×: borra todas las marcas, tarjetas y pizarra, y corta la explicación (como en HeyClicky).
-  // Solo se ve cuando hay algo que borrar (data-clearable).
-  el.querySelector('.x').addEventListener('click', e => { e.stopPropagation(); onClear?.(); });
+
+  // Botón de hablar: lo decide el kit (mantener = hablar mientras está apretado; un clic = queda escuchando).
+  // pointerdown sin preventDefault le quitaría el foco a la página, y no se cierra el input al apretar.
+  const talk = el.querySelector('.talk'), mark = el.querySelector('.mark');
+  let holding = false;
+  const release = () => {
+    if (!holding) return;
+    holding = false;
+    talk.classList.remove('held');
+    onTalk?.('up');
+  };
+  talk.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    holding = true;
+    talk.setPointerCapture?.(e.pointerId);
+    talk.classList.add('held');
+    onTalk?.('down');
+  });
+  talk.addEventListener('pointerup', release);
+  talk.addEventListener('pointercancel', release);
+  talk.addEventListener('lostpointercapture', release);
+  mark.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onMark?.();
+  });
+  [talk, mark].forEach(b => b.addEventListener('click', e => e.stopPropagation()));
+  el.querySelector('.clear').addEventListener('click', e => { e.stopPropagation(); onClear?.(); });
+  // «Borrar todo» solo se ve cuando hay algo que borrar.
   function clearable(on) { el.toggleAttribute('data-clearable', !!on); }
+  el.querySelector('.close')?.addEventListener('click', e => { e.stopPropagation(); onClose?.(); });
+  el.querySelector('.hint').addEventListener('click', e => e.stopPropagation());
+
+  // El lápiz está encendido mientras se marca la pantalla.
+  function marking(on) {
+    el.toggleAttribute('data-marking', on);
+    mark.setAttribute('aria-pressed', String(on));
+  }
 
   return {
-    el, state, level, word, idle, openInput, clearable,
+    el, frame, state, level, word, idle, openInput, marking, clearable,
+    closeInput: () => closeInput(),
     caption(text, opts) { caption(text, opts); },
   };
 }
 
-const X_SVG = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.75" stroke-linecap="square"/></svg>';
+// Una × dentro de un recuadro de pixeles: "borrar lo dibujado", distinta de la X que cierra a Hinty.
+const ERASE_SVG = '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="1.5" y="1.5" width="15" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/><path d="M6 6l6 6M12 6l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>';
 
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

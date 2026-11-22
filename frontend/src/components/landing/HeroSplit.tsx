@@ -18,11 +18,14 @@ export function HeroSplit({
   secondRef,
   overlayRef,
   children,
+  cta,
 }: {
   firstRef?: Ref<HTMLDivElement>;
   secondRef?: Ref<HTMLDivElement>;
   overlayRef?: Ref<HTMLDivElement>;
   children?: ReactNode;
+  /** Botón bajo la indicación de scroll (solo mobile; en desktop va arriba a la derecha). */
+  cta?: ReactNode;
 }) {
   return (
     <>
@@ -64,6 +67,8 @@ export function HeroSplit({
           {HERO.scrollHint}
           <span aria-hidden="true">↓</span>
         </span>
+        {/* La capa del hero no recibe clics; el botón sí. */}
+        {cta && <div className="pointer-events-auto md:hidden">{cta}</div>}
       </div>
     </>
   );

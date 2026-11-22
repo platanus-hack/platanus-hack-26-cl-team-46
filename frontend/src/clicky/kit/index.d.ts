@@ -7,9 +7,13 @@ export interface ClickyOptions {
   /** Único tema: "mayday" (DESIGN.md › Hinty › 13). */
   theme?: "mayday";
   voice?: boolean;
+  /** Tecla que se mantiene para hablar (KeyboardEvent.key o .code). Por defecto "Space". */
   pushToTalkKey?: string;
   cssHref?: string;
+  /** Cómo se muestra esa tecla en la nube del botón de hablar (por defecto "espacio"). */
   hint?: string;
+  /** La X de la barra: quien monta el kit apaga a Hinty (destroy y soltar la captura). */
+  onClose?: () => void;
   /** Captura de lo que ve el usuario (data URL) o null. */
   screenshot?: () => Promise<string | null>;
   context?: string | (() => string);
@@ -34,6 +38,8 @@ export interface ClickyOptions {
 export interface ClickyInstance {
   ask(question: string): Promise<void>;
   clear(options?: { fast?: boolean }): Promise<void>;
+  /** «Borrar todo» de la barra: borra marcas, tarjetas, pizarra y guía, y corta la voz y la respuesta en curso. */
+  clearAll(): void;
   /** La × de la isla: borra marcas, tarjetas, pizarra y guía, y corta la voz y la respuesta en curso. */
   clearAll(): void;
   setTheme(name: string): void;

@@ -43,6 +43,7 @@ Traduces lo que pasa en la simulación (ataques, cambios, estado del incidente) 
 - Cuando algo se arregla y se nota, también puede llegar una buena noticia ("Martín confirma que ya puede entrar").
 - Los cambios del developer (una contraseña cambiada en la base, un reinicio, un deploy) los hizo él, no sus usuarios. Un cliente nota sus efectos ("me pidió la clave de nuevo"), pero no dice que él los hizo.
 - Si los eventos nuevos no producen nada observable, devuelve una lista vacía. Calidad sobre cantidad.
+- **\`incident.pulse\`:** el atacante sigue adentro y no hubo ataques nuevos. Manda **una** consecuencia nueva y creíble de lo que ya logró (otro cliente que nota algo en su cuenta, datos suyos que aparecen afuera, un compañero preocupado, un contador que sigue subiendo). Que suba la presión de a poco, sin repetir lo que ya mandaste y sin nombrar la causa.
 
 ### Formato por canal
 - **email / support / phone:** \`from\` es una persona del contexto ("Nombre <email>"). El cuerpo es el texto del correo, el ticket o el resumen de la llamada, en tono natural.

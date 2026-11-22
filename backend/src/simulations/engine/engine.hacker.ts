@@ -25,6 +25,10 @@ const TICK_MS = 5_000;
 const LOG_LINES = 300;
 /** Pausa antes del primer paso de cada vuln. */
 const FIRST_STEP_MS = 4_000;
+/** El primer ataque del simulacro arranca al tiro y sus primeros pasos van rápido: que pase algo apenas se parte. */
+const OPENING_FIRST_MS = 500;
+const OPENING_STEP_MS = 6_000;
+const OPENING_FAST_STEPS = 3;
 const CLOSED = ['finished', 'failed', 'stopped'];
 
 interface Queue {
@@ -32,6 +36,8 @@ interface Queue {
   events: EngineReplayEvent[];
   timer?: NodeJS.Timeout;
   paused: boolean;
+  /** Pasos que todavía van con el ritmo rápido de la apertura. */
+  fast: number;
 }
 
 /**
@@ -93,7 +99,10 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
           break;
         case 'control.start':
         case 'control.next':
-          this.playNext(s.sim_id, str(e.raw?.vuln_id) ?? e.vuln_id ?? undefined);
+          this.playNext(
+            s.sim_id,
+            str(e.raw?.vuln_id) ?? e.vuln_id ?? undefined,
+          );
           break;
         case 'control.pause':
           this.pause(s.sim_id);
@@ -128,7 +137,9 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
   select(simId: string, vulns: string[]) {
     const s = this.sims.get(simId);
     const confirmed = new Set(
-      (s.engine?.findings ?? []).filter((f) => f.confirmed).map((f) => f.vuln_id),
+      (s.engine?.findings ?? [])
+        .filter((f) => f.confirmed)
+        .map((f) => f.vuln_id),
     );
     const unknown = vulns.filter((v) => !confirmed.has(v));
     if (unknown.length)
@@ -140,7 +151,9 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       r.engine!.selected = selected;
       // El simulacro cubre solo las elegidas, en ese orden. El cerebro ordena por
       // el campo `order` (planOrder), así que se reescribe además de filtrar.
-      const plan = r.attack_plan as { findings?: { vuln_id: string; order?: number }[] };
+      const plan = r.attack_plan as {
+        findings?: { vuln_id: string; order?: number }[];
+      };
       if (plan?.findings) {
         plan.findings = selected
           .map((id, i) => {
@@ -188,7 +201,9 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
 
   private firstPassDone(simId: string, result: EngineRunResult) {
     const a = result.artifacts as {
-      attack_plan?: { raw?: { findings?: Record<string, unknown>[]; plugin?: string } };
+      attack_plan?: {
+        raw?: { findings?: Record<string, unknown>[]; plugin?: string };
+      };
       diagnosis?: {
         summary?: { confirmed: number; total: number; requests: number };
         duration_ms?: number;
@@ -271,19 +286,30 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     const vuln = vulnId ?? order.find((v) => !e.played.includes(v));
     if (!vuln || !e.replay[vuln]?.length) return;
     if (e.selected?.length && !e.selected.includes(vuln)) return;
+    const opening = e.played.length === 0;
     this.store.update(simId, (r) => {
       if (!r.engine!.played.includes(vuln)) r.engine!.played.push(vuln);
       r.engine!.current = vuln;
     });
-    this.enqueue(simId, vuln, e.replay[vuln]);
+    this.enqueue(simId, vuln, e.replay[vuln], opening);
   }
 
-  private enqueue(simId: string, vuln: string, events: EngineReplayEvent[]) {
+  private enqueue(
+    simId: string,
+    vuln: string,
+    events: EngineReplayEvent[],
+    opening = false,
+  ) {
     const prev = this.queues.get(simId);
     if (prev) clearTimeout(prev.timer);
-    const q: Queue = { vuln, events: [...events], paused: false };
+    const q: Queue = {
+      vuln,
+      events: [...events],
+      paused: false,
+      fast: opening ? OPENING_FAST_STEPS : 0,
+    };
     this.queues.set(simId, q);
-    this.schedule(simId, q, FIRST_STEP_MS);
+    this.schedule(simId, q, opening ? OPENING_FIRST_MS : FIRST_STEP_MS);
   }
 
   private schedule(simId: string, q: Queue, ms: number) {
@@ -309,12 +335,16 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       body: ev.body,
       raw: { ...ev.raw, replay: true },
     });
-    if (q.events.length) this.schedule(simId, q, this.stepMs());
-    else this.queues.delete(simId);
+    if (q.events.length) {
+      const fast = q.fast > 0;
+      if (fast) q.fast -= 1;
+      this.schedule(simId, q, fast ? OPENING_STEP_MS : this.stepMs());
+    } else this.queues.delete(simId);
   }
 
   private stepMs() {
-    const base = this.config.get('ENGINE_REPLAY_STEP_SECONDS', { infer: true }) * 1000;
+    const base =
+      this.config.get('ENGINE_REPLAY_STEP_SECONDS', { infer: true }) * 1000;
     return Math.round(base * (0.7 + Math.random() * 0.6));
   }
 
@@ -344,7 +374,11 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     if (!e?.current || !e.replay || this.queues.has(s.sim_id)) return;
     if (!['running'].includes(s.status)) return;
     const posted = s.timeline.filter(
-      (x) => x.actor === 'hacker' && x.vuln_id === e.current && x.type.startsWith('attack.') && x.type !== 'attack.verify',
+      (x) =>
+        x.actor === 'hacker' &&
+        x.vuln_id === e.current &&
+        x.type.startsWith('attack.') &&
+        x.type !== 'attack.verify',
     ).length;
     const rest = (e.replay[e.current] ?? []).slice(posted);
     if (rest.length) this.enqueue(s.sim_id, e.current, rest);
@@ -409,7 +443,8 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     this.store.update(simId, (r) => {
       const x = r.engine!.verifies.find((y) => y.seq === seq)!;
       x.status = live ? 'done' : 'failed';
-      if (!live) x.error = error ?? result?.stderr?.slice(-300) ?? 'sin resultado';
+      if (!live)
+        x.error = error ?? result?.stderr?.slice(-300) ?? 'sin resultado';
     });
     this.sims.postFromAgent(simId, 'hacker', {
       type: 'attack.verify',
@@ -442,32 +477,57 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       if (!s.engine_driven || CLOSED.includes(s.status)) continue;
       // App ya desplegada sin primera pasada (p. ej. el backend se reinició justo antes).
       if (!s.engine) {
-        if (s.deploy_ready_at && s.status === 'starting' && this.enabled) void this.firstPass(s.sim_id);
+        if (s.deploy_ready_at && s.status === 'starting' && this.enabled)
+          void this.firstPass(s.sim_id);
         continue;
       }
       this.recoverQueue(s);
       const e = s.engine;
       if (e.status === 'running') {
-        if (!e.call_id && stale(e.started_at, START_GRACE_MS) && !this.starting.has(s.sim_id))
-          this.firstPassFailed(s.sim_id, 'el motor no alcanzó a arrancar (el backend se reinició)');
+        if (
+          !e.call_id &&
+          stale(e.started_at, START_GRACE_MS) &&
+          !this.starting.has(s.sim_id)
+        )
+          this.firstPassFailed(
+            s.sim_id,
+            'el motor no alcanzó a arrancar (el backend se reinició)',
+          );
         else if (stale(e.started_at, RUN_MAX_MS))
           this.firstPassFailed(s.sim_id, 'el motor no respondió a tiempo');
       }
       for (const v of e.verifies.filter((x) => x.status === 'running')) {
-        if (!v.call_id && stale(v.requested_at, START_GRACE_MS) && !this.starting.has(`${s.sim_id}:${v.seq}`))
-          this.verifyDone(s.sim_id, v.seq, null, 'el motor no alcanzó a arrancar (el backend se reinició)');
+        if (
+          !v.call_id &&
+          stale(v.requested_at, START_GRACE_MS) &&
+          !this.starting.has(`${s.sim_id}:${v.seq}`)
+        )
+          this.verifyDone(
+            s.sim_id,
+            v.seq,
+            null,
+            'el motor no alcanzó a arrancar (el backend se reinició)',
+          );
         else if (stale(v.requested_at, RUN_MAX_MS))
-          this.verifyDone(s.sim_id, v.seq, null, 'el motor no respondió a tiempo');
+          this.verifyDone(
+            s.sim_id,
+            v.seq,
+            null,
+            'el motor no respondió a tiempo',
+          );
       }
       // Releer: lo de arriba pudo cerrar la sim o terminar corridas.
       const now = this.store.get(s.sim_id);
       if (!now?.engine || CLOSED.includes(now.status)) continue;
       const fresh = now.engine;
-      if (fresh.status === 'running' && fresh.call_id) await this.poll(s.sim_id, fresh.call_id, (st) => {
-        if (st.status === 'done') this.firstPassDone(s.sim_id, st.result);
-        else this.firstPassFailed(s.sim_id, st.error);
-      });
-      for (const v of fresh.verifies.filter((x) => x.status === 'running' && x.call_id)) {
+      if (fresh.status === 'running' && fresh.call_id)
+        await this.poll(s.sim_id, fresh.call_id, (st) => {
+          if (st.status === 'done') this.firstPassDone(s.sim_id, st.result);
+          else this.firstPassFailed(s.sim_id, st.error);
+        });
+      for (const v of fresh.verifies.filter(
+        (x) => x.status === 'running' && x.call_id,
+      )) {
         await this.poll(s.sim_id, v.call_id!, (st) =>
           st.status === 'done'
             ? this.verifyDone(s.sim_id, v.seq, st.result)
@@ -481,7 +541,9 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     simId: string,
     callId: string,
     onFinish: (
-      st: { status: 'done'; result: EngineRunResult } | { status: 'failed'; error: string },
+      st:
+        | { status: 'done'; result: EngineRunResult }
+        | { status: 'failed'; error: string },
     ) => void,
   ) {
     if (this.polling.has(callId)) return;
@@ -490,7 +552,9 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       const st = await this.client.status(callId);
       if (st.status !== 'running') onFinish(st);
     } catch (err) {
-      this.logger.warn(`[${simId}] sondeo ${callId}: ${(err as Error).message}`);
+      this.logger.warn(
+        `[${simId}] sondeo ${callId}: ${(err as Error).message}`,
+      );
     } finally {
       this.polling.delete(callId);
     }
@@ -507,7 +571,9 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       password?: string;
       role?: string;
     }[];
-    const weak = users.find((u) => u.email && u.password && u.role !== 'admin') ?? users.find((u) => u.email && u.password);
+    const weak =
+      users.find((u) => u.email && u.password && u.role !== 'admin') ??
+      users.find((u) => u.email && u.password);
     // El código que está desplegado: el mirror (deploy_repo_url) en el commit actual
     // del sandbox (sandbox_commit es un sha del mirror; no existe en el repo original).
     // En una verificación es el commit con el arreglo del developer.
@@ -520,16 +586,23 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       plugin: this.config.get('ENGINE_PLUGIN', { infer: true }),
       profile: 'fast',
       seed: s.sim_id,
-      ...(weak ? { weak_login: { email: weak.email, password: weak.password } } : {}),
+      ...(weak
+        ? { weak_login: { email: weak.email, password: weak.password } }
+        : {}),
     };
   }
 
   private token(simId: string) {
-    return signSimToken(this.config.get('AGENT_API_SECRET', { infer: true })!, simId);
+    return signSimToken(
+      this.config.get('AGENT_API_SECRET', { infer: true })!,
+      simId,
+    );
   }
 
   private publicUrl() {
-    return this.config.get('PUBLIC_BACKEND_URL', { infer: true })!.replace(/\/+$/, '');
+    return this.config
+      .get('PUBLIC_BACKEND_URL', { infer: true })!
+      .replace(/\/+$/, '');
   }
 }
 
@@ -549,7 +622,10 @@ function str(v: unknown): string | undefined {
 
 function toFinding(f: Record<string, unknown>): EngineFinding {
   const ref = f.repo_ref as { file?: string; line?: number } | undefined;
-  const loc = typeof f.location === 'string' ? f.location.match(/^([^\s:]+):(\d+)/) : null;
+  const loc =
+    typeof f.location === 'string'
+      ? f.location.match(/^([^\s:]+):(\d+)/)
+      : null;
   return {
     vuln_id: String(f.vuln_id),
     title: typeof f.title === 'string' ? f.title : String(f.vuln_id),
@@ -571,13 +647,25 @@ export function attackerStillInside(
   s: SimulationRecord,
   vuln: string,
   stillExploitable: boolean,
-): { active: boolean; reason: string; footholds: { foothold: string; valid: boolean; why: string }[] } {
+): {
+  active: boolean;
+  reason: string;
+  footholds: { foothold: string; valid: boolean; why: string }[];
+} {
   const replay = s.engine?.replay?.[vuln] ?? [];
   const success = replay.find((e) => e.type === 'attack.success');
-  const foothold = (success?.raw?.foothold ?? null) as { type?: string; detail?: string } | null;
+  const foothold = (success?.raw?.foothold ?? null) as {
+    type?: string;
+    detail?: string;
+  } | null;
   const kind = foothold?.type;
   const attackSeq =
-    s.timeline.find((e) => e.actor === 'hacker' && e.vuln_id === vuln && e.type.startsWith('attack.'))?.seq ?? 0;
+    s.timeline.find(
+      (e) =>
+        e.actor === 'hacker' &&
+        e.vuln_id === vuln &&
+        e.type.startsWith('attack.'),
+    )?.seq ?? 0;
   const after = s.timeline.filter((e) => e.seq > attackSeq);
   const deployedAfter = (seq: number) =>
     after.some((e) => e.seq > seq && e.type === 'change.deployed');
@@ -614,7 +702,9 @@ export function attackerStillInside(
         {
           foothold: foothold?.detail ?? 'token de sesión robado',
           valid,
-          why: valid ? 'JWT_SECRET no se rotó desde el ataque' : 'JWT_SECRET rotado y desplegado',
+          why: valid
+            ? 'JWT_SECRET no se rotó desde el ataque'
+            : 'JWT_SECRET rotado y desplegado',
         },
       ],
     };
@@ -629,7 +719,13 @@ export function attackerStillInside(
         ? 'Revertiste el acceso, pero puede volver a escalar por la misma vuln.'
         : 'Se revirtió su acceso y la vuln ya no responde.',
     footholds: [
-      { foothold: foothold?.detail ?? 'cuenta con rol admin', valid, why: valid ? 'sin cambios en la base ni rotación de JWT_SECRET' : 'acceso revertido' },
+      {
+        foothold: foothold?.detail ?? 'cuenta con rol admin',
+        valid,
+        why: valid
+          ? 'sin cambios en la base ni rotación de JWT_SECRET'
+          : 'acceso revertido',
+      },
     ],
   };
 }

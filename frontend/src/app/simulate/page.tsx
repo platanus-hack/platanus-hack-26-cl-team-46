@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ArrowLeftRight, Pencil } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AgentChat } from "@/components/agent/AgentChat";
 import { setClickySimulation } from "@/clicky/active-sim";
 import { BrowserWindow } from "@/components/workspace/BrowserWindow";
@@ -11,7 +11,7 @@ import { ChannelIcon } from "@/components/workspace/ChannelIcon";
 import { Logo } from "@/components/mayday";
 import { CmdK, RenameInput, repoShortName, SandboxPicker, type SandboxEntry } from "@/components/sandbox/SandboxPicker";
 import { api, type Sandbox } from "@/lib/api";
-import { EngineFirstPass } from "@/components/engine/EngineFirstPass";
+import { SimGate } from "@/components/engine/EngineFirstPass";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
 import { eventToMessage, seedMessages } from "@/lib/workspace-chat";
 import { eventToMail, seedMails } from "@/lib/workspace-mail";
@@ -218,11 +218,11 @@ function SimulateConsole() {
     }
   };
 
-  // Motor real: antes de partir se ve la primera pasada (en vivo) y el informe, no el escritorio.
+  // Antes de partir no se ve el escritorio: la preparación y, con todos los agentes listos, el botón.
+  // Una simulación que falló antes de partir (sin reporte) se queda en esa pantalla con el error.
   const firstPass =
     Boolean(sim) &&
-    sim!.engine_driven &&
-    (sim!.status === "starting" || sim!.status === "ready" || (sim!.status === "failed" && Boolean(sim!.engine)));
+    (sim!.status === "starting" || sim!.status === "ready" || (sim!.status === "failed" && !sim!.report));
   const project = sim ? sim.repo_url.replace(/\/$/, "").split("/").pop() || "proyecto" : "proyecto";
   const simStart = sim?.created_at;
   const mails = [
@@ -243,7 +243,7 @@ function SimulateConsole() {
   return (
     // Mobile: la página hace scroll (no cabe en una pantalla) y debajo de la barra de la app, que ya trae el logo.
     <main className="flex min-h-[calc(100svh-56px)] flex-col gap-3 p-4 font-sans text-sm md:h-screen md:min-h-0">
-      <header className={`flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line pb-3 ${entry ? "" : "max-md:hidden"}`}>
+      <header className={`flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line pb-3 ${entry ? "" : "max-md:hidden"}`} data-clicky-region="header">
         <Link href="/" aria-label="Mayday, inicio" className="shrink-0 max-md:hidden">
           <Logo height={24} priority />
         </Link>
@@ -299,7 +299,7 @@ function SimulateConsole() {
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
 
       {sim && firstPass && (
-        <EngineFirstPass sim={sim} onStart={(vulns) => run(() => simApi.start(sim.sim_id, vulns))} />
+        <SimGate sim={sim} onStart={() => run(() => simApi.start(sim.sim_id))} />
       )}
 
       {sim && !firstPass && (
@@ -319,14 +319,13 @@ function SimulateConsole() {
                 mails={mails}
               />
             </div>
-            <section className="flex min-h-0 flex-[2] flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3 max-lg:max-h-[360px] max-lg:flex-none">
-              <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Historial de sucesos</h2>
+            <FeedLog key={sim.sim_id} status={sim.status} follow={`${feed.length}|${sim.status}|${sim.debrief ? 1 : 0}`}>
               {godMode && <InternalPanel sim={sim} run={run} />}
-              {sim.debrief && <Debrief debrief={sim.debrief} />}
-              {[...feed].reverse().map((e) => (
+              {feed.map((e) => (
                 <FeedItem key={e.seq} e={e} />
               ))}
-            </section>
+              {sim.debrief && <Debrief debrief={sim.debrief} />}
+            </FeedLog>
           </div>
 
           {/* Panel derecho: chat con el agente. En mobile va debajo, con alto propio. */}
@@ -372,16 +371,10 @@ const STATUS_LABEL: Record<string, string> = {
   stopped: "Detenida",
 };
 
-/** Qué le falta a una simulación en `starting` para quedar lista (mismo criterio que el backend). */
-function pendingSteps(sim: Simulation): string[] {
-  return [
-    sim.sandbox.status !== "ready" && "desplegando la app",
-    !sim.tools_detected && "revisando herramientas",
-    !sim.attack_plan && (sim.engine_driven ? "el motor ataca tu sandbox" : "el atacante analiza el código"),
-  ].filter((x): x is string => Boolean(x));
-}
-
-/** Estado de la simulación y control del flujo: partir, pausar, siguiente vuln y terminar. */
+/**
+ * Estado de la simulación y su único control: terminar. El atacante avanza solo y la
+ * simulación se pausa sola mientras Hinty está abierto.
+ */
 function FlowControls({
   sim,
   run,
@@ -392,22 +385,24 @@ function FlowControls({
   onNewRun: () => void;
 }) {
   const live = sim.status === "running" || sim.status === "paused";
-  const pending = sim.status === "starting" ? pendingSteps(sim) : [];
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-ink-muted max-md:w-full" title={sim.error ?? undefined}>
         <span className="font-medium text-ink">{STATUS_LABEL[sim.status] ?? sim.status}</span>
-        {pending.length > 0 && <> · {pending.join(" · ")}…</>}
+        {sim.status === "paused" && <> · hablando con Hinty</>}
         {sim.status === "failed" && sim.error && <> · {sim.error.slice(0, 80)}</>}
       </span>
-      {(sim.status === "starting" || sim.status === "ready") && (
-        <Btn disabled={sim.status !== "ready"} onClick={() => run(() => simApi.start(sim.sim_id))}>
-          Partir
+      {live && (
+        <Btn
+          onClick={() => {
+            if (window.confirm("¿Terminar el simulacro? El atacante se detiene y se arma tu reporte.")) {
+              run(() => simApi.control(sim.sim_id, "finish"));
+            }
+          }}
+        >
+          Terminar
         </Btn>
       )}
-      {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
-      {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
-      {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>}
       {(sim.status === "finished" || sim.status === "failed" || sim.status === "stopped") && (
         <Btn onClick={onNewRun}>Nuevo simulacro</Btn>
       )}
@@ -478,6 +473,74 @@ function Btn({ onClick, children, disabled }: { onClick: () => void; children: R
     >
       {children}
     </button>
+  );
+}
+
+/**
+ * Historial de sucesos en orden de llegada: lo último queda abajo, pegado al fondo, salvo que el usuario
+ * haya subido a leer algo (ahí no se mueve y aparece un botón para volver al final). Cierra con una
+ * línea de estado: tres pixeles cargando mientras corre, o el estado en mayúsculas (EN PAUSA…).
+ */
+function FeedLog({ status, follow, children }: { status: Simulation["status"]; follow: string; children: React.ReactNode }) {
+  const box = useRef<HTMLElement>(null);
+  const stuck = useRef(true);
+  const [away, setAway] = useState(false);
+  const toBottom = useCallback(() => {
+    const el = box.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, []);
+  // Al llegar algo nuevo (o cambiar el estado), si estaba abajo, sigue abajo.
+  useLayoutEffect(() => {
+    if (stuck.current) toBottom();
+  }, [follow, toBottom]);
+  // Si el contenido crece sin un suceso nuevo (fuentes, paneles que se abren), también se sigue.
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => stuck.current && toBottom());
+    Array.from(el.children).forEach((c) => ro.observe(c));
+    return () => ro.disconnect();
+  }, [follow, toBottom]);
+  const onScroll = () => {
+    const el = box.current;
+    if (!el) return;
+    stuck.current = el.scrollHeight - el.scrollTop - el.clientHeight < 32;
+    setAway(!stuck.current);
+  };
+  const loading = status === "running" || status === "starting";
+  return (
+    <div className="relative flex min-h-0 flex-[2] flex-col max-lg:max-h-[360px] max-lg:flex-none">
+      <section ref={box} onScroll={onScroll} className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto rounded-md border border-line bg-bg-100 p-3">
+        <h2 className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Historial de sucesos</h2>
+        {children}
+        <div className="flex items-center gap-2 px-2 py-1 font-mono text-xs" role="status" aria-live="polite">
+          {loading ? (
+            <span className="md-feed-dots" aria-label={STATUS_LABEL[status]}>
+              <i />
+              <i />
+              <i />
+            </span>
+          ) : (
+            <span className={`uppercase tracking-[0.12em] ${status === "paused" ? "font-semibold text-ink" : "text-ink-muted"}`}>
+              {STATUS_LABEL[status] ?? status}
+            </span>
+          )}
+        </div>
+      </section>
+      {away && (
+        <button
+          type="button"
+          onClick={() => {
+            stuck.current = true;
+            setAway(false);
+            toBottom();
+          }}
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-sm border border-line-strong bg-bg-200 px-3 py-1 text-xs text-ink shadow-toast hover:border-defense"
+        >
+          Ir a lo último ↓
+        </button>
+      )}
+    </div>
   );
 }
 

@@ -59,6 +59,8 @@ export interface QuickActionInput {
 const ACTIVE: SimStatus[] = ['starting', 'ready', 'running', 'paused'];
 /** Roles que pueden cambiar la app (código, env, datos, servicio). */
 const OPERATORS: SimRole[] = ['coder', 'infra'];
+/** Espera máxima por el agente de código y las alertas de apertura antes de dejar partir igual. */
+const READY_WAIT_MS = 3 * 60_000;
 
 /**
  * Orquestación de una simulación: un sandbox + un workspace de Conductor con
@@ -251,8 +253,8 @@ export class SimulationsService implements OnModuleInit {
     // Con el motor real configurado, el hacker es el motor (salvo que se pida el emulado).
     const engineReady = Boolean(
       this.config.get('ENGINE_URL', { infer: true }) &&
-        this.config.get('ENGINE_MODAL_KEY', { infer: true }) &&
-        this.config.get('ENGINE_MODAL_SECRET', { infer: true }),
+      this.config.get('ENGINE_MODAL_KEY', { infer: true }) &&
+      this.config.get('ENGINE_MODAL_SECRET', { infer: true }),
     );
     const hackerMode = input.hacker ?? (engineReady ? 'external' : 'emulated');
     // El rol hacker lo opera el motor interno (EngineHacker), no alguien de afuera.
@@ -403,11 +405,7 @@ export class SimulationsService implements OnModuleInit {
   start(id: string) {
     const s = this.get(id);
     if (s.status !== 'ready') {
-      const missing = [
-        !s.deploy_ready_at && 'la app desplegada',
-        !s.tools_detected && 'revisar las herramientas del repo',
-        !s.attack_plan && 'el plan de ataque',
-      ].filter(Boolean);
+      const missing = this.readyMissing(s);
       throw new ConflictException(
         s.status === 'starting'
           ? `Todavía falta: ${missing.join(' y ')}`
@@ -425,19 +423,34 @@ export class SimulationsService implements OnModuleInit {
     id: string,
     action: 'next' | 'pause' | 'resume' | 'verify' | 'finish',
     vulnId?: string,
+    reason?: string,
   ) {
     const s = this.get(id);
     if (!['running', 'paused'].includes(s.status))
       throw new ConflictException(`La simulación está ${s.status}`);
+    // Pausar lo pausado o reanudar lo que corre no hace nada (Hinty se abre y cierra seguido).
+    if (
+      (action === 'pause' && s.status === 'paused') ||
+      (action === 'resume' && s.status === 'running')
+    )
+      return this.toView(s);
     if (action === 'next') {
       const blocked = nextBlockedReason(s);
       if (blocked) throw new ConflictException(blocked);
     }
     this.post(id, 'user', {
       type: `control.${action}`,
-      title: `${action}${vulnId ? ` ${vulnId}` : ''} (developer)`,
+      title:
+        reason === 'hinty'
+          ? action === 'pause'
+            ? 'En pausa: hablando con Hinty'
+            : 'Hinty se cerró: el incidente continúa'
+          : `${action}${vulnId ? ` ${vulnId}` : ''} (developer)`,
       vuln_id: vulnId,
-      raw: vulnId ? { vuln_id: vulnId } : {},
+      raw: {
+        ...(vulnId ? { vuln_id: vulnId } : {}),
+        ...(reason ? { reason } : {}),
+      },
     });
     return this.toView(this.get(id));
   }
@@ -873,19 +886,59 @@ export class SimulationsService implements OnModuleInit {
   }
 
   private maybeReady(id: string) {
-    const s = this.get(id);
-    if (
-      s.status === 'starting' &&
-      s.deploy_ready_at &&
-      s.tools_detected &&
-      s.attack_plan
-    ) {
-      this.setStatus(
+    this.checkReady(id);
+  }
+
+  /**
+   * La simulación queda lista (botón para partir) recién cuando TODOS los agentes
+   * pueden partir: app arriba, herramientas, plan del atacante, contexto, el agente de
+   * código en línea y las alertas de apertura escritas. Así, al partir, todo arranca
+   * al tiro. Si algo de lo último se demora más de READY_WAIT_MS, se parte igual.
+   */
+  checkReady(id: string) {
+    const s = this.store.get(id);
+    if (!s || s.status !== 'starting') return;
+    const missing = this.readyMissing(s);
+    const base =
+      s.deploy_ready_at && s.tools_detected && s.attack_plan && s.context;
+    if (base && !s.ready_wait_since)
+      this.store.update(id, { ready_wait_since: new Date().toISOString() });
+    const waited =
+      base &&
+      s.ready_wait_since &&
+      Date.now() - Date.parse(s.ready_wait_since) > READY_WAIT_MS;
+    if (missing.length && !waited) return;
+    if (missing.length)
+      this.system(
         id,
-        'ready',
-        'Todo listo: la app está desplegada y el atacante tiene su plan',
+        'agent.note',
+        `Se parte sin esperar: ${missing.join(', ')}`,
+        '',
       );
-    }
+    this.setStatus(id, 'ready', 'Todo listo: los agentes están en posición');
+  }
+
+  /** Qué falta para poder partir (vacío = listo). */
+  readyMissing(s: SimulationRecord): string[] {
+    const coder = s.threads.find((t) => t.role === 'coder');
+    const coderReady =
+      !coder ||
+      coder.mode !== 'conductor' ||
+      s.timeline.some((e) => e.type === 'coder.reply');
+    const generatorApi = s.threads.some(
+      (t) => t.role === 'generator' && t.mode === 'api',
+    );
+    const openingReady =
+      !generatorApi ||
+      ['ready', 'failed', 'skipped'].includes(s.opening?.status ?? '');
+    return [
+      !s.deploy_ready_at && 'la app desplegada',
+      !s.tools_detected && 'revisar las herramientas del repo',
+      !s.attack_plan && 'el plan del atacante',
+      !s.context && 'el contexto de la app',
+      !coderReady && 'tu agente de código',
+      !openingReady && 'las primeras alertas',
+    ].filter((x): x is string => Boolean(x));
   }
 
   private setStatus(id: string, status: SimStatus, title: string) {

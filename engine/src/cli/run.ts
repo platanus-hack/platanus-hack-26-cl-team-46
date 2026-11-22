@@ -14,7 +14,7 @@ import { diagnose } from '../core/diagnose.ts';
 import { buildDiagnoses, type CodeRef } from '../core/diagnosis.ts';
 import { buildAttackPlan, toTimelineEvents } from '../core/events.ts';
 import { CostLedger } from '../core/ledger.ts';
-import { correlate, discoverRepo } from '../discovery/index.ts';
+import { appDirOf, correlate, discoverRepo } from '../discovery/index.ts';
 import { buildCascadeFromEnv } from '../providers/cascade.ts';
 import { runSemgrep } from '../providers/semgrep.ts';
 import { recon } from '../core/recon.ts';
@@ -157,7 +157,7 @@ async function main() {
       console.log('⚠ --semgrep requiere --repo: se omite.');
     } else {
       try {
-        semgrep = await runSemgrep(path.resolve(repoPath));
+        semgrep = await runSemgrep(path.resolve(repoPath), { subdir: appDirOf(path.resolve(repoPath)) });
         console.log(`▶ semgrep: ${semgrep.length} hallazgo(s)`);
       } catch (e) {
         console.log(`⚠ semgrep falló: ${e instanceof Error ? e.message : e}`);

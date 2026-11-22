@@ -1,7 +1,8 @@
 /** Señales de vulnerabilidad por patrón (grep/AST ligero), con archivo/línea. */
 import type { ScannedFile, SignalDef } from './types.ts';
 
-const SQL_KEYWORDS = /\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|FROM|WHERE|ILIKE|LIKE)\b/i;
+// Palabra clave SQL como texto de la sentencia, no como método (hmac.update(`…${x}`), qb.where(…)).
+const SQL_KEYWORDS = /(?<![.\w$])(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|FROM|WHERE|ILIKE|LIKE)\b(?!\s*\()/i;
 
 function push(sigs: SignalDef[], kind: SignalDef['kind'], detail: string, file: string, line: number, commit: string) {
   sigs.push({ kind, detail, ref: { file, line: line + 1, commit } });
@@ -18,7 +19,7 @@ export function extractSignals(files: ScannedFile[], commit: string): SignalDef[
         push(sigs, 'raw-sql', 'Interpolación de input en una sentencia SQL (posible SQLi).', f.rel, i, commit);
       }
       // Render sin escapar.
-      if (/<%-\s/.test(line) || /dangerouslySetInnerHTML/.test(line) || /render_template_string/.test(line) || /\|\s*safe\b/.test(line)) {
+      if (/<%-(?!\s*include\b)/.test(line) || /dangerouslySetInnerHTML/.test(line) || /render_template_string/.test(line) || /\|\s*safe\b/.test(line)) {
         push(sigs, 'unescaped-render', 'Contenido renderizado sin escapar (posible XSS).', f.rel, i, commit);
       }
       // Secreto hardcodeado (excepto .example).

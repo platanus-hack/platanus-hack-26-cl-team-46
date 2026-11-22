@@ -42,6 +42,8 @@ export const timelineQuerySchema = z.object({
 
 export const controlSchema = z.object({
   action: z.enum(['next', 'pause', 'resume', 'verify', 'finish']),
+  /** hinty: pausa mientras el dock de Hinty está encendido. */
+  reason: z.enum(['hinty']).optional(),
   vuln_id: z.string().min(1).max(80).optional(),
 });
 
@@ -128,7 +130,9 @@ export type AgentSqlBody = z.infer<typeof agentSqlSchema>;
 
 /** Partir la simulación. Con el motor real, el developer puede elegir los incidentes (en orden). */
 export const startSchema = z
-  .object({ vulns: z.array(z.string().min(1).max(80)).min(1).max(8).optional() })
+  .object({
+    vulns: z.array(z.string().min(1).max(80)).min(1).max(8).optional(),
+  })
   .default({});
 export type StartBody = z.infer<typeof startSchema>;
 
