@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Button, StatusChip, useReducedMotion } from "@/components/mayday";
+import { UnsupportedApp } from "@/components/sandbox/UnsupportedApp";
 import type { EngineFinding, Simulation } from "@/lib/sim-api";
 
 /**
@@ -14,6 +15,14 @@ import type { EngineFinding, Simulation } from "@/lib/sim-api";
 export type StartFn = (from?: { x: number; y: number }, vulns?: string[]) => Promise<unknown>;
 
 export function SimGate({ sim, onStart }: { sim: Simulation; onStart: StartFn }) {
+  // La app no se puede desplegar hoy (p. ej. usa Convex): en vez del error técnico, el motivo y otro repo.
+  if (sim.status === "failed" && sim.sandbox.failure_kind === "unsupported") {
+    return (
+      <div className="flex min-h-0 flex-1 items-center px-10 py-12">
+        <UnsupportedApp reason={sim.sandbox.failure_reason ?? null} />
+      </div>
+    );
+  }
   if (sim.status === "ready") {
     // Con el motor real: el informe con lo que confirmó atacando de verdad, y desde ahí se parte.
     if (sim.engine_driven && sim.engine?.status === "done") return <EngineReport sim={sim} onStart={onStart} />;

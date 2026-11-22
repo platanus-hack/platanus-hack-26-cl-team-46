@@ -441,7 +441,9 @@ function FlowControls({
           Terminar
         </Btn>
       )}
-      {(sim.status === "finished" || sim.status === "failed" || sim.status === "stopped") && (
+      {/* Una app no desplegable no mejora con otro simulacro: la pantalla ofrece probar con otro repo. */}
+      {(sim.status === "finished" || sim.status === "failed" || sim.status === "stopped") &&
+        sim.sandbox.failure_kind !== "unsupported" && (
         <Btn onClick={onNewRun}>Nuevo simulacro</Btn>
       )}
       {/* Toda simulación que cierra (terminada, o cortada después de partir) deja un reporte. */}

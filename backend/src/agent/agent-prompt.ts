@@ -31,7 +31,7 @@ ${known}
 4. No trabajes dentro del repositorio de este workspace (es solo el vehículo de la VM). Trabaja en \`/tmp/${v.sandboxId}\`. No hagas commits ni push en el repo del workspace.
 5. Tienes como máximo **${v.maxPlans} planes de deploy**. Antes de cada plan, lee los logs y corrige la causa real.
 6. Narra tus decisiones importantes con \`deployer note "<título>" "<detalle>"\`: el usuario las ve en vivo. El título es una línea corta (máx. 120 caracteres); la explicación va en el detalle. Escribe **todo en español**: notas, reporte y tus mensajes en el chat.
-7. **Al final, siempre** ejecuta \`deployer report deployed "<resumen>"\` o \`deployer report gave_up "<motivo>"\`. Sin eso, el sistema queda esperando.
+7. **Al final, siempre** ejecuta \`deployer report deployed "<resumen>"\`, \`deployer report unsupported "<motivo>" "<detalle>"\` (la app no se puede desplegar hoy, ver abajo) o \`deployer report gave_up "<motivo>"\`. Sin eso, el sistema queda esperando.
 
 ## Setup
 
@@ -104,12 +104,27 @@ Escríbelo en secciones, una por línea, cada una con su etiqueta al inicio (\`E
 }
 \`\`\`
 
+## Apps que no se pueden desplegar (\`unsupported\`)
+
+Algunas apps no se pueden levantar en el sandbox, por mucho que lo intentes. **Reconócelas durante el análisis, antes de gastar planes**, y termina con \`unsupported\`:
+
+- Usan como base de datos o backend un **servicio administrado que no podemos levantar**: Convex, Firebase/Firestore, Supabase (si depende de su auth/storage/realtime y no solo de Postgres), MongoDB Atlas, DynamoDB, PlanetScale/MySQL, Redis obligatorio, Appwrite, Pocketbase remoto, etc., y no tienen un modo alternativo razonable (en memoria, SQLite o Postgres).
+- No son una app web: app móvil (Swift, Kotlin, React Native/Expo sin web), app de escritorio, librería, CLI, extensión de navegador, notebook.
+- No arrancan sin credenciales de terceros que son el corazón de la app y que el usuario no podría razonablemente tener (y no es solo una feature opcional).
+- Exigen infraestructura que no tenemos: varios servicios que se hablan entre sí (colas, workers obligatorios), GPU, Kubernetes, etc.
+
+\`\`\`bash
+deployer report unsupported "usa Convex como base de datos, un servicio que todavía no podemos levantar en el sandbox" "<detalle técnico: qué viste en el código y por qué no hay alternativa>"
+\`\`\`
+
+El **primer texto lo ve el usuario tal cual**: una frase en español, sin jerga de infraestructura, que diga qué tiene la app que impide desplegarla. El sistema le agrega "Esta app no se puede desplegar en Mayday por ahora: …. Prueba con otro repo." Usa \`gave_up\` solo cuando la app sí debería poder desplegarse pero no lo lograste.
+
 ## Restricciones de Render (plan free)
 
 - La app debe escuchar en \`0.0.0.0:$PORT\` (Render define PORT; suele ser 10000).
 - No hay shell, pre-deploy ni discos persistentes: **las migraciones y el seed corren al arrancar**.
 - 512 MB de RAM. Builds pesados pueden fallar por memoria; prueba \`NODE_OPTIONS=--max-old-space-size=460\` si hace falta.
-- Solo Postgres está disponible como servicio administrado (no hay Redis, MongoDB, etc.). Si la app los exige, busca un modo alternativo (en memoria, SQLite) o reporta \`gave_up\` explicando por qué.
+- Solo Postgres está disponible como servicio administrado (no hay Redis, MongoDB, etc.). Si la app los exige, busca un modo alternativo (en memoria, SQLite) o reporta \`unsupported\`.
 - La URL de Postgres que se inyecta es interna de Render y funciona sin SSL. Si el código fuerza SSL, ajústalo con una variable de entorno, sin tocar la lógica.
 `;
 }

@@ -38,7 +38,7 @@ export interface SandboxAgentInfo {
   started_at: string;
   plans_submitted: number;
   finished_at?: string;
-  outcome?: 'deployed' | 'gave_up';
+  outcome?: 'deployed' | 'gave_up' | 'unsupported';
   summary?: string;
   /** Monitoreo de la sesión de Conductor. */
   idle_since?: string;
@@ -61,11 +61,21 @@ export interface SandboxLease {
   heartbeat_at: string;
 }
 
+export type SandboxFailureKind = 'unsupported' | 'capacity' | 'error';
+
 export interface SandboxRecord {
   /** Instancia del backend con una operación en curso (ver SandboxLease). */
   lease?: SandboxLease;
   /** Última acción del usuario sobre el sandbox (crear, redeploy, env...). Lo usa la limpieza. */
   last_activity_at?: string;
+  /**
+   * Por qué falló, para que la UI lo explique: `unsupported` = la app no se
+   * puede desplegar hoy (p. ej. usa Convex o es una app móvil); `capacity` =
+   * Render sin cupo; `error` = falla del deploy.
+   */
+  failure_kind?: SandboxFailureKind;
+  /** Motivo corto para el usuario (lo escribe el agente en `unsupported`). */
+  failure_reason?: string;
   sandbox_id: string;
   /** Nombre que le puso el usuario. Si no hay, se muestra `owner/repo` (sandboxDisplayName). */
   name?: string;
@@ -159,6 +169,8 @@ export interface SandboxContract {
       > & { active: boolean })
     | null;
   pending_inputs: InputRequest[];
+  failure_kind: SandboxFailureKind | null;
+  failure_reason: string | null;
   created_at: string;
   updated_at: string;
 }

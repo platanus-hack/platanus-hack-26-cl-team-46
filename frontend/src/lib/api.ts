@@ -47,6 +47,10 @@ export interface Sandbox {
   current_deploy: { id: string; status: string; reason: string; commit_sha?: string } | null;
   agent: SandboxAgent | null;
   pending_inputs: { key: string; description: string }[];
+  /** Si falló: por qué. `unsupported` = la app no se puede desplegar hoy (ver failure_reason). */
+  failure_kind?: "unsupported" | "capacity" | "error" | null;
+  /** Motivo corto para el usuario (en `unsupported`). */
+  failure_reason?: string | null;
   created_at: string;
   updated_at: string;
 }

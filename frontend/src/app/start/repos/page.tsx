@@ -3,7 +3,7 @@
 import { X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Button, ButtonLink, GitHubIcon, StatusChip, TypedLog } from "@/components/mayday";
 import { Avatar } from "@/components/onboarding/Avatar";
 import { OnboardingShell, StepHeading } from "@/components/onboarding/OnboardingShell";
@@ -78,6 +78,16 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
   const panelRef = useRef<HTMLElement>(null);
   const panelVisible = useInView(panelRef);
   const showBar = Boolean(selected) && send.status !== "sent" && !panelVisible;
+
+  // Next conserva esta página al navegar (cacheComponents → <Activity>): sin esto, al volver a
+  // "Nuevo sandbox" seguía en "Repo enviado" con los links al sandbox anterior (p. ej. uno que falló)
+  // y sin el botón para desplegar otro. Al ocultarse, el formulario vuelve a partir de cero.
+  useLayoutEffect(() => {
+    return () => {
+      setSend((prev) => (prev.status === "sending" ? prev : { status: "idle" }));
+      setSelected(null);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;

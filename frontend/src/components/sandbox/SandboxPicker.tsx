@@ -297,6 +297,7 @@ function SandboxRow({
 
 /** Estado del sandbox en una etiqueta corta (máximo 3 palabras). */
 function rowChip({ sandbox: s, latestSim: sim }: SandboxEntry): ReactNode {
+  if (s.status === "failed" && s.failure_kind === "unsupported") return <StatusChip>No desplegable</StatusChip>;
   if (s.status === "failed") return <StatusChip tone="attack">Deploy falló</StatusChip>;
   if (s.status === "needs_input") return <StatusChip>Faltan secretos</StatusChip>;
   if (s.status !== "ready") return <StatusChip>Desplegando</StatusChip>;

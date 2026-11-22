@@ -232,8 +232,9 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
 
   async report(
     s: SandboxRecord,
-    outcome: 'deployed' | 'gave_up',
+    outcome: 'deployed' | 'gave_up' | 'unsupported',
     summary: string,
+    reason?: string,
   ) {
     this.requireActive(s);
     if (outcome === 'deployed' && s.status !== 'ready') {
@@ -241,7 +242,7 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
         `El sandbox no está ready (status: ${s.status}). Sigue trabajando o reporta gave_up.`,
       );
     }
-    await this.finish(s.sandbox_id, outcome, summary);
+    await this.finish(s.sandbox_id, outcome, summary, {}, reason);
   }
 
   /** Detiene el agente si sigue activo y archiva su VM (p. ej. al borrar el sandbox). */
@@ -271,17 +272,30 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
 
   private async finish(
     id: string,
-    outcome: 'deployed' | 'gave_up',
+    outcome: 'deployed' | 'gave_up' | 'unsupported',
     summary: string,
     opts: { archive?: boolean; silent?: boolean } = {},
+    reason?: string,
   ) {
     const s = this.store.update(id, (r) => {
       r.agent!.finished_at = new Date().toISOString();
       r.agent!.outcome = outcome;
       r.agent!.summary = summary;
       r.pending_inputs = [];
-      if (outcome === 'gave_up' && !opts.silent && r.status !== 'ready') {
+      if (outcome === 'unsupported' && !opts.silent && r.status !== 'ready') {
+        // La app no se puede desplegar hoy: se le explica al usuario en una frase,
+        // sin el detalle técnico (queda en agent.summary).
         r.status = 'failed';
+        r.failure_kind = 'unsupported';
+        r.failure_reason = reason ?? summary;
+        r.error = unsupportedMessage(reason ?? summary);
+      } else if (
+        outcome === 'gave_up' &&
+        !opts.silent &&
+        r.status !== 'ready'
+      ) {
+        r.status = 'failed';
+        r.failure_kind = 'error';
         r.error = `El agente no pudo desplegar: ${summary}`;
       }
     });
@@ -291,8 +305,10 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
         outcome === 'deployed' ? 'info' : 'critical',
         outcome === 'deployed'
           ? 'El agente desplegó la app'
-          : 'El agente se rindió',
-        summary,
+          : outcome === 'unsupported'
+            ? 'Esta app no se puede desplegar por ahora'
+            : 'El agente se rindió',
+        outcome === 'unsupported' ? (reason ?? summary) : summary,
         { outcome },
         'agent',
       );
@@ -409,4 +425,10 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
       }
     }
   }
+}
+
+/** Mensaje para el usuario cuando su app no se puede desplegar hoy. */
+export function unsupportedMessage(reason: string): string {
+  const r = reason.trim().replace(/[.\s]+$/, '');
+  return `Esta app no se puede desplegar en Mayday por ahora: ${r}. Prueba con otro repo.`;
 }

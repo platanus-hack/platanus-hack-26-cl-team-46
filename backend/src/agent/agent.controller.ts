@@ -219,6 +219,7 @@ export class AgentController {
       this.sandboxes.get(id),
       body.outcome,
       body.summary,
+      body.reason,
     );
     const s = this.sandboxes.get(id);
     return { ok: true, status: s.status, deployed_url: s.render?.url ?? null };
