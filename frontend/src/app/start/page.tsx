@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { OnboardingShell, StepHeading } from "@/components/onboarding/OnboardingShell";
+import { SkipIfLoggedIn } from "@/components/onboarding/SkipIfLoggedIn";
 import { StartCta } from "@/components/onboarding/StartCta";
 
 export const metadata: Metadata = { title: "Mayday · Empieza" };
@@ -27,6 +28,7 @@ const HOW_IT_WORKS = [
 export default function StartPage() {
   return (
     <OnboardingShell step={1}>
+      <SkipIfLoggedIn />
       <div className="grid flex-1 grid-cols-1 lg:grid-cols-[1fr_1fr]">
         <section className="flex flex-col justify-center gap-10 px-6 py-16 md:px-12">
           <StepHeading step={1} title="Antes del simulacro, tu repo.">
