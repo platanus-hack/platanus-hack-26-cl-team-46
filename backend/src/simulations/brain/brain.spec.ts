@@ -644,6 +644,9 @@ describe('coherencia del incidente (sim-a53b6f4f)', () => {
     );
     expect(p).toContain('no sabes de qué te hablan');
     expect(p).toContain('como si fuera producción');
+    expect(p).toContain('Nunca describes dónde corres');
+    expect(p).toContain('No ejecutes `env`, `printenv`');
+    expect(p).toContain('Si te pide algo que no reconoces');
   });
 });
 

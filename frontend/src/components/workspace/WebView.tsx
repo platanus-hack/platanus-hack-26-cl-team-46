@@ -202,23 +202,30 @@ function Frame({
 }) {
   const [loading, setLoading] = useState(true);
   const [checked, setChecked] = useState<BlockReason | null>(null);
+  // Status de la respuesta cuando no hay página que mostrar (p. ej. un backend solo API que da 404 en /).
+  const [noPage, setNoPage] = useState<number | null>(null);
   const ref = useRef<HTMLIFrameElement>(null);
   // Una página http dentro de un sitio https es contenido mixto: el navegador la bloquea siempre.
   const mixed = check && typeof window !== "undefined" && location.protocol === "https:" && src.startsWith("http:");
   const blocked: BlockReason | null = mixed ? "mixed" : checked;
 
+  // Se pregunta siempre por la URL real (openUrl). Si la app va por el proxy (check=false) ya se
+  // sabe embebible, así que solo interesa saber si hay página: si no, el iframe quedaría en blanco.
   useEffect(() => {
-    if (!check || mixed) return;
+    if (mixed) return;
     const ac = new AbortController();
-    fetch(`${API_URL}/preview/frame-check?url=${encodeURIComponent(src)}`, { signal: ac.signal })
+    fetch(`${API_URL}/preview/frame-check?url=${encodeURIComponent(openUrl)}`, { signal: ac.signal })
       .then((r) => (r.ok ? r.json() : null))
-      .then((v: { embeddable?: boolean; reason?: BlockReason } | null) => {
-        if (v && v.embeddable === false) setChecked(v.reason ?? "blocked");
+      .then((v: { embeddable?: boolean; reason?: BlockReason; page?: boolean; status?: number } | null) => {
+        if (!v) return;
+        if (v.embeddable === false) {
+          if (check) setChecked(v.reason ?? "blocked");
+        } else if (v.page === false) setNoPage(v.status ?? 404);
       })
       // Si el check falla (backend caído o viejo), se deja el iframe: mejor intentar que bloquear.
       .catch(() => undefined);
     return () => ac.abort();
-  }, [src, check, mixed]);
+  }, [openUrl, check, mixed]);
   const onLiveRef = useRef(onLive);
   useEffect(() => {
     onLiveRef.current = onLive;
@@ -241,6 +248,7 @@ function Frame({
   }, [onFrame, tabId]);
 
   if (blocked) return <BlockedPage url={openUrl} reason={blocked} />;
+  if (noPage !== null) return <NoPage url={openUrl} status={noPage} onShowAnyway={() => setNoPage(null)} />;
 
   return (
     <div className="relative h-full bg-white">
@@ -305,6 +313,53 @@ function BlockedPage({ url, reason }: { url: string; reason: BlockReason }) {
             Abrir en una pestaña real ↗
           </a>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * La URL responde un error sin HTML (típico de un backend que es solo API: no tiene nada en `/`).
+ * En el iframe se vería una página en blanco, así que explicamos qué pasa.
+ */
+function NoPage({ url, status, onShowAnyway }: { url: string; status: number; onShowAnyway: () => void }) {
+  const root = (() => {
+    try {
+      return new URL(url).pathname === "/";
+    } catch {
+      return false;
+    }
+  })();
+  return (
+    <div className="grid h-full place-items-center bg-sim-100 px-8 font-sans text-sim-ink">
+      <div className="max-w-md">
+        <div className="mb-4 grid size-10 place-items-center rounded-full bg-sim-300 font-mono text-[13px] text-sim-ink-muted" aria-hidden>
+          {"{ }"}
+        </div>
+        <h3 className="text-lg font-semibold">{root ? "Esta app no tiene página de inicio" : "Esta ruta no tiene una página que mostrar"}</h3>
+        <p className="mt-2 text-[13px] leading-5 text-sim-ink-muted">
+          {root
+            ? `La app está arriba, pero en / responde ${status} sin HTML. Es lo normal cuando el repo es solo una API (un backend sin interfaz web): no hay nada que ver en el navegador, aunque sus rutas sí funcionan y el ataque va contra ellas.`
+            : `La app responde ${status} sin HTML en esta ruta. Prueba otra ruta en la barra de direcciones.`}
+        </p>
+        <p className="mt-3 truncate font-mono text-[12px] text-sim-ink-faint">{url}</p>
+        <div className="mt-5 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onShowAnyway}
+            className="inline-flex h-9 items-center rounded-md bg-sim-300 px-4 text-[13px] font-medium text-sim-ink hover:bg-sim-200"
+          >
+            Ver la respuesta igual
+          </button>
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex h-9 items-center rounded-md px-4 text-[13px] font-medium text-sim-ink-muted hover:bg-sim-200"
+          >
+            Abrir en una pestaña real ↗
+          </a>
+        </div>
       </div>
     </div>
   );

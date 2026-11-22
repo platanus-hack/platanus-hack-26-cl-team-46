@@ -127,6 +127,23 @@ export function HintyPreview() {
                 </div>
               ))}
             </div>
+
+            {/* La X de los dibujos (kit/index.js › dismiss): en la esquina de lo dibujado, con su etiqueta */}
+            <button
+              type="button"
+              className="clicky-dismiss"
+              data-on=""
+              data-side="left"
+              aria-label="Cerrar lo que dibujó Hinty (esc)"
+              style={{ position: "absolute", left: BOARD.x + BOARD.w + 6, top: BOARD.y - 42, animation: "none" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="2.25" strokeLinecap="square" />
+              </svg>
+              <span className="lbl">
+                Cerrar<kbd>esc</kbd>
+              </span>
+            </button>
           </div>
 
           {/* Capa de arriba: el blip, sobre la pizarra (como layers.top del kit) */}
