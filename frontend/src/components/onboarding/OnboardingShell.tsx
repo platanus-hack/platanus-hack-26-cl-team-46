@@ -1,6 +1,5 @@
-import Link from "next/link";
 import type { ReactNode } from "react";
-import { Logo } from "@/components/mayday";
+import { TopBarSlot } from "@/components/app/AppSidebar";
 
 /**
  * Marco del onboarding (capa Mayday): logo, pasos y la promesa de seguridad.
@@ -13,14 +12,13 @@ const pad = (n: number) => String(n).padStart(2, "0");
 
 export function OnboardingShell({ step, children }: { step: OnboardingStep; children: ReactNode }) {
   return (
-    <div className="flex min-h-svh flex-col">
-      {/* En mobile la barra de arriba es la de la app (logo + menú) y el paso ya se lee en "PASO 02 / 03". */}
-      <header className="flex items-center justify-between gap-6 border-b border-line px-6 py-5 max-md:hidden md:px-12">
-        <Link href="/" aria-label="Volver al inicio" className="rounded-sm">
-          <Logo height={24} priority />
-        </Link>
-        <StepTracker step={step} />
-      </header>
+    <div className="flex min-h-[calc(100svh-56px)] flex-col">
+      {/* Los pasos van en la barra superior de la app, a la derecha. En mobile no: el paso ya se lee en "PASO 02 / 03". */}
+      <TopBarSlot>
+        <div className="ml-auto pr-8">
+          <StepTracker step={step} />
+        </div>
+      </TopBarSlot>
 
       <main className="flex flex-1 flex-col">{children}</main>
 

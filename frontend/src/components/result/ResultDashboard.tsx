@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ButtonLink, Logo, PixelTransition, StatusChip } from "@/components/mayday";
+import { ButtonLink, PixelTransition, StatusChip } from "@/components/mayday";
 import { ResultDiagnostico } from "./ResultDiagnostico";
 import { ResultFixes } from "./ResultFixes";
 import { ResultRecomendaciones } from "./ResultRecomendaciones";
@@ -60,10 +60,9 @@ export function ResultDashboard({ result }: { result: SimulationResult }) {
     <>
       <PixelTransition runKey={1} cell="lg" fixed duration={700} onCovered={() => setRevealed(true)} />
 
-      <main className={`flex h-screen min-h-0 flex-col bg-bg-000 ${revealed ? "" : "invisible"}`}>
+      <main className={`flex h-[calc(100svh-56px)] min-h-0 flex-col bg-bg-000 ${revealed ? "" : "invisible"}`}>
         {/* Header: veredicto + HUD final */}
         <header className="flex flex-wrap items-center gap-x-8 gap-y-4 border-b border-line px-8 py-5">
-          <Logo variant="mark" height={32} />
           <div className="flex min-w-0 flex-1 flex-col gap-1">
             <span className="md-index">RESULTADO · {result.repo.toUpperCase()}</span>
             <div className="flex flex-wrap items-center gap-3">

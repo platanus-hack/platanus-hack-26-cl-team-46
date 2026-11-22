@@ -44,7 +44,7 @@ export default function ReportsPage() {
   };
 
   return (
-    <main className="flex min-h-screen flex-col bg-bg-000">
+    <main className="flex min-h-[calc(100svh-56px)] flex-col bg-bg-000">
       <div className="mx-auto flex w-full max-w-[1080px] flex-col gap-10 px-8 py-14">
         <header className="flex flex-wrap items-end justify-between gap-4">
           <div className="flex flex-col gap-2">

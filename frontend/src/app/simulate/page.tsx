@@ -8,7 +8,8 @@ import { AgentChat } from "@/components/agent/AgentChat";
 import { setClickySimulation } from "@/clicky/active-sim";
 import { BrowserWindow } from "@/components/workspace/BrowserWindow";
 import { ChannelIcon } from "@/components/workspace/ChannelIcon";
-import { Logo, PixelTransition } from "@/components/mayday";
+import { PixelTransition } from "@/components/mayday";
+import { TopBarSlot } from "@/components/app/AppSidebar";
 import { CmdK, RenameInput, repoShortName, SandboxPicker, type SandboxEntry } from "@/components/sandbox/SandboxPicker";
 import { api, type Sandbox } from "@/lib/api";
 import { EngineFirstPass } from "@/components/engine/EngineFirstPass";
@@ -243,12 +244,10 @@ function SimulateConsole() {
   ];
 
   return (
-    // Mobile: la página hace scroll (no cabe en una pantalla) y debajo de la barra de la app, que ya trae el logo.
-    <main className="flex min-h-[calc(100svh-56px)] flex-col gap-3 p-4 font-sans text-sm md:h-screen md:min-h-0">
-      <header className={`flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line pb-3 ${entry ? "" : "max-md:hidden"}`}>
-        <Link href="/" aria-label="Mayday, inicio" className="shrink-0 max-md:hidden">
-          <Logo height={24} priority />
-        </Link>
+    // Debajo de la barra de la app (que trae el logo). Mobile: la página hace scroll (no cabe en una pantalla).
+    <main className="flex min-h-[calc(100svh-56px)] flex-col gap-3 p-4 font-sans text-sm md:h-[calc(100svh-56px)] md:min-h-0">
+      {/* Desktop: va dentro de la barra superior, al lado del logo. Mobile: en su propia fila. */}
+      <TopBarSlot mobileClassName={`flex flex-wrap items-center gap-x-4 gap-y-3 border-b border-line pb-3 ${entry ? "" : "hidden"}`}>
         {entry && (
           <>
             <span className="h-6 w-px shrink-0 bg-line max-md:hidden" aria-hidden="true" />
@@ -301,7 +300,7 @@ function SimulateConsole() {
             <FlowControls sim={sim} run={run} onNewRun={newRun} />
           )}
         </div>
-      </header>
+      </TopBarSlot>
 
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
 

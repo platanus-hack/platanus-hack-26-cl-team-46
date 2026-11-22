@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import type { ReactNode } from "react";
-import { ArrowLeft, Copy, EyeOff, KeyRound } from "lucide-react";
+import { Copy, EyeOff, KeyRound } from "lucide-react";
 import { HintyHeadset } from "@/clicky/HintyHeadset";
-import { DemoVideo, Logo, StatusChip } from "@/components/mayday";
+import { DemoVideo, StatusChip } from "@/components/mayday";
 import { AppLogos } from "@/components/site/AppLogos";
 import { FinalCta } from "@/components/site/FinalCta";
 import { HowSteps } from "@/components/site/HowSteps";
@@ -121,10 +120,6 @@ function Hero() {
   return (
     <header className="px-4 pt-6 pb-16 md:px-12 md:pt-8 md:pb-24">
       <div className="mx-auto flex w-full max-w-[1200px] flex-col gap-16 md:gap-24">
-        <Link href="/" className="md-back self-start" aria-label="Vuelve al inicio de Mayday">
-          <ArrowLeft strokeWidth={1.5} aria-hidden="true" />
-          <Logo height={20} priority />
-        </Link>
         <div className="flex flex-col gap-6">
           <StatusChip tone="defense">Cómo funciona</StatusChip>
           <h1 className="max-w-[14ch] text-[48px] leading-[1] font-semibold tracking-[-0.04em] text-ink md:text-[72px] md:leading-[0.98]">
