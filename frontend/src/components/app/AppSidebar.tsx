@@ -23,8 +23,7 @@ const OPEN = "group-hover/side:w-56 group-has-[:focus-visible]/side:w-56"; // 22
 const isActive = (pathname: string, item: (typeof NAV)[number]) =>
   (item.match ?? [item.href]).some((r) => pathname === r || pathname.startsWith(`${r}/`));
 
-/** Alto de la barra superior (desktop y mobile). Las pantallas de alto completo lo restan: h-[calc(100svh-56px)]. */
-export const TOPBAR_H = 56;
+/** La barra superior mide 56 px (h-14, igual que la de mobile): las pantallas de alto completo usan h-[calc(100svh-56px)]. */
 const SLOT_ID = "app-topbar-slot";
 
 /**

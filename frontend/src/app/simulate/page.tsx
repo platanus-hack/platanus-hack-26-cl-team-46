@@ -69,7 +69,7 @@ function SimulateConsole() {
   const godMode = searchParams.get("view") === "all";
   const [log, setLog] = useState<{ key: string; list: TimelineEvent[] }>({ key: "", list: [] });
   const [error, setError] = useState<string | null>(null);
-  // "Empezar simulacro": pixeles cian que salen del botón; la pantalla queda tapada hasta que el simulacro parte.
+  // "Comenzar simulación": pixeles cian que salen del botón; la pantalla queda tapada hasta que el simulacro parte.
   const [startFx, setStartFx] = useState<{ key: number; origin?: { x: number; y: number }; hold: boolean }>({ key: 0, hold: false });
   // Al destaparse el escritorio: cuenta regresiva 3 · 2 · 1. Espera las dos cosas: que el simulacro
   // haya partido y que la transición haya terminado (con movimiento reducido termina al tiro).
@@ -301,7 +301,7 @@ function SimulateConsole() {
             </button>
           </>
         )}
-        {/* En la primera pasada el estado y el botón de partir ya están en la página (fases e informe). */}
+        {/* Mientras se prepara, el estado y el botón para partir ya están en la página (fases y "Todo listo"). */}
         <div className="flex items-center gap-4 max-md:w-full md:ml-auto">
           {sim && !(firstPass && (sim.status === "starting" || sim.status === "ready")) && (
             <FlowControls sim={sim} run={run} onNewRun={newRun} />
