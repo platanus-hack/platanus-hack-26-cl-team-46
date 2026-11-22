@@ -43,7 +43,7 @@ import {
 import {
   activityAt,
   isLive,
-  pickToFree,
+  pickToEvict,
   planCleanup,
   type CleanupOptions,
   type SandboxUsage,
@@ -107,6 +107,9 @@ export interface SandboxUsageProvider {
 
 /** Render rechazó crear un servicio por el tope del plan. */
 export class RenderCapacityError extends Error {}
+
+/** El sandbox se eliminó mientras se desplegaba (p. ej. lo reemplazó uno más nuevo del usuario). */
+export class SandboxDeletedError extends Error {}
 
 const RENDER_LIMIT_RE = /limited to \d+ services/i;
 
@@ -361,7 +364,8 @@ export class SandboxesService
       .filter((s) => s.owner?.github_id === owner.github_id && isLive(s));
     const needed = mine.length - max + 1;
     if (needed <= 0) return;
-    const toFree = pickToFree(
+    // Nunca se bloquea al usuario: se eliminan los suyos más antiguos (primero los sin uso).
+    const toEvict = pickToEvict(
       mine,
       repoUrl,
       needed,
@@ -370,15 +374,11 @@ export class SandboxesService
       Date.now(),
       this.cleanupOptions,
     );
-    for (const id of toFree) {
+    const target = repoUrl.replace(/^https:\/\/github\.com\//, '');
+    for (const id of toEvict) {
       await this.removeUnused(
         id,
-        `Liberado para crear un sandbox nuevo (máximo ${max} por usuario)`,
-      );
-    }
-    if (toFree.length < needed) {
-      throw new ConflictException(
-        `Ya tienes ${mine.length} sandboxes en uso (máximo ${max}). Termina o borra alguno para desplegar otro.`,
+        `Eliminado automáticamente para desplegar ${target} (máximo ${max} sandboxes por usuario; se reemplaza el más antiguo)`,
       );
     }
   }
@@ -737,6 +737,8 @@ export class SandboxesService
       );
     }
 
+    // Si lo eliminaron mientras tanto (límite por usuario), no se crean más recursos.
+    this.assertNotDeleted(id);
     // 2. Mirror (o deploy directo, solo modo manifest sin token)
     if (this.git.mirrorsEnabled) {
       step('Creando mirror del repo', `${this.git.org}/${id}`);
@@ -768,6 +770,7 @@ export class SandboxesService
       });
     }
 
+    this.assertNotDeleted(id);
     // 3. Camino agéntico (default): la IA decide siempre cómo desplegar.
     if (s.mode === 'agent') {
       const hasManifestFile = this.get(id).manifest_source === 'file';
@@ -847,6 +850,7 @@ export class SandboxesService
           'Aprovisionando Postgres',
           `Modo ${this.databases.mode}`,
         );
+        this.assertNotDeleted(id);
         const db = await this.databases.provision(id, (msg) =>
           this.events.emit(id, 'info', 'Postgres', msg),
         );
@@ -985,6 +989,7 @@ export class SandboxesService
       });
     let created: Awaited<ReturnType<typeof create>>;
     try {
+      this.assertNotDeleted(id);
       created = await create();
     } catch (err) {
       if (
@@ -1012,6 +1017,13 @@ export class SandboxesService
       }
     }
     const { service, deployId } = created;
+    if (this.get(id).status === 'deleted') {
+      // Lo eliminaron mientras Render creaba el servicio: no dejar uno huérfano.
+      await this.render.deleteService(service.id).catch(() => undefined);
+      throw new SandboxDeletedError(
+        `Sandbox ${id} eliminado durante el deploy`,
+      );
+    }
     this.store.update(id, {
       render: {
         service_id: service.id,
@@ -1403,6 +1415,14 @@ export class SandboxesService
     const s = this.store.get(id);
     if (s?.lease?.owner === this.instanceId) {
       this.store.update(id, { lease: undefined });
+    }
+  }
+
+  private assertNotDeleted(id: string) {
+    if (this.store.get(id)?.status === 'deleted') {
+      throw new SandboxDeletedError(
+        `Sandbox ${id} eliminado durante el deploy`,
+      );
     }
   }
 

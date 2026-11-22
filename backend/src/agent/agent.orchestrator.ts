@@ -102,6 +102,8 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
       .get('PUBLIC_BACKEND_URL', { infer: true })!
       .replace(/\/+$/, '');
 
+    // Si lo eliminaron mientras se preparaba (límite por usuario), no se lanza el agente.
+    if (s.status === 'deleted') return;
     this.store.update(id, { status: 'analyzing' });
     this.events.emit(id, 'info', 'Lanzando agente de IA', reason, {}, 'agent');
 
@@ -121,6 +123,13 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
         DEPLOYER_TOKEN: signAgentToken(secret, id),
       },
     });
+    if (this.store.get(id)?.status === 'deleted') {
+      // Eliminado mientras se creaba la VM: se archiva y no se reabre el sandbox.
+      await this.conductor
+        .archiveWorkspace(ws.workspaceId)
+        .catch(() => undefined);
+      return;
+    }
 
     this.store.update(id, {
       status: 'analyzing',

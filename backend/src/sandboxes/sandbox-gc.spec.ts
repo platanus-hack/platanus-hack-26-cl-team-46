@@ -1,4 +1,4 @@
-import { pickToFree, planCleanup, type SandboxUsage } from './sandbox-gc.js';
+import { pickToEvict, planCleanup, type SandboxUsage } from './sandbox-gc.js';
 import type { SandboxRecord } from './sandbox.types.js';
 
 const now = Date.parse('2026-11-22T06:00:00Z');
@@ -105,8 +105,24 @@ describe('planCleanup', () => {
   });
 });
 
-describe('pickToFree', () => {
-  it('libera primero los del mismo repo y después los más viejos', () => {
+describe('pickToEvict (límite por usuario)', () => {
+  const evict = (
+    records: SandboxRecord[],
+    needed: number,
+    usage: Record<string, SandboxUsage> = {},
+    busy: string[] = [],
+  ) =>
+    pickToEvict(
+      records,
+      'https://github.com/a/app',
+      needed,
+      (id) => usage[id] ?? noUse,
+      (id) => busy.includes(id),
+      now,
+      opts,
+    );
+
+  it('primero los que no se usan: del mismo repo y después los más viejos', () => {
     const records = [
       sbx('otro-viejo', {
         repo_url: 'https://github.com/a/otro',
@@ -118,32 +134,49 @@ describe('pickToFree', () => {
         created_at: ago(20 * 60_000),
       }),
     ];
-    const ids = pickToFree(
-      records,
-      'https://github.com/a/app',
-      2,
-      () => noUse,
-      () => false,
-      now,
-      opts,
-    );
-    expect(ids).toEqual(['mismo', 'otro-viejo']);
+    expect(evict(records, 2)).toEqual(['mismo', 'otro-viejo']);
   });
 
-  it('no libera lo que está en uso', () => {
-    const records = [sbx('enuso'), sbx('prov', { status: 'provisioning' })];
-    const ids = pickToFree(
-      records,
-      'https://github.com/a/app',
-      2,
-      (id) =>
-        id === 'enuso'
-          ? { activeSimulation: true, lastUserActivity: ago(60_000) }
-          : noUse,
-      () => false,
-      now,
-      opts,
-    );
-    expect(ids).toEqual([]);
+  it('si todos están en uso, elimina el más antiguo igual (no bloquea)', () => {
+    const active = (min: number) => ({
+      activeSimulation: true,
+      lastUserActivity: ago(min * 60_000),
+    });
+    const records = [
+      sbx('nuevo', { created_at: ago(10 * 60_000) }),
+      sbx('viejo', { created_at: ago(50 * 60_000) }),
+      sbx('medio', { created_at: ago(30 * 60_000) }),
+    ];
+    expect(
+      evict(records, 1, {
+        nuevo: active(5),
+        viejo: active(40),
+        medio: active(20),
+      }),
+    ).toEqual(['viejo']);
+  });
+
+  it('lo que se está desplegando va al final, pero también se puede eliminar', () => {
+    const records = [
+      sbx('prov-viejo', {
+        status: 'provisioning',
+        created_at: ago(60 * 60_000),
+      }),
+      sbx('en-uso', { created_at: ago(30 * 60_000) }),
+    ];
+    const usage = {
+      'en-uso': { activeSimulation: true, lastUserActivity: ago(60_000) },
+    };
+    expect(evict(records, 1, usage)).toEqual(['en-uso']);
+    expect(evict(records, 2, usage)).toEqual(['en-uso', 'prov-viejo']);
+  });
+
+  it('no cuenta los fallidos ni borrados', () => {
+    const records = [
+      sbx('f', { status: 'failed' }),
+      sbx('d', { status: 'deleted' }),
+      sbx('ok'),
+    ];
+    expect(evict(records, 3)).toEqual(['ok']);
   });
 });

@@ -109,10 +109,13 @@ export function planCleanup(
 }
 
 /**
- * Para crear un sandbox más cuando el usuario está en su límite: cuáles de
- * los suyos liberar (primero los del mismo repo, después los más viejos).
+ * Para crear un sandbox más cuando el usuario está en su límite: cuáles de los
+ * suyos eliminar. Nunca bloquea la creación; elimina en este orden:
+ *   1. los que no está usando (primero los del mismo repo, después los más viejos),
+ *   2. los más antiguos aunque tengan una simulación (se detiene antes de borrar),
+ *   3. como último recurso, los que todavía se están desplegando (los más antiguos).
  */
-export function pickToFree(
+export function pickToEvict(
   userRecords: SandboxRecord[],
   repoUrl: string,
   needed: number,
@@ -122,17 +125,21 @@ export function pickToFree(
   opts: CleanupOptions,
 ): string[] {
   if (needed <= 0) return [];
+  const act = (s: SandboxRecord) => activityAt(s, usageOf(s.sandbox_id));
+  const tier = (s: SandboxRecord) => {
+    if (!isProtected(s, usageOf(s.sandbox_id), busyOf(s.sandbox_id), now, opts))
+      return 0;
+    return busyOf(s.sandbox_id) || WORKING.has(s.status) ? 2 : 1;
+  };
   return userRecords
-    .filter(
-      (s) =>
-        isLive(s) &&
-        !isProtected(s, usageOf(s.sandbox_id), busyOf(s.sandbox_id), now, opts),
-    )
+    .filter(isLive)
     .sort(
       (a, b) =>
-        Number(b.repo_url === repoUrl) - Number(a.repo_url === repoUrl) ||
-        activityAt(a, usageOf(a.sandbox_id)) -
-          activityAt(b, usageOf(b.sandbox_id)),
+        tier(a) - tier(b) ||
+        (tier(a) === 0
+          ? Number(b.repo_url === repoUrl) - Number(a.repo_url === repoUrl)
+          : 0) ||
+        act(a) - act(b),
     )
     .slice(0, needed)
     .map((s) => s.sandbox_id);
