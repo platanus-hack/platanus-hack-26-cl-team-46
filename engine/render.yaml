@@ -1,4 +1,5 @@
-# Despliegue del motor en Render (primario). El fallback es Modal (modal_app.py).
+# Despliegue del motor en Render (FALLBACK). El primario es Modal (modal_app.py),
+# porque hornea las herramientas en la imagen sin Docker-in-Docker.
 services:
   - type: web
     name: hack26-engine

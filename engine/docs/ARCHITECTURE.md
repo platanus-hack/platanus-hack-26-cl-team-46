@@ -259,12 +259,18 @@ abstrae esto; se agrega un `CascadeProvider` que envuelve a los tres.
 
 ## 16. Despliegue del motor (otro contenedor)
 
-El motor corre **fuera** de la app diagnosticada, en su propio contenedor:
+El motor corre **fuera** de la app diagnosticada, en su propio contenedor.
+Prioridad **Modal → Render** porque el motor usa herramientas (semgrep y, a
+futuro, nuclei/ARTEX) que deben estar **en la imagen**: ni Modal ni Render dan
+Docker-in-Docker, así que las herramientas se hornean y el adapter las corre
+como binario (`providers/semgrep.ts` detecta binario-o-docker).
 
-- **Render** (primario): servicio Docker propio; recibe URL + repo del
-  `EngagementSpec` y corre el estudio.
-- **Modal** (fallback): función/app serverless con el mismo contenedor, para
-  cuando Render no esté disponible o se quiera cómputo bajo demanda.
+- **Modal** (primario): construye el contenedor de forma declarativa desde el
+  mismo `engine/Dockerfile`; ideal para hornear herramientas y cómputo on-demand.
+  Keys como secret de Modal. `modal deploy engine/modal_app.py`.
+- **Render** (fallback): servicio Docker con la misma imagen, para cuando no haya
+  acceso a Modal. Keys en el dashboard. `engine/render.yaml`.
 
-Artefactos: `Dockerfile` del motor, `render.yaml` del servicio, y un `modal_app.py`
-stub. El motor no necesita estado persistente (escribe a `out/` o a un bucket).
+Imagen única `engine/Dockerfile`: Node 22 + **semgrep horneado** (aprobado);
+nuclei/ARTEX NO se hornean hasta aprobarse (ver §10/provenance). El motor no
+necesita estado persistente (escribe a `out/` o devuelve el resultado en `/run`).
