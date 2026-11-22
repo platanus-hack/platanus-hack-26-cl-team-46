@@ -1,7 +1,7 @@
 import {
   Injectable,
   Logger,
-  OnModuleDestroy,
+  OnApplicationShutdown,
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -21,11 +21,13 @@ const MAX_TIMELINE = 3000;
  * Las escrituras se agrupan (debounce) porque el timeline cambia seguido.
  */
 @Injectable()
-export class SimulationStore implements OnModuleInit, OnModuleDestroy {
+export class SimulationStore implements OnModuleInit, OnApplicationShutdown {
   private readonly logger = new Logger(SimulationStore.name);
   private readonly file: string;
   private readonly databaseUrl?: string;
   private pool?: pg.Pool;
+  /** El pool ya se cerró (fin del apagado): lo que llegue después se descarta con un aviso. */
+  private closed = false;
   private readonly items = new Map<string, SimulationRecord>();
   private readonly dirty = new Set<string>();
   private flushTimer?: NodeJS.Timeout;
@@ -78,10 +80,18 @@ export class SimulationStore implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  async onModuleDestroy() {
+  /**
+   * Cierra Postgres al final del apagado, no en onModuleDestroy: ese hook corre
+   * primero y el cerebro, el motor y el agente de reportes pueden seguir
+   * actualizando simulaciones mientras terminan. Antes, esas escrituras
+   * fallaban con "Cannot use a pool after calling end on the pool" y se perdían.
+   */
+  async onApplicationShutdown() {
     clearTimeout(this.flushTimer);
+    this.flushTimer = undefined;
     this.flush();
     await this.writing;
+    this.closed = true;
     await this.pool?.end();
   }
 
@@ -126,6 +136,13 @@ export class SimulationStore implements OnModuleInit, OnModuleDestroy {
 
   private flush() {
     if (!this.dirty.size) return;
+    if (this.closed) {
+      this.logger.warn(
+        `Apagando: no se guardaron ${this.dirty.size} simulación(es) actualizadas después del cierre`,
+      );
+      this.dirty.clear();
+      return;
+    }
     const ids = [...this.dirty];
     this.dirty.clear();
     if (this.pool) {
