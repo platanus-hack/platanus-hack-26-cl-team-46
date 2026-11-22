@@ -1,14 +1,19 @@
 // Vendorizado de clicky-kit/server/protocol.mjs. Contrato modelo ↔ motor de dibujo: el prompt
 // se genera desde MARKS y cada respuesta se valida contra él, así el modelo nunca manda código.
 export const MARKS: Record<string, { use: string; shape: string }> = {
+  point: {
+    use: 'Hinty vuela hasta ahí y lo señala con una etiqueta al lado: para "esto de acá", "este botón". Con "text" señala esas palabras exactas dentro del elemento',
+    shape:
+      '{"type":"point","target":ID,"label":"máx 4 palabras","text":"opcional: palabras exactas"}',
+  },
   spotlight: {
     use: 'oscurece la pantalla y deja visible solo el elemento (úsalo al inicio para enfocar)',
     shape: '{"type":"spotlight","target":ID}',
   },
   ring: {
-    use: 'encierra UNA cosa: una celda, un botón, una palabra',
+    use: 'encierra UNA cosa: una celda, un botón, una palabra (con "text", solo esas palabras)',
     shape:
-      '{"type":"ring","target":ID,"label":"máx 3 palabras","tone":"opcional"}',
+      '{"type":"ring","target":ID,"label":"máx 3 palabras","text":"opcional","tone":"opcional"}',
   },
   frame: {
     use: 'marca una ZONA: una fila, un panel, un grupo',
@@ -16,27 +21,29 @@ export const MARKS: Record<string, { use: string; shape: string }> = {
       '{"type":"frame","target":ID,"label":"máx 3 palabras","tone":"opcional"}',
   },
   highlight: {
-    use: 'pasa destacador sobre un texto o número',
-    shape: '{"type":"highlight","target":ID}',
+    use: 'pasa destacador sobre un texto o número (con "text", solo esas palabras)',
+    shape: '{"type":"highlight","target":ID,"text":"opcional"}',
   },
   underline: {
-    use: 'subraya un texto',
-    shape: '{"type":"underline","target":ID,"tone":"opcional"}',
+    use: 'subraya un texto (con "text", solo esas palabras)',
+    shape:
+      '{"type":"underline","target":ID,"text":"opcional","tone":"opcional"}',
   },
   scribble: {
-    use: 'garabato de plumón bajo lo que falla, preocupa o confunde (rojo por defecto)',
-    shape: '{"type":"scribble","target":ID,"label":"opcional"}',
+    use: 'zigzag bajo lo que falla, preocupa o confunde',
+    shape:
+      '{"type":"scribble","target":ID,"label":"opcional","text":"opcional","tone":"opcional"}',
   },
   cross: {
-    use: 'tacha lo que está mal, sobra o no hay que hacer (rojo)',
-    shape: '{"type":"cross","target":ID,"label":"opcional"}',
+    use: 'tacha lo que está mal, sobra o no hay que hacer',
+    shape: '{"type":"cross","target":ID,"label":"opcional","tone":"opcional"}',
   },
   check: {
-    use: 'tick junto a lo que está bien o ya quedó resuelto (verde)',
+    use: 'tick junto a lo que está bien o ya quedó resuelto',
     shape: '{"type":"check","target":ID,"label":"opcional"}',
   },
   question: {
-    use: 'signo de pregunta junto a lo que no se sabe todavía o no calza (ámbar)',
+    use: 'signo de pregunta junto a lo que no se sabe todavía o no calza',
     shape: '{"type":"question","target":ID,"label":"opcional"}',
   },
   num: {
@@ -49,11 +56,27 @@ export const MARKS: Record<string, { use: string; shape: string }> = {
       '{"type":"arrow","from":ID,"to":ID,"label":"opcional","tone":"opcional"}',
   },
   target: {
-    use: 'anillo que late: "haz clic aquí" para el siguiente paso del usuario',
+    use: 'mira que late: "haz clic aquí", sin esperar a que lo haga',
     shape: '{"type":"target","target":ID,"label":"máx 3 palabras"}',
   },
+  step: {
+    use: 'paso de una guía: marca el control que el usuario debe apretar AHORA y espera a que lo haga; después recibes una captura nueva para el siguiente paso. Siempre es la última marca de la respuesta',
+    shape: '{"type":"step","target":ID,"label":"qué hacer, máx 5 palabras"}',
+  },
+  click: {
+    use: 'Hinty hace clic por el usuario (solo si te pidió que lo hagas tú). Si es irreversible, la página le pide confirmar',
+    shape: '{"type":"click","target":ID,"label":"máx 4 palabras"}',
+  },
+  type: {
+    use: 'Hinty escribe en un campo por el usuario (solo si te lo pidió). Queda como borrador: nunca envía. Nunca claves ni secretos',
+    shape: '{"type":"type","target":ID,"value":"el texto"}',
+  },
+  scroll: {
+    use: 'lleva un elemento al centro de la pantalla antes de marcarlo',
+    shape: '{"type":"scroll","target":ID}',
+  },
   chart: {
-    use: 'gráfico de barras dibujado a mano con datos de la pantalla; marca la barra clave',
+    use: 'gráfico de barras con datos de la pantalla; marca la barra clave',
     shape:
       '{"type":"chart","title":"Ventas Q3 por región","subtitle":"opcional","bars":[{"label":"Norte","value":131}],"highlight":"Sur","note":"+32 %"}',
   },
@@ -77,7 +100,7 @@ export const MARKS: Record<string, { use: string; shape: string }> = {
       '{"type":"card","eyebrow":"opcional","title":"la idea en una frase","items":["línea corta"]}',
   },
   note: {
-    use: 'nota adhesiva con un consejo',
+    use: 'nota de bitácora con un consejo',
     shape: '{"type":"note","text":"máx 12 palabras"}',
   },
   button: {
@@ -87,24 +110,36 @@ export const MARKS: Record<string, { use: string; shape: string }> = {
 };
 
 /**
- * Color con significado, como HeyClicky: "problem" (rojo) lo que falla, "ok" (verde) lo que está
- * bien, "doubt" (ámbar) lo que no se sabe; sin tone, el color de la ayuda (el del cursor).
+ * Color con significado, en el lenguaje de Hinty (DESIGN.md): todo lo suyo va en cian y solo
+ * lo del atacante en ámbar punteado. "attack" marca rastro del atacante que la página no
+ * marcó como tal ("problem", de la versión anterior, se lee igual).
  */
-export const TONES = ['problem', 'ok', 'doubt', 'help'] as const;
+export const TONES = ['attack'] as const;
 const TONED = new Set([
   'ring',
   'frame',
   'underline',
   'scribble',
   'cross',
-  'check',
-  'question',
   'arrow',
 ]);
 const toneOf = (m: any) =>
-  TONED.has(m.type) && TONES.includes(m.tone) && m.tone !== 'help'
-    ? (m.tone as string)
+  TONED.has(m.type) && (m.tone === 'attack' || m.tone === 'problem')
+    ? 'attack'
     : undefined;
+
+/** Marcas que pueden anclarse a unas palabras exactas dentro de su elemento. */
+const TEXTUAL = new Set([
+  'point',
+  'ring',
+  'highlight',
+  'underline',
+  'scribble',
+]);
+/** Marcas que hacen algo en la página por el usuario (como el computer use de HeyClicky). */
+export const ACTIONS = new Set(['click', 'type', 'scroll']);
+/** Tope de acciones por respuesta: Hinty ayuda, no toma el control. */
+export const MAX_ACTIONS = 3;
 
 const str = (v: unknown, n: number) =>
   (typeof v === 'string' || typeof v === 'number' ? String(v) : '')
@@ -120,6 +155,7 @@ function cleanMark(m: any, ids: Set<string>): Mark | null {
   if (m.type === 'board' || m.type === 'node' || m.type === 'edge')
     return { type: m.type };
   const needsTarget = [
+    'point',
     'spotlight',
     'ring',
     'frame',
@@ -131,15 +167,25 @@ function cleanMark(m: any, ids: Set<string>): Mark | null {
     'question',
     'num',
     'target',
+    'step',
+    'click',
+    'type',
+    'scroll',
   ];
   if (needsTarget.includes(m.type)) {
     if (!ids.has(m.target)) return null;
+    if (m.type === 'type') {
+      const value = str(m.value, 200);
+      return value ? { type: 'type', target: m.target, value } : null;
+    }
+    const text = TEXTUAL.has(m.type) && m.text ? str(m.text, 80) : undefined;
     return {
       type: m.type,
       target: m.target,
-      label: m.label ? str(m.label, 32) : undefined,
+      label: m.label ? str(m.label, m.type === 'step' ? 40 : 32) : undefined,
       n: m.type === 'num' ? (num(m.n) ?? 1) : undefined,
       tone: toneOf(m),
+      ...(text ? { text } : {}),
     };
   }
   switch (m.type) {
@@ -207,14 +253,19 @@ export type Budget = {
   boards: number;
   cards: number;
   beats: number;
+  actions: number;
   flow: Flow | null;
+  /** Ya salió un paso de guía: la respuesta termina ahí (se espera al usuario). */
+  closed: boolean;
 };
 export const newBudget = (): Budget => ({
   buttons: 0,
   boards: 0,
   cards: 0,
   beats: 0,
+  actions: 0,
   flow: null,
+  closed: false,
 });
 
 const int = (v: unknown, lo: number, hi: number, dflt: number) => {
@@ -336,7 +387,12 @@ export function cleanBeat(
   ids: Set<string>,
   budget: Budget,
 ): Beat | null {
-  if (typeof b?.say !== 'string' || !b.say.trim() || budget.beats >= MAX_BEATS)
+  if (
+    typeof b?.say !== 'string' ||
+    !b.say.trim() ||
+    budget.beats >= MAX_BEATS ||
+    budget.closed
+  )
     return null;
   const say = str(b.say, 220);
   const total = say.split(/\s+/).length;
@@ -358,9 +414,17 @@ export function cleanBeat(
       if (clean.type === 'button') return ++budget.buttons <= 2;
       if (clean.type === 'chart') return !budget.flow && ++budget.boards <= 1;
       if (clean.type === 'card') return ++budget.cards <= 1;
+      if (ACTIONS.has(clean.type)) return ++budget.actions <= MAX_ACTIONS;
       return true;
     })
     .slice(0, 4);
+  // Un paso de guía cierra la respuesta: lo que venga después se dibujaría antes de que el
+  // usuario lo haga. Se corta ahí y no salen más beats.
+  const stepAt = marks.findIndex(({ clean }) => clean.type === 'step');
+  if (stepAt >= 0) {
+    marks.splice(stepAt + 1);
+    budget.closed = true;
+  }
   budget.beats++;
   const nodeWord: Record<string, number> = {};
   return {

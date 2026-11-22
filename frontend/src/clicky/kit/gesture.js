@@ -1,48 +1,84 @@
 import { svgEl, smoothD } from './geometry.js';
 
-// What the user marks while holding Control + Option, as in HeyClicky: the cursor leaves a marker
-// trail; on release it is read as a shape (circle, underline or a line pointing at something) and
-// matched to the elements it covers. The trail stays on screen for the capture, so the model sees
-// exactly what was marked, and goes away once the capture is taken.
-export function createGesture(parent) {
+// Lo que el usuario marca mientras mantiene Control + Option, como en HeyClicky: el cursor deja un
+// trazo blanco (el del usuario; el cian es de Hinty). Puede hacer varios trazos: si el cursor se
+// queda quieto un momento, el trazo se cierra y el siguiente movimiento empieza otro. Cada trazo
+// se lee como una forma (encerrar, subrayar o señalar), se cruza con los elementos que cubre y
+// guarda lo que el usuario iba diciendo mientras lo hacía ("esto… con esto").
+// El trazo queda en pantalla para la captura (el modelo ve lo mismo) y se borra después.
+const PAUSE_MS = 320; // quieto este rato: el trazo terminó
+const LAG_MS = 800; // el dictado llega con este atraso: las palabras de un trazo se leen después
+
+export function createGesture(parent, { words = () => 0 } = {}) {
   const svg = svgEl('svg', { class: 'clicky-user' }, parent);
-  let pts = [], path = null, on = false;
+  let strokes = [], cur = null, on = false, pause = 0;
 
   function start() {
     clear(true);
     on = true;
-    pts = [];
-    path = svgEl('path', {}, svg);
+    strokes = [];
+    cur = null;
+  }
+
+  function lift() {
+    clearTimeout(pause);
+    if (!cur) return;
+    const st = cur;
+    cur = null;
+    if (!classify(st.pts)) { st.path.remove(); return; }
+    strokes.push(st);
+    setTimeout(() => { st.to ??= words(); }, LAG_MS);
   }
 
   function add(x, y) {
     if (!on) return;
-    const last = pts.at(-1);
+    if (!cur) cur = { pts: [], path: svgEl('path', {}, svg), to: null };
+    const last = cur.pts.at(-1);
     if (last && Math.hypot(x - last[0], y - last[1]) < 3) return;
-    pts.push([x, y]);
-    if (pts.length > 1) path.setAttribute('d', smoothD(pts));
+    cur.pts.push([x, y]);
+    if (cur.pts.length > 1) cur.path.setAttribute('d', smoothD(cur.pts));
+    clearTimeout(pause);
+    pause = setTimeout(lift, PAUSE_MS);
   }
 
-  // { shape, box, elements } or null when the cursor barely moved (a plain push-to-talk).
-  function finish(candidates) {
-    on = false;
-    const shape = classify(pts);
-    if (!shape) { clear(true); return null; }
-    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-    const box = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
-    const end = pts.at(-1);
-    return { shape, box: roundBox(box), elements: covered(shape, box, end, candidates) };
+  // Deja de dibujar (se soltó la tecla) sin borrar lo trazado.
+  function stop() { lift(); on = false; }
+
+  // Trazos en orden: [{ shape, box, elements, said }]. `text` es lo que dijo completo.
+  function finish(candidates, text = '') {
+    stop();
+    const all = String(text).split(/\s+/).filter(Boolean);
+    let from = 0;
+    const out = strokes.map(st => {
+      const to = Math.max(from, Math.min(all.length, st.to ?? all.length));
+      const said = all.slice(from, to).join(' ');
+      from = to;
+      const xs = st.pts.map(p => p[0]), ys = st.pts.map(p => p[1]);
+      const box = { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs), h: Math.max(...ys) - Math.min(...ys) };
+      const shape = classify(st.pts);
+      return { shape, box: roundBox(box), elements: covered(shape, box, st.pts.at(-1), candidates), said };
+    });
+    // Llegar con el cursor a algo y después encerrarlo no son dos marcas: el "señalar" que va
+    // justo antes de un trazo sobre lo mismo se descarta (y sus palabras pasan al siguiente).
+    return out.filter((m, i) => {
+      const next = out[i + 1];
+      const dup = m.shape === 'point' && next && m.elements.length && m.elements.every(id => next.elements.includes(id));
+      if (dup) next.said = [m.said, next.said].filter(Boolean).join(' ');
+      return !dup;
+    }).slice(0, 6);
   }
 
   function clear(now = false) {
+    clearTimeout(pause);
     on = false;
-    pts = [];
+    strokes = [];
+    cur = null;
     if (now) { svg.classList.remove('fading'); svg.innerHTML = ''; return; }
     svg.classList.add('fading');
     setTimeout(() => { svg.innerHTML = ''; svg.classList.remove('fading'); }, 420);
   }
 
-  return { start, add, finish, clear, get drawing() { return on; } };
+  return { start, add, stop, finish, clear, get drawing() { return on; }, get count() { return strokes.length + (cur && classify(cur.pts) ? 1 : 0); } };
 }
 
 const roundBox = b => ({ x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.w), h: Math.round(b.h) });
@@ -74,9 +110,12 @@ export function covered(shape, box, end, candidates) {
   const overlap = (a, b) => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
   let scored = [];
   if (shape === 'circle') {
+    // Lo que quedó dentro (al menos la mitad), y primero lo que mejor calza con el círculo: si
+    // encierra un mensaje entero es el mensaje, no la hora que va adentro; un panel enorme que
+    // contiene al círculo tampoco.
+    const iou = r => overlap(r, box) / (area(r) + area(box) - overlap(r, box));
     scored = candidates.map(c => ({ c, k: overlap(c.rect, box) / area(c.rect) })).filter(x => x.k >= 0.5)
-      // lo más chico que quedó dentro es lo que encerró; un panel enorme que lo contiene no
-      .sort((a, b) => area(a.c.rect) - area(b.c.rect));
+      .sort((a, b) => iou(b.c.rect) - iou(a.c.rect));
     if (!scored.length) {
       const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
       scored = candidates.filter(c => inside(c.rect, cx, cy)).map(c => ({ c })).sort((a, b) => area(a.c.rect) - area(b.c.rect));

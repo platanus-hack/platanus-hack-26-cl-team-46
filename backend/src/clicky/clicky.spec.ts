@@ -5,12 +5,15 @@ import { ClickyAccessGuard } from './clicky-access.guard.js';
 import { lessonSchema } from './clicky.schemas.js';
 import { BeatScanner } from './brain.js';
 import {
+  buildMessages,
   ClickyService,
   describeAnnotation,
+  describeWalk,
+  mockPlan,
   type LessonEvent,
 } from './clicky.service.js';
 import { liveSttUrl, wordStarts } from './elevenlabs.js';
-import { anchorWord, cleanLesson, MAX_BEATS } from './protocol.js';
+import { anchorWord, cleanLesson, MAX_ACTIONS, MAX_BEATS } from './protocol.js';
 
 const ctx = (headers: Record<string, string>, ip = '1.2.3.4') => {
   const req = { headers, ip } as never;
@@ -305,19 +308,17 @@ describe('ClickyService.lesson (ensayo)', () => {
   it('manda los beats en orden, anclados, y termina con done', async () => {
     const s = service({ CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 5 });
     const events: LessonEvent[] = [];
-    for await (const e of s.lesson('sim-0a1b2c3d', {
-      question: 'hola',
-      elements: [
-        { id: 't', kind: 'título', text: 'Simulación' },
-        { id: 'b', kind: 'botón', text: 'Pausa' },
-      ],
-      history: [],
-      screenshot: null,
-      page: { title: 'Mayday', path: '/simulate' },
-      context: '',
-      voice: true,
-      annotation: null,
-    }))
+    for await (const e of s.lesson(
+      'sim-0a1b2c3d',
+      lessonSchema.parse({
+        question: 'hola',
+        elements: [
+          { id: 't', kind: 'título', text: 'Simulación' },
+          { id: 'b', kind: 'botón', text: 'Pausa' },
+        ],
+        page: { title: 'Mayday', path: '/simulate' },
+      }),
+    ))
       events.push(e);
     expect(events.map((e) => e.type)).toEqual([
       ...Array(9).fill('beat'),
@@ -334,16 +335,10 @@ describe('ClickyService.lesson (ensayo)', () => {
 
   it('respeta el tope de preguntas por simulación antes de llamar al modelo', async () => {
     const s = service({ CLICKY_MOCK: true, CLICKY_MAX_QUESTIONS_PER_SIM: 0 });
-    const it = s.lesson('sim-0a1b2c3d', {
-      question: 'x',
-      elements: [],
-      history: [],
-      screenshot: null,
-      page: { title: '', path: '' },
-      context: '',
-      voice: false,
-      annotation: null,
-    });
+    const it = s.lesson(
+      'sim-0a1b2c3d',
+      lessonSchema.parse({ question: 'x', voice: false }),
+    );
     await expect(it.next()).rejects.toThrow(/máximo de preguntas/);
   });
 });
@@ -351,7 +346,7 @@ describe('ClickyService.lesson (ensayo)', () => {
 describe('marcas con color y formas variadas', () => {
   const ids = new Set(['err', 'ok', 'dato']);
 
-  it('acepta garabato, tacha, tick y pregunta, con el tono que corresponde', () => {
+  it('acepta garabato, tacha, tick y pregunta', () => {
     const [beat] = cleanLesson(
       {
         beats: [
@@ -403,7 +398,8 @@ describe('marcas con color y formas variadas', () => {
       },
       ids,
     );
-    expect(beat.marks.find((m) => m.type === 'ring')?.tone).toBe('problem');
+    // en Hinty el único tono es el del atacante (ámbar punteado); "problem" se lee igual
+    expect(beat.marks.find((m) => m.type === 'ring')?.tone).toBe('attack');
     expect(
       beat.marks.find((m) => m.type === 'highlight')?.tone,
     ).toBeUndefined();
@@ -477,7 +473,7 @@ describe('lo que marca el usuario (Control + Option)', () => {
       .next();
     expect(first.value).toMatchObject({
       type: 'beat',
-      marks: [{ type: 'ring', target: 'e1', tone: 'problem' }],
+      marks: [{ type: 'ring', target: 'e1' }],
     });
   });
 });
@@ -488,5 +484,175 @@ describe('fase de la simulación en el prompt de Clicky', () => {
     expect(phaseNote('running')).toContain('no le digas qué acción tomar');
     expect(phaseNote('paused')).toContain('no le digas qué acción tomar');
     expect(phaseNote('finished')).toContain('Puedes explicar todo');
+  });
+});
+
+describe('como HeyClicky: señalar, guiar y hacer', () => {
+  const ids = new Set(['e1', 'e2', 'e3', 'e4']);
+
+  it('point y las marcas de texto se anclan a palabras exactas del elemento', () => {
+    const [beat] = cleanLesson(
+      {
+        beats: [
+          {
+            say: 'Mira este secreto de acá',
+            marks: [
+              {
+                type: 'point',
+                target: 'e1',
+                text: 'JWT_SECRET',
+                label: 'aquí',
+                at: 'este secreto',
+              },
+              { type: 'frame', target: 'e2', text: 'no aplica', at: 'acá' },
+            ],
+          },
+        ],
+      },
+      ids,
+    );
+    expect(beat.marks[0]).toMatchObject({
+      type: 'point',
+      target: 'e1',
+      text: 'JWT_SECRET',
+      word: 1,
+    });
+    // frame marca una zona entera: no usa text
+    expect(beat.marks[1].text).toBeUndefined();
+  });
+
+  it('un step cierra la respuesta: nada se dibuja después de él', () => {
+    const beats = cleanLesson(
+      {
+        beats: [
+          {
+            say: 'Primero abre esta pestaña de logs',
+            marks: [
+              { type: 'step', target: 'e1', label: 'Abre Logs', at: 'esta' },
+              { type: 'ring', target: 'e2', at: 'logs' },
+            ],
+          },
+          { say: 'Y después mira esto otro', marks: [] },
+        ],
+      },
+      ids,
+    );
+    expect(beats).toHaveLength(1);
+    expect(beats[0].marks.map((m) => m.type)).toEqual(['step']);
+  });
+
+  it('acciones: type necesita texto y hay un tope por respuesta', () => {
+    const [beat] = cleanLesson(
+      {
+        beats: [
+          {
+            say: 'Lo hago yo ahora mismo por ti',
+            marks: [
+              { type: 'type', target: 'e1' },
+              { type: 'type', target: 'e1', value: 'hola' },
+              { type: 'click', target: 'e2' },
+              { type: 'scroll', target: 'e3' },
+              { type: 'click', target: 'e4' },
+            ],
+          },
+        ],
+      },
+      ids,
+    );
+    expect(beat.marks.map((m) => m.type)).toEqual(['type', 'click', 'scroll']);
+    expect(beat.marks[0]).toMatchObject({ value: 'hola' });
+    expect(beat.marks).toHaveLength(MAX_ACTIONS);
+  });
+
+  it('el modelo recibe la caja de cada elemento y qué es del atacante', () => {
+    const input = lessonSchema.parse({
+      question: '¿qué pasa?',
+      elements: [
+        { id: 'e1', kind: 'botón', text: 'Rotar', box: [10, 20, 80, 32] },
+        { id: 'e2', kind: 'fila', text: 'POST /login', attack: true },
+      ],
+      viewport: { w: 1440, h: 900 },
+      interrupted: 'El token expiró porque',
+    });
+    const text = (buildMessages(input).at(-1) as { content: string }).content;
+    expect(text).toContain('- e1 (botón) [10 20 80×32]: Rotar');
+    expect(text).toContain('- e2 (fila) [atacante]: POST /login');
+    expect(text).toContain('1440×900');
+    expect(text).toMatch(/interrumpió mientras decías: "El token expiró/);
+  });
+
+  it('varios trazos, cada uno con lo que iba diciendo', () => {
+    const input = lessonSchema.parse({
+      question: '¿y esto con esto?',
+      elements: [
+        { id: 'e1', kind: 'texto', text: 'Token expirado' },
+        { id: 'e2', kind: 'botón', text: 'Rotar' },
+      ],
+      annotation: {
+        marks: [
+          {
+            shape: 'circle',
+            box: { x: 0, y: 0, w: 50, h: 30 },
+            elements: ['e1'],
+            said: 'esto de acá',
+          },
+          {
+            shape: 'point',
+            box: { x: 90, y: 0, w: 4, h: 4 },
+            elements: ['e2'],
+            said: 'con esto',
+          },
+        ],
+      },
+    });
+    const text = describeAnnotation(input);
+    expect(text).toMatch(/1\. encerró .* mientras decía "esto de acá"/);
+    expect(text).toMatch(/2\. señaló .* mientras decía "con esto"/);
+    expect(text).toMatch(/orden de sus trazos/);
+  });
+
+  it('la guía en curso pide solo el siguiente paso y cierra a los 15', () => {
+    const walk = (done: string[]) =>
+      describeWalk(
+        lessonSchema.parse({ question: 'x', walk: { goal: 'ver logs', done } }),
+      );
+    expect(walk(['Abre Logs'])).toMatch(/SOLO el siguiente paso/);
+    expect(walk(['Abre Logs'])).toContain('1. Abre Logs');
+    expect(walk(Array(15).fill('paso'))).toMatch(/cierra la guía/);
+  });
+
+  it('el ensayo guía con step y continúa paso a paso hasta terminar', () => {
+    const elements = [
+      { id: 'e1', kind: 'título', text: 'Simulación' },
+      { id: 'e2', kind: 'botón', text: 'Logs' },
+      { id: 'e3', kind: 'botón', text: 'Filtrar' },
+      { id: 'e4', kind: 'botón', text: 'Terminar sesión' },
+    ];
+    const plan = (body: object) =>
+      cleanLesson(
+        { beats: mockPlan(lessonSchema.parse({ elements, ...body })) },
+        ids,
+      );
+    const first = plan({ question: 'guíame a los logs' });
+    expect(first.at(-1)?.marks.at(-1)).toMatchObject({
+      type: 'step',
+      target: 'e2',
+    });
+    const second = plan({
+      question: 'x',
+      walk: { goal: 'guíame a los logs', done: ['Logs'] },
+    });
+    // nunca guía hacia lo irreversible (Terminar sesión)
+    expect(second[0].marks[0]).toMatchObject({ type: 'step', target: 'e3' });
+    const last = plan({
+      question: 'x',
+      walk: { goal: 'guíame a los logs', done: ['Logs', 'Filtrar'] },
+    });
+    expect(last[0].marks[0]).toMatchObject({ type: 'check' });
+  });
+
+  it('en curso no entrega la contención ni con step, click o type', async () => {
+    const { phaseNote } = await import('./clicky.service.js');
+    expect(phaseNote('running')).toMatch(/nunca pongas un step, click ni type/);
   });
 });

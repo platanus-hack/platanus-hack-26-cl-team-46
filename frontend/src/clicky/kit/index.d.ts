@@ -13,7 +13,7 @@ export interface ClickyOptions {
   /** Captura de lo que ve el usuario (data URL) o null. */
   screenshot?: () => Promise<string | null>;
   context?: string | (() => string);
-  /** Etiqueta solos los elementos visibles que la página no marcó con data-clicky. */
+  /** Mira todo lo visible (botones, campos, títulos, filas, textos); false: solo lo marcado con data-clicky. */
   autoTag?: boolean;
   /** Selector de lo que Clicky no debe mirar ni marcar. */
   ignore?: string;
@@ -21,6 +21,14 @@ export interface ClickyOptions {
   surface?: "light" | "dark";
   /** Dictado en vivo mientras se mantiene la tecla (si falla, se sube el audio al soltar). Default: true. */
   liveTranscription?: boolean;
+  /** El blip acompaña al cursor cuando Hinty no está dibujando. Default: true. */
+  buddy?: boolean;
+  /** Si aparece una señal nueva del atacante, Hinty vuela hasta ella y ofrece explicarla (máx 1 cada 45 s). Default: true. */
+  proactive?: boolean;
+  /** Sonidos de trazo, ping y paso listo (solo con la voz encendida). Default: true. */
+  sounds?: boolean;
+  /** Numera en la captura cada control, título y fila (el número N es el elemento eN). Default: true. */
+  setOfMarks?: boolean;
 }
 
 export interface ClickyInstance {
@@ -28,6 +36,13 @@ export interface ClickyInstance {
   clear(options?: { fast?: boolean }): Promise<void>;
   setTheme(name: string): void;
   setVoice(on: boolean): void;
+  setSounds(on: boolean): void;
+  /** Lleva a Hinty a una señal del atacante (o a la última visible) y ofrece explicarla. */
+  nudge(el?: Element): Promise<boolean>;
+  /** Termina la guía paso a paso en curso. */
+  stopWalk(): void;
+  /** Hay una guía paso a paso en curso. */
+  readonly walking: boolean;
   openInput(): void;
   caption(text: string): void;
   readonly theme: string | undefined;

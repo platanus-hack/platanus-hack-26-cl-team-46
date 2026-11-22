@@ -153,6 +153,7 @@ export function HintyPreview() {
               ))}
             </div>
             <span className="hint">
+              <kbd>⌃⌥</kbd>
               <kbd>Espacio</kbd>
               <span>Mantén apretado para hablar</span>
             </span>
@@ -425,6 +426,7 @@ function Island({
       <span className="err" />
       {input ? <input readOnly placeholder="Escribe tu pregunta y aprieta Enter" aria-label="Pregúntale a Hinty" /> : children}
       <span className="hint">
+        <kbd>⌃⌥</kbd>
         <kbd>Espacio</kbd>
         <span>Mantén apretado para hablar</span>
       </span>

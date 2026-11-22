@@ -267,21 +267,31 @@ export function describeAnnotation({
   elements,
   screenshot,
 }: LessonBody): string {
-  if (!annotation) return '';
+  const marks = annotation?.marks ?? [];
+  if (!marks.length) return '';
   const byId = new Map(elements.map((e) => [e.id, e]));
-  const marked = annotation.elements
-    .map((id) => byId.get(id))
-    .filter((e) => !!e)
-    .map((e) => `- ${e.id} (${e.kind}): ${e.text.slice(0, 160)}`);
-  const { x, y, w, h } = annotation.box;
+  const lines = marks.map((m, i) => {
+    const marked = m.elements
+      .map((id) => byId.get(id))
+      .filter((e) => !!e)
+      .map((e) => `${e.id} (${e.kind}): ${e.text.slice(0, 120)}`);
+    const { x, y, w, h } = m.box;
+    return [
+      `${marks.length > 1 ? `${i + 1}. ` : ''}${GESTURE[m.shape]} la zona x=${Math.round(x)} y=${Math.round(y)} de ${Math.round(w)}×${Math.round(h)} px`,
+      m.said.trim() && ` mientras decía "${m.said.trim()}"`,
+      marked.length
+        ? `. Cubre:\n   - ${marked.join('\n   - ')}`
+        : '. No cubre ningún elemento de la lista: guíate por la captura.',
+    ]
+      .filter(Boolean)
+      .join('');
+  });
   return [
-    `El usuario ${GESTURE[annotation.shape]} algo en la pantalla mientras preguntaba` +
-      (screenshot ? ' (su trazo amarillo se ve en la captura)' : '') +
-      `, en la zona x=${Math.round(x)} y=${Math.round(y)} de ${Math.round(w)}×${Math.round(h)} px.`,
-    marked.length
-      ? `Lo que quedó marcado:\n${marked.join('\n')}`
-      : 'No cubre ningún elemento de la lista: guíate por la captura.',
-    'Empieza por eso: tu primer beat lo marca y lo nombra.',
+    `El usuario marcó la pantalla mientras preguntaba` +
+      (screenshot ? ' (su trazo blanco se ve en la captura)' : '') +
+      ':',
+    ...lines,
+    `Empieza por eso: tu primer beat lo marca y lo nombra${marks.length > 1 ? ', y sigue el orden de sus trazos' : ''}.`,
   ].join('\n');
 }
 
@@ -292,23 +302,53 @@ export function describeAnnotation({
 export function phaseNote(simStatus: string): string {
   return simStatus === 'finished'
     ? 'Fase: la simulación terminó. Puedes explicar todo: qué pasó, qué faltó hacer y cuál era el arreglo correcto.'
-    : 'Fase: la simulación está en curso y es un ejercicio de entrenamiento. Explica lo que muestra la pantalla y qué significa cada señal, pero no le digas qué acción tomar para contener el ataque ni nombres una vulnerabilidad que no aparezca en pantalla. Guíalo con una pregunta (por ejemplo, "¿esa sesión sigue sirviendo después del cambio?"). Si te pide la respuesta directamente, dale una pista, no la solución.';
+    : 'Fase: la simulación está en curso y es un ejercicio de entrenamiento. Explica lo que muestra la pantalla y qué significa cada señal, pero no le digas qué acción tomar para contener el ataque ni nombres una vulnerabilidad que no aparezca en pantalla. Guíalo con una pregunta (por ejemplo, "¿esa sesión sigue sirviendo después del cambio?"). Si te pide la respuesta directamente, dale una pista, no la solución. Puedes guiarlo paso a paso para moverse por la pantalla (abrir un panel, leer un log), pero nunca pongas un step, click ni type sobre la acción que contiene el ataque ni escribas por él el pedido que la resuelve.';
+}
+
+/** Un elemento de la lista, con su caja: "- e7 (botón) [120 340 160×32] Rotar clave". */
+function elementLine(e: LessonBody['elements'][number]): string {
+  const box = e.box ? ` [${e.box[0]} ${e.box[1]} ${e.box[2]}×${e.box[3]}]` : '';
+  const flags = [e.attack && '[atacante]', e.disabled && '[deshabilitado]']
+    .filter(Boolean)
+    .join(' ');
+  return `- ${e.id} (${e.kind})${box}${flags ? ' ' + flags : ''}: ${e.text}`;
+}
+
+/** La guía paso a paso en curso: la meta, lo que ya hizo y qué se espera ahora. */
+export function describeWalk({ walk }: LessonBody): string {
+  if (!walk) return '';
+  const done = walk.done.length
+    ? walk.done.map((d, i) => `${i + 1}. ${d}`).join('\n')
+    : '(ninguno todavía)';
+  return [
+    `Guía en curso. La meta del usuario: "${walk.goal}".`,
+    `Pasos que ya hizo (la captura es de después del último):\n${done}`,
+    walk.done.length >= 15
+      ? 'Ya van 15 pasos: cierra la guía en 1 beat, diciendo dónde quedó y qué le falta.'
+      : 'Si la meta ya se ve cumplida, dilo en 1 beat con un check sobre la prueba y sin step. Si no, da SOLO el siguiente paso: 1 beat corto que termina con su step. Nunca repitas un paso que ya hizo.',
+  ].join('\n');
 }
 
 export function buildMessages(
   input: LessonBody,
   simStatus = 'running',
 ): unknown[] {
-  const screen = input.elements
-    .map((e) => `- ${e.id} (${e.kind}): ${e.text}`)
-    .join('\n');
+  const screen = input.elements.map(elementLine).join('\n');
   const text = [
     input.context && `Contexto de la app: ${input.context}`,
     phaseNote(simStatus),
-    `Página: ${input.page.title} (${input.page.path})`,
-    `Elementos en pantalla:\n${screen || '(ninguno)'}`,
+    `Página: ${input.page.title} (${input.page.path})` +
+      (input.viewport
+        ? ` · pantalla de ${Math.round(input.viewport.w)}×${Math.round(input.viewport.h)} px`
+        : ''),
+    input.private &&
+      'El usuario tiene el foco en un campo de contraseña: no hay captura. No escribas nada ahí ni le pidas la clave.',
+    `Elementos en pantalla (id, tipo, caja [x y ancho×alto], texto):\n${screen || '(ninguno)'}`,
     describeAnnotation(input),
-    `Pregunta: ${input.question}`,
+    input.interrupted &&
+      `Te interrumpió mientras decías: "${input.interrupted}". Responde lo nuevo sin repetir eso.`,
+    describeWalk(input),
+    `Pregunta: ${input.walk ? input.walk.goal : input.question}`,
   ]
     .filter(Boolean)
     .join('\n\n');
@@ -334,20 +374,137 @@ export function buildMessages(
 }
 
 /** Respuesta de ensayo (CLICKY_MOCK=true): usa lo que hay en pantalla, sin IA, con pausas como el modelo. */
-async function* mockBeats({
+async function* mockBeats(input: LessonBody) {
+  for (const beat of mockPlan(input)) {
+    await new Promise((r) => setTimeout(r, 250));
+    yield beat;
+  }
+}
+
+const SAFE = (e: { kind: string; text: string; disabled?: boolean }) =>
+  e.kind === 'botón' &&
+  !e.disabled &&
+  !/termin|elimin|borr|reinic|rot|envi|desplieg|deploy|deten|apag/i.test(
+    e.text,
+  );
+
+export function mockPlan({
+  question,
   elements,
   page,
   screenshot,
   annotation,
-}: LessonBody) {
+  walk,
+}: LessonBody): unknown[] {
   const title = elements.find((e) => e.kind.includes('título')) ?? elements[0];
-  const button = elements.find((e) => e.kind === 'botón');
+  const buttons = elements.filter(SAFE);
+  const button = buttons[0] ?? elements.find((e) => e.kind === 'botón');
+  const field = elements.find(
+    (e) => e.kind === 'campo' || e.kind === 'campo de texto',
+  );
+
+  // Guía en curso: el siguiente botón que no hizo, o "listo" al tercer paso.
+  if (walk) {
+    const next = buttons.find((b) => !walk.done.includes(b.text.slice(0, 40)));
+    if (walk.done.length >= 2 || !next)
+      return [
+        {
+          say: 'Listo, llegaste: esto es lo que buscabas.',
+          marks: title
+            ? [{ type: 'check', target: title.id, at: 'llegaste' }]
+            : [],
+        },
+      ];
+    return [
+      {
+        say: `Bien. Ahora aprieta este botón, ${next.text.slice(0, 30)}.`,
+        marks: [
+          {
+            type: 'step',
+            target: next.id,
+            label: next.text.slice(0, 40),
+            at: 'este botón',
+          },
+        ],
+      },
+    ];
+  }
+  if (
+    /gu[ií]a|ll[eé]vame|c[oó]mo (llego|abro|hago|veo)|paso a paso/i.test(
+      question,
+    )
+  )
+    return [
+      {
+        say: 'Te llevo paso a paso, empezando por aquí.',
+        marks: title
+          ? [
+              {
+                type: 'point',
+                target: title.id,
+                label: 'partimos',
+                at: 'por aquí',
+              },
+            ]
+          : [],
+      },
+      {
+        say: button
+          ? `Primero aprieta este botón, ${button.text.slice(0, 30)}.`
+          : 'No veo botones en esta parte de la pantalla.',
+        marks: button
+          ? [
+              {
+                type: 'step',
+                target: button.id,
+                label: button.text.slice(0, 40),
+                at: 'este botón',
+              },
+            ]
+          : [],
+      },
+    ];
+  if (/hazlo|haz clic|escr[ií]belo|por m[ií]/i.test(question))
+    return [
+      {
+        say: 'Va, lo hago yo: primero escribo en este campo.',
+        marks: field
+          ? [
+              {
+                type: 'type',
+                target: field.id,
+                value: 'borrador de Hinty',
+                at: 'este campo',
+              },
+            ]
+          : [],
+      },
+      {
+        say: button
+          ? `Y ahora aprieto este botón, ${button.text.slice(0, 30)}.`
+          : 'No veo un botón para apretar.',
+        marks: button
+          ? [
+              {
+                type: 'click',
+                target: button.id,
+                label: 'lo aprieto',
+                at: 'este botón',
+              },
+            ]
+          : [],
+      },
+    ];
+
+  const marks = annotation?.marks ?? [];
+  // el primer trazo, en el orden en que los hizo
   const marked =
-    annotation && elements.find((e) => annotation.elements.includes(e.id));
+    marks[0] && elements.find((e) => e.id === marks[0].elements[0]);
   const other = elements.find(
     (e) => e !== marked && e !== title && e.kind !== 'botón',
   );
-  const beats = [
+  const word = other?.text.split(/\s+/).find((w) => w.length >= 4);
+  return [
     ...(marked
       ? [
           {
@@ -356,7 +513,7 @@ async function* mockBeats({
               {
                 type: 'ring',
                 target: marked.id,
-                tone: 'problem',
+                tone: marked.attack ? 'attack' : undefined,
                 label: 'lo tuyo',
                 at: 'esto que marcaste',
               },
@@ -370,7 +527,7 @@ async function* mockBeats({
         ? [
             { type: 'spotlight', target: title.id },
             {
-              type: 'ring',
+              type: 'point',
               target: title.id,
               label: 'aquí',
               at: 'este título',
@@ -394,10 +551,15 @@ async function* mockBeats({
         : [],
     },
     {
-      say: 'Esto de aquí está bien, esto otro preocupa y esto no lo sabemos.',
+      say: 'Esto de aquí está bien, esta palabra preocupa y esto no lo sabemos.',
       marks: [
         title && { type: 'check', target: title.id, at: 'está bien' },
-        other && { type: 'scribble', target: other.id, at: 'preocupa' },
+        other && {
+          type: 'scribble',
+          target: other.id,
+          text: word,
+          at: 'esta palabra',
+        },
         button && { type: 'question', target: button.id, at: 'no lo sabemos' },
       ].filter(Boolean),
     },
@@ -502,12 +664,8 @@ async function* mockBeats({
           ],
           at: 'captura',
         },
-        { type: 'button', text: '¿Qué hago ahora?' },
+        { type: 'button', text: 'Guíame paso a paso' },
       ],
     },
   ];
-  for (const beat of beats) {
-    await new Promise((r) => setTimeout(r, 250));
-    yield beat;
-  }
 }
