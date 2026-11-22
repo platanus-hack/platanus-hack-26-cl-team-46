@@ -553,10 +553,9 @@ function FeedLog({ status, follow, children }: { status: Simulation["status"]; f
         {children}
         <div className="flex items-center gap-2 px-2 py-1 font-mono text-xs" role="status" aria-live="polite">
           {loading ? (
-            <span className="md-feed-dots" aria-label={STATUS_LABEL[status]}>
+            <span className="md-power" aria-label={STATUS_LABEL[status]}>
               <i />
-              <i />
-              <i />
+              <span>On</span>
             </span>
           ) : (
             <span className={`uppercase tracking-[0.12em] ${status === "paused" ? "font-semibold text-ink" : "text-ink-muted"}`}>
