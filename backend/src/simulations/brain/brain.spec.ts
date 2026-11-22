@@ -585,7 +585,9 @@ describe('coherencia del incidente (sim-a53b6f4f)', () => {
       repoUrl: 'https://github.com/x/y',
       role: 'coder',
     });
-    expect(p).toContain('es su app en producción y un incidente de verdad');
+    expect(p).toContain(
+      'esta es su app en producción con un incidente de verdad',
+    );
     expect(p).toContain('cuéntale primero qué pasó en su app');
     expect(p).toContain('que algo no aparezca no prueba que no pasó');
   });
