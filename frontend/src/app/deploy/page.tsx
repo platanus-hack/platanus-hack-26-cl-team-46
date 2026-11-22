@@ -26,6 +26,14 @@ function DeployConsole() {
   const [sims, setSims] = useState<Simulation[]>([]);
   // ?sandbox=<id> preselecciona un sandbox (para enlazar directo desde otras pantallas).
   const [selected, setSelected] = useState<string | null>(() => searchParams.get("sandbox"));
+  // Con cacheComponents la página queda escondida (Activity) al salir y conserva el estado: si vuelves
+  // con otro ?sandbox= (p. ej. "Ver el deploy" desde el paso 3), se selecciona ese.
+  const urlSandbox = searchParams.get("sandbox");
+  const [seenUrlSandbox, setSeenUrlSandbox] = useState(urlSandbox);
+  if (seenUrlSandbox !== urlSandbox) {
+    setSeenUrlSandbox(urlSandbox);
+    if (urlSandbox) setSelected(urlSandbox);
+  }
   const [eventLog, setEventLog] = useState<{ id: string | null; list: SimEvent[] }>({ id: null, list: [] });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);

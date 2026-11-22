@@ -65,10 +65,31 @@ function SimulateConsole() {
   const [simId, setSimId] = useState<string | null>(() => searchParams.get("sim"));
   const [pickerOpen, setPickerOpen] = useState(false);
   const [renamingTitle, setRenamingTitle] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Con cacheComponents, Next no desmonta la página al salir: la esconde (Activity) y al volver conserva el
+  // estado, así que el useState de arriba no vuelve a leer la URL. Si llegas con otro ?sandbox= o ?sim=
+  // (p. ej. "Ir al simulacro" desde el paso 3 después de haber estado aquí), se abre ese.
+  const urlSandbox = searchParams.get("sandbox");
+  const urlSim = searchParams.get("sim");
+  const [seenUrl, setSeenUrl] = useState({ sandbox: urlSandbox, sim: urlSim });
+  if (seenUrl.sandbox !== urlSandbox || seenUrl.sim !== urlSim) {
+    setSeenUrl({ sandbox: urlSandbox, sim: urlSim });
+    // Sin parámetros (p. ej. el link de la barra lateral) se queda lo que estaba abierto.
+    if (urlSim && urlSim !== simId) {
+      setSimId(urlSim);
+      setPickerOpen(false);
+      setError(null);
+    } else if (urlSandbox && urlSandbox !== sandboxId) {
+      setSandboxId(urlSandbox);
+      setSimId(urlSim);
+      setPickerOpen(false);
+      setError(null);
+    }
+  }
   // Sin UI: `?view=all` muestra lo interno (ataque, estado, agentes) para depurar.
   const godMode = searchParams.get("view") === "all";
   const [log, setLog] = useState<{ key: string; list: TimelineEvent[] }>({ key: "", list: [] });
-  const [error, setError] = useState<string | null>(null);
   // "Comenzar simulación": pixeles cian que salen del botón; la pantalla queda tapada hasta que el simulacro parte.
   const [startFx, setStartFx] = useState<{ key: number; origin?: { x: number; y: number }; hold: boolean }>({ key: 0, hold: false });
   // Al destaparse el escritorio: cuenta regresiva 3 · 2 · 1. Espera las dos cosas: que el simulacro
@@ -423,6 +444,7 @@ function FlowControls({
   onNewRun: () => void;
 }) {
   const live = sim.status === "running" || sim.status === "paused";
+  const confirm = useConfirm();
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-ink-muted max-md:w-full" title={sim.error ?? undefined}>
@@ -465,7 +487,6 @@ function FlowControls({
 /** Solo en vista interna: estado del incidente y de los agentes. */
 function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<unknown>) => void }) {
   const live = sim.status === "running" || sim.status === "paused";
-  const confirm = useConfirm();
   return (
     <div className="flex flex-col gap-2 rounded-md border border-dashed border-line-strong p-2 text-xs text-ink-muted">
       {sim.state && (
