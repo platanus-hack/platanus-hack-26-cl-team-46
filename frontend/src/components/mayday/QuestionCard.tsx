@@ -90,14 +90,16 @@ export function QuestionCard<Id extends string>({
   return (
     <div className={`md-question relative overflow-hidden ${className ?? ""}`}>
       {(label || back) && (
+        // Mobile: la flecha de volver a la izquierda y el label a la derecha. Desktop: label a la izquierda y volver a la derecha.
         <div className="flex items-center justify-between gap-4">
-          {label && <span className="md-index">{label}</span>}
-          {back}
+          {label && <span className="md-index max-md:order-2">{label}</span>}
+          {back && <div className="flex max-md:order-1">{back}</div>}
         </div>
       )}
       <h2 className="md-question__title">{title}</h2>
 
-      <p className="md-question__context" aria-live="polite">
+      {/* En mobile la explicación no se muestra (la tarjeta queda muy alta): el veredicto ya va en la opción. Se sigue anunciando al lector de pantalla. */}
+      <p className={`md-question__context ${revealed && chosen ? "max-md:sr-only" : ""}`} aria-live="polite">
         {revealed && chosen ? (
           <span className={chosen.correct ? "text-defense" : "text-attack-strong"}>{chosen.explanation}</span>
         ) : (

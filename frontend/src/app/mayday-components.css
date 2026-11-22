@@ -41,6 +41,8 @@ body { margin: 0; background: var(--bg-000); color: var(--ink); font-family: var
 .md-back:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 4px; border-radius: var(--radius-sm); }
 .md-back svg { width: 14px; height: 14px; flex: none; transition: transform .15s; }
 .md-back:hover svg { transform: translateX(-2px); }
+/* Mobile: solo la flecha, un poco más grande y con área táctil de 34 px sin mover el layout. */
+@media (max-width: 767px) { .md-back { padding: var(--space-2); margin: calc(var(--space-2) * -1); } .md-back svg { width: 18px; height: 18px; } }
 
 /* ---------- Alerta MAYDAY ---------- */
 .md-alert { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); padding: var(--space-3) var(--space-4); background: var(--attack-deep); border-top: 1px solid var(--attack); border-bottom: 1px solid var(--attack); color: var(--attack-strong); font: 500 11px/16px var(--font-mono, var(--font-geist-mono)); letter-spacing: .12em; text-transform: uppercase; }

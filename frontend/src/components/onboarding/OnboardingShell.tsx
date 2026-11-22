@@ -14,7 +14,8 @@ const pad = (n: number) => String(n).padStart(2, "0");
 export function OnboardingShell({ step, children }: { step: OnboardingStep; children: ReactNode }) {
   return (
     <div className="flex min-h-svh flex-col">
-      <header className="flex items-center justify-between gap-6 border-b border-line px-6 py-5 md:px-12">
+      {/* En mobile la barra de arriba es la de la app (logo + menú) y el paso ya se lee en "PASO 02 / 03". */}
+      <header className="flex items-center justify-between gap-6 border-b border-line px-6 py-5 max-md:hidden md:px-12">
         <Link href="/" aria-label="Volver al inicio" className="rounded-sm">
           <Logo height={24} priority />
         </Link>
@@ -23,7 +24,7 @@ export function OnboardingShell({ step, children }: { step: OnboardingStep; chil
 
       <main className="flex flex-1 flex-col">{children}</main>
 
-      <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-line px-6 py-5 md:px-12">
+      <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-line px-5 py-5 md:px-12">
         <span className="md-index">SOLO LECTURA · NUNCA TE PEDIMOS TUS CLAVES</span>
         <span className="text-[13px] text-ink-faint">
           Es un simulacro: solo atacamos una copia de tu app en nuestro sandbox. Nunca tu producción.
@@ -76,10 +77,10 @@ export function StepHeading({
       <span className="md-index">
         PASO {pad(step)} / {pad(ONBOARDING_STEPS.length)}
       </span>
-      <h1 className="max-w-[18ch] text-[clamp(36px,5vw,48px)] leading-[1.05] font-semibold tracking-[-0.03em]">
+      <h1 className="max-w-[18ch] text-[32px] leading-[1.05] font-semibold tracking-[-0.03em] md:text-[clamp(36px,5vw,48px)]">
         {title}
       </h1>
-      {children && <p className="max-w-[52ch] text-[18px] leading-7 text-ink-muted">{children}</p>}
+      {children && <p className="max-w-[52ch] text-[16px] leading-6 text-ink-muted md:text-[18px] md:leading-7">{children}</p>}
     </div>
   );
 }
