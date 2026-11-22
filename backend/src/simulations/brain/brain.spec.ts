@@ -589,4 +589,17 @@ describe('coherencia del incidente (sim-a53b6f4f)', () => {
     expect(p).toContain('cuéntale primero qué pasó en su app');
     expect(p).toContain('que algo no aparezca no prueba que no pasó');
   });
+
+  it('el coder no reconoce la tramoya del simulador', () => {
+    const p = buildSimPrompt({
+      simId: 'sim-1',
+      repoUrl: 'https://github.com/x/y',
+      role: 'coder',
+    });
+    expect(p).toContain(
+      'Para el developer eres Claude, su asistente de código',
+    );
+    expect(p).toContain('no sabes de qué te hablan');
+    expect(p).toContain('como si fuera producción');
+  });
 });
