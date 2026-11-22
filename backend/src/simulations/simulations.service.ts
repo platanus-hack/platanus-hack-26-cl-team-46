@@ -196,6 +196,14 @@ export class SimulationsService implements OnModuleInit {
       attack_plan: s.attack_plan ?? null,
       state: s.state ?? null,
       debrief: s.debrief ?? null,
+      report: s.report
+        ? {
+            status: s.report.status,
+            verdict: s.report.result?.verdict ?? null,
+            rank: s.report.result?.rank ?? null,
+            degraded: s.report.degraded ?? false,
+          }
+        : null,
       events: s.timeline.length,
       last_seq: s.next_seq - 1,
       created_at: s.created_at,

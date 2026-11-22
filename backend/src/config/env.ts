@@ -172,6 +172,9 @@ export const envSchema = z.object({
   SIM_EFFORT_OBSERVER: effortSchema.default('medium'),
   SIM_MODEL_DEBRIEF: z.string().default('claude-opus-5-5'),
   SIM_EFFORT_DEBRIEF: effortSchema.default('high'),
+  /** Agente de reportes: arma el reporte final de cada simulación (src/simulations/report). */
+  SIM_MODEL_REPORT: z.string().default('claude-opus-5-5'),
+  SIM_EFFORT_REPORT: effortSchema.default('high'),
   /** Cuántas vulns se juegan antes de que el director cierre la simulación. */
   SIM_MAX_INCIDENTS: z.coerce.number().int().min(1).default(3),
 });

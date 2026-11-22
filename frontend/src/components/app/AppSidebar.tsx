@@ -1,6 +1,6 @@
 "use client";
 
-import { CircleHelp, Plus, Radar, Server, type LucideIcon } from "lucide-react";
+import { CircleHelp, FileText, Plus, Radar, Server, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -10,7 +10,8 @@ import { Logo } from "@/components/mayday";
 const WITHOUT_SIDEBAR = ["/"];
 
 const NAV: { href: string; label: string; icon: LucideIcon; match?: string[] }[] = [
-  { href: "/simulate", label: "Simulacro", icon: Radar, match: ["/simulate", "/result"] },
+  { href: "/simulate", label: "Simulacro", icon: Radar, match: ["/simulate"] },
+  { href: "/reports", label: "Reportes", icon: FileText, match: ["/reports", "/result"] },
   { href: "/start", label: "Nuevo sandbox", icon: Plus, match: ["/start"] },
   { href: "/deploy", label: "Despliegues", icon: Server },
 ];

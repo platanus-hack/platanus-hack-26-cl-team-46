@@ -1,3 +1,4 @@
+import type { ReportRecord } from './report/report.types.js';
 /**
  * Una simulación = un sandbox desplegado + un workspace de Conductor (una VM)
  * con varios threads, cada uno un agente con un rol. Todos se coordinan a
@@ -395,6 +396,8 @@ export interface SimulationRecord {
   attack_plan?: Record<string, unknown>;
   state?: IncidentState;
   debrief?: Record<string, unknown>;
+  /** Reporte final que arma el agente de reportes al cerrar (report/report.agent.ts). */
+  report?: ReportRecord;
 
   /** Cuándo quedó arriba la app por primera vez. */
   deploy_ready_at?: string;
