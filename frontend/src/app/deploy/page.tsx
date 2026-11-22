@@ -5,7 +5,7 @@ import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Button, Select, type SelectOption } from "@/components/mayday";
 import { api, type Sandbox, type SandboxMode, type SimEvent } from "@/lib/api";
 import { simApi, type SimStatus, type Simulation } from "@/lib/sim-api";
-import { isWarningLabel, parseAgentSummary } from "@/lib/agent-summary";
+import { AgentPanel } from "@/components/sandbox/AgentPanel";
 
 /**
  * Consola de desarrollo del servicio de deploy. No es la UI del simulador:
@@ -209,7 +209,7 @@ function DeployConsole() {
             </div>
 
             {/* Mientras trabaja, el panel del agente va arriba; al terminar baja con el resumen, después del log. */}
-            {current.agent && !agentDone && <AgentPanel sandbox={current} />}
+            {current.agent && !agentDone && <AgentPanel sandbox={current} events={events} />}
             {current.pending_inputs.length > 0 && (
               <InputsForm sandbox={current} disabled={busy} onSubmit={(env) => run(() => api.provideInputs(current.sandbox_id, env))} />
             )}
@@ -225,7 +225,7 @@ function DeployConsole() {
               {events.length === 0 && <li className="text-ink-faint">Sin eventos todavía</li>}
             </ol>
 
-            {current.agent && agentDone && <AgentPanel sandbox={current} />}
+            {current.agent && agentDone && <AgentPanel sandbox={current} events={events} />}
             {current.status === "ready" && seedUsers.length > 0 && <AccessCard url={current.deployed_url} users={seedUsers} />}
             <div ref={bottomRef} />
           </section>
@@ -242,47 +242,6 @@ const MANIFEST_LABELS = {
   inferred: "inferida (determinista)",
   agent: "generada por la IA",
 } as const;
-
-function AgentPanel({ sandbox }: { sandbox: Sandbox }) {
-  const agent = sandbox.agent!;
-  return (
-    <div className="rounded-md border border-defense-deep bg-defense-soft p-4 text-sm">
-      <div className="mb-1 flex items-center justify-between">
-        <span className="font-medium">Agente de IA {agent.active ? "trabajando" : agent.outcome === "deployed" ? "terminó ✓" : "se rindió"}</span>
-        <a className="underline" href={agent.deep_link}>
-          Abrir en Conductor
-        </a>
-      </div>
-      <p className="text-ink-muted">{agent.reason}</p>
-      <p className="mt-1 text-ink-muted">Planes intentados: {agent.plans_submitted}</p>
-      {agent.summary && <AgentSummary text={agent.summary} />}
-    </div>
-  );
-}
-
-/** Resumen del agente en secciones: etiqueta a la izquierda y cada frase en su propia línea. */
-function AgentSummary({ text }: { text: string }) {
-  const sections = parseAgentSummary(text);
-  return (
-    <dl className="mt-4 divide-y divide-line border-t border-line">
-      {sections.map((sec, i) => {
-        const warn = isWarningLabel(sec.label);
-        return (
-          <div key={i} className="grid gap-1 py-3 sm:grid-cols-[160px_1fr] sm:gap-4">
-            <dt className={`text-xs font-medium uppercase tracking-wide ${warn ? "text-attack-strong" : "text-defense"}`}>
-              {sec.label ?? "Nota"}
-            </dt>
-            <dd className={`space-y-1.5 leading-6 ${warn ? "text-attack-strong" : "text-ink"}`}>
-              {sec.sentences.map((line, j) => (
-                <p key={j}>{line}</p>
-              ))}
-            </dd>
-          </div>
-        );
-      })}
-    </dl>
-  );
-}
 
 /** Usuario y clave para entrar a la app desplegada, a la vista y con botón de copiar. */
 function AccessCard({ url, users }: { url: string | null; users: Sandbox["credentials"]["seed_users"] }) {
