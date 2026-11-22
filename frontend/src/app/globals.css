@@ -20,6 +20,40 @@ body {
   outline-offset: 2px;
 }
 
+/* Tailwind v4 deja los botones con cursor: default. Todo lo clickeable muestra la manito; lo deshabilitado, no.
+   En @layer base para que las utilidades (cursor-not-allowed, cursor-default…) sigan ganando. */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"],
+  [role="option"],
+  [role="menuitem"],
+  [role="radio"],
+  [role="switch"],
+  [role="checkbox"],
+  [role="link"],
+  select:not(:disabled),
+  summary,
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  input[type="range"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled,
+  input:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/* .md-btn y .md-option fijan cursor: pointer fuera de capas: deshabilitados también muestran que no se puede. */
+.md-btn:disabled,
+.md-option:disabled {
+  cursor: not-allowed;
+}
+
 /* Barra de carga del navegador simulado (WebView). */
 @keyframes md-load {
   from { transform: translateX(-100%); }
@@ -54,3 +88,15 @@ body {
 }
 .md-select-pop { animation: md-select-pop .12s cubic-bezier(.2,.8,.2,1) both; transform-origin: top; }
 @media (prefers-reduced-motion: reduce) { .md-select-pop { animation: none; } }
+
+/* Cortina de navegación en mobile: entra desde la derecha sobre un fondo que se oscurece. */
+@keyframes md-drawer-in { from { transform: translateX(100%); } to { transform: none; } }
+@keyframes md-drawer-fade { from { opacity: 0; } to { opacity: 1; } }
+.md-drawer-in { animation: md-drawer-in .22s cubic-bezier(.2,.8,.2,1) both; }
+.md-drawer-fade { animation: md-drawer-fade .22s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .md-drawer-in, .md-drawer-fade { animation: none; } }
+
+/* Barra fija de abajo en mobile (paso 3): sube desde el borde. */
+@keyframes md-bar-in { from { transform: translateY(100%); } to { transform: none; } }
+.md-bar-in { animation: md-bar-in .2s cubic-bezier(.2,.8,.2,1) both; }
+@media (prefers-reduced-motion: reduce) { .md-bar-in { animation: none; } }

@@ -99,12 +99,16 @@ export function SandboxPicker({
     <div
       className={
         inline
-          ? "flex min-h-0 flex-1 items-start justify-center px-4 pt-[8vh] pb-6"
+          ? "flex min-h-0 flex-1 items-start justify-center pt-4 pb-6 md:px-4 md:pt-[8vh]"
           : "fixed inset-0 z-50 flex items-start justify-center bg-bg-000/70 px-4 pt-[14vh] backdrop-blur-[2px]"
       }
-      onMouseDown={(e) => {
-        if (!inline && dismissable && e.target === e.currentTarget) onClose();
-      }}
+      onMouseDown={
+        inline
+          ? undefined
+          : (e) => {
+              if (dismissable && e.target === e.currentTarget) onClose();
+            }
+      }
     >
       <div
         role={inline ? "region" : "dialog"}
@@ -128,9 +132,13 @@ export function SandboxPicker({
             // El anillo de foco global no aplica: el foco ya se ve en el cursor y el diálogo entero.
             style={{ outline: "none" }}
             aria-label="Buscar sandbox"
-            className="h-14 flex-1 bg-transparent text-[18px] text-ink placeholder:text-ink-faint"
+            className="h-14 min-w-0 flex-1 bg-transparent text-[16px] text-ink placeholder:text-ink-faint md:text-[18px]"
           />
-          {dismissable && <Kbd>Esc</Kbd>}
+          {dismissable && (
+            <span className="max-md:hidden">
+              <Kbd>Esc</Kbd>
+            </span>
+          )}
         </label>
 
         <div ref={listRef} role="listbox" aria-label="Sandboxes" className="flex-1 overflow-y-auto p-2">
@@ -188,7 +196,8 @@ export function SandboxPicker({
           </button>
         </div>
 
-        <div className="flex items-center gap-4 border-t border-line px-4 py-2 text-[12px] text-ink-faint">
+        {/* Atajos de teclado: en mobile no hay teclado físico, así que no se muestran. */}
+        <div className="flex items-center gap-4 border-t border-line px-4 py-2 text-[12px] text-ink-faint max-md:hidden">
           <span className="flex items-center gap-1">
             <Kbd>↑</Kbd>
             <Kbd>↓</Kbd> moverte

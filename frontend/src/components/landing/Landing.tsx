@@ -263,12 +263,15 @@ export function Landing() {
                     setAnswer({ option, seconds: Math.round((Date.now() - (startedAt ?? Date.now())) / 1000) })
                   }
                   footer={
-                    <div className="flex flex-wrap items-center gap-4">
-                      <Button onClick={goToResult} icon={<ArrowDown strokeWidth={1.5} aria-hidden="true" />}>
-                        Ve tu resultado
-                      </Button>
-                      <span className="md-index">O SIGUE BAJANDO</span>
-                    </div>
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      onClick={goToResult}
+                      icon={<ArrowDown strokeWidth={1.5} aria-hidden="true" />}
+                      className="w-full justify-center"
+                    >
+                      Ve tu resultado
+                    </Button>
                   }
                 />
               </div>
