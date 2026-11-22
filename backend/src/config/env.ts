@@ -148,9 +148,13 @@ export const envSchema = z.object({
     .transform((v) => v === 'true'),
 
   // Clicky: copiloto en pantalla (src/clicky). Sin las keys, sus rutas responden 503.
-  /** Cerebro de Clicky: mira la captura y decide qué decir y qué marcar. */
+  /** Solo si CLICKY_BRAIN_MODEL es un modelo de OpenAI. */
   OPENAI_API_KEY: z.string().optional(),
-  CLICKY_BRAIN_MODEL: z.string().default('gpt-6-luna'),
+  /**
+   * Cerebro de Clicky: mira la captura y decide qué decir y qué marcar. Un modelo
+   * `claude-*` usa ANTHROPIC_API_KEY; cualquier otro (p. ej. gpt-6-luna), OPENAI_API_KEY.
+   */
+  CLICKY_BRAIN_MODEL: z.string().default('claude-sonnet-5-5'),
   /**
    * Cuánto razona el cerebro antes de responder. "medium": mejores explicaciones a
    * cambio de una primera frase un poco más tardía. "low" responde antes y "none" aún

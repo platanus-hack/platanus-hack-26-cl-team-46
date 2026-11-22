@@ -144,17 +144,23 @@ export function createCards(ctx) {
       const len = p.getTotalLength();
       const wl = label.length * 7.2 + 10, hl = 18;
       const clash = b => F.labels.some(o => b.x < o.x + o.w && b.x + b.w > o.x && b.y < o.y + o.h && b.y + b.h > o.y);
-      let spot = null;
-      for (const along of [0.5, 0.35, 0.65, 0.2, 0.8]) {
-        const m = p.getPointAtLength(len * along), q = p.getPointAtLength(Math.min(len, len * along + 1));
-        const horizontal = Math.abs(q.x - m.x) >= Math.abs(q.y - m.y);
-        for (const side of [-1, 1]) {
-          const cx = horizontal ? m.x : m.x + side * (wl / 2 + 6), cy = horizontal ? m.y + side * (hl / 2 + 4) : m.y;
-          const b = { x: cx - wl / 2, y: cy - hl / 2, w: wl, h: hl };
-          if (!clash(b)) { spot = { cx, cy, b }; break; }
-        }
-        if (spot) break;
-      }
+      const inside = b => b.x >= 4 && b.y >= B.top - 8 && b.x + b.w <= B.W - 4 && b.y + b.h <= B.H - 4;
+      // si no cabe pegada a la flecha (pizarra angosta: las cajas casi se tocan), se aleja en
+      // perpendicular hasta quedar libre, sobre o bajo la fila de cajas
+      const find = pushes => {
+        for (const push of pushes)
+          for (const along of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+            const m = p.getPointAtLength(len * along), q = p.getPointAtLength(Math.min(len, len * along + 1));
+            const horizontal = Math.abs(q.x - m.x) >= Math.abs(q.y - m.y);
+            for (const side of [-1, 1]) {
+              const cx = horizontal ? m.x : m.x + side * (wl / 2 + 6 + push), cy = horizontal ? m.y + side * (hl / 2 + 4 + push) : m.y;
+              const b = { x: cx - wl / 2, y: cy - hl / 2, w: wl, h: hl };
+              if (inside(b) && !clash(b)) return { cx, cy, b };
+            }
+          }
+        return null;
+      };
+      let spot = find([0]) || find([6, 12, 18, 24, 30, 36, 42, 48, 60, 72]);
       if (!spot) { const m = p.getPointAtLength(len / 2); spot = { cx: m.x, cy: m.y - 13, b: { x: m.x - wl / 2, y: m.y - 22, w: wl, h: hl } }; }
       F.labels.push(spot.b);
       const e = text(B.svg, spot.cx, spot.cy + 4, label, `font: 500 12px var(--f-mono); fill: var(--ink-muted); paint-order: stroke; stroke: ${t.board}; stroke-width: 6px; stroke-linejoin: round;`);

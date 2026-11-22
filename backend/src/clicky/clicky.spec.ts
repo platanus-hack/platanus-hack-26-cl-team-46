@@ -8,7 +8,7 @@ import type { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ClickyAccessGuard } from './clicky-access.guard.js';
 import { lessonSchema } from './clicky.schemas.js';
-import { BeatScanner } from './brain.js';
+import { BeatScanner, isClaudeModel, toClaudeRequest } from './brain.js';
 import {
   buildMessages,
   ClickyService,
@@ -329,6 +329,43 @@ describe('BeatScanner', () => {
     const scanner = new BeatScanner();
     expect(scanner.push('{"beats":[{"say":"hola","ma')).toEqual([]);
     expect(scanner.push('rks":[]}')).toEqual([{ say: 'hola', marks: [] }]);
+  });
+});
+
+describe('toClaudeRequest', () => {
+  it('saca el system, deja el historial y pone la captura antes del texto', () => {
+    const out = toClaudeRequest([
+      { role: 'system', content: 'eres Hinty' },
+      { role: 'user', content: 'hola' },
+      { role: 'assistant', content: 'hola!' },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: 'qué es esto?' },
+          {
+            type: 'image_url',
+            image_url: { url: 'data:image/jpeg;base64,QUJD', detail: 'high' },
+          },
+        ],
+      },
+    ]);
+    expect(out.system).toBe('eres Hinty');
+    expect(out.messages.slice(0, 2)).toEqual([
+      { role: 'user', content: 'hola' },
+      { role: 'assistant', content: 'hola!' },
+    ]);
+    expect(out.messages[2].content).toEqual([
+      {
+        type: 'image',
+        source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' },
+      },
+      { type: 'text', text: 'qué es esto?' },
+    ]);
+  });
+
+  it('elige el proveedor por el nombre del modelo', () => {
+    expect(isClaudeModel('claude-sonnet-5-5')).toBe(true);
+    expect(isClaudeModel('gpt-6-luna')).toBe(false);
   });
 });
 

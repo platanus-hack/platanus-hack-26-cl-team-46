@@ -1,9 +1,15 @@
-// Cerebro de Clicky: OpenAI con la captura, en streaming. En vez de esperar el JSON
-// completo, entrega cada beat apenas el modelo cierra su objeto, para que su voz se
-// genere y suene mientras el modelo sigue escribiendo los siguientes.
-const OPENAI = 'https://api.openai.com/v1';
+// Cerebro de Clicky: Claude (o un modelo de OpenAI) con la captura, en streaming. En vez
+// de esperar el JSON completo, entrega cada beat apenas el modelo cierra su objeto, para
+// que su voz se genere y suene mientras el modelo sigue escribiendo los siguientes.
+import Anthropic from '@anthropic-ai/sdk';
 
-/** El modelo no pudo responder: `status` es el código HTTP de OpenAI (0 si no hubo respuesta). */
+const OPENAI = 'https://api.openai.com/v1';
+const TIMEOUT_MS = 45_000;
+
+/** Los modelos `claude-*` van por la API de Claude; el resto, por la de OpenAI. */
+export const isClaudeModel = (model: string) => /^claude-/.test(model);
+
+/** El modelo no pudo responder: `status` es el código HTTP del proveedor (0 si no hubo respuesta). */
 export class BrainError extends Error {
   constructor(
     message: string,
@@ -90,13 +96,118 @@ async function* deltas(
   }
 }
 
-export async function* streamBeats(opts: {
+export interface BrainOptions {
   key: string;
   model: string;
   effort: string;
+  /** Conversación en formato chat/completions (system, historial y la última pregunta). */
   messages: unknown[];
   signal: AbortSignal;
-}): AsyncGenerator<unknown> {
+}
+
+export function streamBeats(opts: BrainOptions): AsyncGenerator<unknown> {
+  return isClaudeModel(opts.model) ? streamClaude(opts) : streamOpenAI(opts);
+}
+
+type ChatMessage = {
+  role: 'system' | 'user' | 'assistant';
+  content:
+    | string
+    | (
+        | { type: 'text'; text: string }
+        | { type: 'image_url'; image_url: { url: string } }
+      )[];
+};
+
+/**
+ * Pasa la conversación al formato de la API de Claude: el system va aparte y la captura
+ * (data URL) va como imagen base64 antes del texto.
+ */
+export function toClaudeRequest(messages: unknown[]): {
+  system: string;
+  messages: Anthropic.Beta.BetaMessageParam[];
+} {
+  const system: string[] = [];
+  const out: Anthropic.Beta.BetaMessageParam[] = [];
+  for (const m of messages as ChatMessage[]) {
+    if (m.role === 'system') {
+      system.push(typeof m.content === 'string' ? m.content : '');
+      continue;
+    }
+    if (typeof m.content === 'string') {
+      out.push({ role: m.role, content: m.content });
+      continue;
+    }
+    const images: Anthropic.Beta.BetaImageBlockParam[] = [];
+    const texts: Anthropic.Beta.BetaTextBlockParam[] = [];
+    for (const part of m.content) {
+      if (part.type === 'text') texts.push({ type: 'text', text: part.text });
+      else {
+        const data = /^data:(image\/(?:png|jpeg|gif|webp));base64,(.+)$/s.exec(
+          part.image_url.url,
+        );
+        if (data)
+          images.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: data[1] as 'image/png',
+              data: data[2],
+            },
+          });
+      }
+    }
+    out.push({ role: m.role, content: [...images, ...texts] });
+  }
+  return { system: system.join('\n\n'), messages: out };
+}
+
+async function* streamClaude(opts: BrainOptions): AsyncGenerator<unknown> {
+  const { system, messages } = toClaudeRequest(opts.messages);
+  const client = new Anthropic({ apiKey: opts.key, maxRetries: 1 });
+  // "none" apaga el razonamiento previo; low/medium/high fijan el esfuerzo; "default"
+  // deja el del modelo.
+  const effort =
+    opts.effort === 'none'
+      ? { thinking: { type: 'between_tools' as const } }
+      : opts.effort === 'default'
+        ? {}
+        : {
+            output_config: {
+              effort: opts.effort as 'low' | 'medium' | 'high',
+            },
+          };
+  try {
+    const stream = client.beta.messages.stream(
+      {
+        model: opts.model,
+        max_tokens: 16_000,
+        system: [
+          { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
+        ],
+        messages,
+        ...effort,
+        // Si los clasificadores de seguridad rechazan (las simulaciones hablan de
+        // ataques), el servidor reintenta con otro modelo en vez de cortar.
+        betas: ['server-side-fallback-2026-07-01'],
+        fallbacks: 'default',
+      },
+      {
+        signal: AbortSignal.any([opts.signal, AbortSignal.timeout(TIMEOUT_MS)]),
+      },
+    );
+    const scanner = new BeatScanner();
+    for await (const evt of stream)
+      if (evt.type === 'content_block_delta' && evt.delta.type === 'text_delta')
+        yield* scanner.push(evt.delta.text);
+  } catch (err) {
+    if (err instanceof Anthropic.APIError)
+      throw new BrainError(String(err.message).slice(0, 300), err.status ?? 0);
+    throw err;
+  }
+}
+
+async function* streamOpenAI(opts: BrainOptions): AsyncGenerator<unknown> {
   const send = (withEffort: boolean) =>
     fetch(`${OPENAI}/chat/completions`, {
       method: 'POST',
@@ -111,7 +222,7 @@ export async function* streamBeats(opts: {
         stream: true,
         ...(withEffort ? { reasoning_effort: opts.effort } : {}),
       }),
-      signal: AbortSignal.any([opts.signal, AbortSignal.timeout(45_000)]),
+      signal: AbortSignal.any([opts.signal, AbortSignal.timeout(TIMEOUT_MS)]),
     });
 
   const withEffort = opts.effort !== 'default';
