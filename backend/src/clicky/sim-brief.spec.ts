@@ -165,20 +165,29 @@ describe('lo que Hinty sabe del simulacro', () => {
         { q: 'y esto', a: '' },
       ],
     });
-    const msgs = buildMessages(input, 'running', simBrief(running()));
-    // la respuesta vacía no se manda (la API rechaza turnos vacíos)
-    expect(msgs.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
+    const msgs = buildMessages(input, 'running', simBrief(running())) as Array<{
+      role: string;
+      content: unknown;
+    }>;
+    // la respuesta vacía no se manda
+    expect(msgs.map((m) => m.role)).toEqual([
+      'system',
+      'user',
+      'assistant',
+      'user',
+    ]);
+    expect(msgs[0].content).toBe(SYSTEM_PROMPT);
     const content = msgs.at(-1)!.content as Array<{
       type: string;
       text?: string;
-      source?: { media_type: string; data: string };
+      image_url?: { url: string };
     }>;
-    expect(content[0]).toMatchObject({
-      type: 'image',
-      source: { media_type: 'image/jpeg', data: 'AAAA' },
+    expect(content[0].text).toContain('# El simulacro que está mirando');
+    expect(content[0].text).toContain('Pregunta: ¿ya está?');
+    expect(content[1]).toMatchObject({
+      type: 'image_url',
+      image_url: { url: 'data:image/jpeg;base64,AAAA' },
     });
-    expect(content[1].text).toContain('# El simulacro que está mirando');
-    expect(content[1].text).toContain('Pregunta: ¿ya está?');
   });
 
   it('el prompt de sistema lo define como profesor que da pistas, no respuestas', () => {

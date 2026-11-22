@@ -6,7 +6,6 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Anthropic from '@anthropic-ai/sdk';
 import type { Env } from '../config/env.js';
 import { SimulationsService } from '../simulations/simulations.service.js';
 import { BrainError, streamBeats } from './brain.js';
@@ -36,7 +35,7 @@ const TTS_TIMEOUT_MS = 8_000;
 const STT_MAX_SECONDS = 90;
 
 /**
- * Hinty (antes Clicky): el profesor del simulacro. Arma la explicación con Claude (la
+ * Hinty (antes Clicky): el profesor del simulacro. Arma la explicación con OpenAI (la
  * captura, lo que hay en pantalla y lo que sabe del simulacro), le pone voz (ElevenLabs) y
  * transcribe lo que dice el usuario. Todo en streaming: el primer beat suena mientras el
  * modelo escribe el resto. Las keys nunca salen del backend y el gasto queda acotado
@@ -51,16 +50,10 @@ export class ClickyService {
     { questions: number; ttsChars: number; sttSessions: number }
   >();
 
-  private client?: Anthropic;
-
   constructor(
     private readonly config: ConfigService<Env, true>,
     private readonly sims: SimulationsService,
   ) {}
-
-  private anthropic(key: string): Anthropic {
-    return (this.client ??= new Anthropic({ apiKey: key }));
-  }
 
   private cfg<K extends keyof Env>(k: K): Env[K] {
     return this.config.get(k, { infer: true });
@@ -93,10 +86,10 @@ export class ClickyService {
         'Clicky llegó al máximo de preguntas de esta simulación',
         HttpStatus.TOO_MANY_REQUESTS,
       );
-    const key = this.cfg('ANTHROPIC_API_KEY');
+    const key = this.cfg('OPENAI_API_KEY');
     if (!this.cfg('CLICKY_MOCK') && !key)
       throw new ServiceUnavailableException(
-        'Falta ANTHROPIC_API_KEY en el backend',
+        'Falta OPENAI_API_KEY en el backend',
       );
     u.questions++;
 
@@ -107,10 +100,9 @@ export class ClickyService {
     const source = this.cfg('CLICKY_MOCK')
       ? mockBeats(input)
       : streamBeats({
-          client: this.anthropic(key!),
+          key: key!,
           model: this.cfg('CLICKY_BRAIN_MODEL'),
           effort: this.cfg('CLICKY_BRAIN_EFFORT'),
-          system: SYSTEM_PROMPT,
           messages: buildMessages(
             input,
             simStatus,
@@ -221,7 +213,7 @@ export class ClickyService {
 
   private describe(err: unknown): string {
     if (err instanceof BrainError) {
-      this.logger.error(`Claude ${err.status}: ${err.message}`);
+      this.logger.error(`OpenAI ${err.status}: ${err.message}`);
       return 'El modelo no pudo responder, intenta de nuevo';
     }
     if ((err as Error)?.name === 'AbortError') return 'Respuesta cancelada';
@@ -385,28 +377,15 @@ export function describeWalk({ walk }: LessonBody): string {
   ].join('\n');
 }
 
-/** Una captura en data URL → bloque de imagen de Claude. */
-function imageBlock(dataUrl: string): Anthropic.Beta.BetaImageBlockParam {
-  const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(dataUrl)!;
-  return {
-    type: 'image',
-    source: {
-      type: 'base64',
-      media_type: m[1] as 'image/jpeg' | 'image/png' | 'image/webp',
-      data: m[2],
-    },
-  };
-}
-
 /**
- * La conversación para Claude (el prompt de sistema va aparte, cacheado). El último
- * mensaje lleva lo que sabe del simulacro, la fase, la pantalla y la pregunta.
+ * La conversación para el modelo: el prompt de sistema, el historial y un último mensaje
+ * con lo que sabe del simulacro, la fase, la pantalla y la pregunta.
  */
 export function buildMessages(
   input: LessonBody,
   simStatus = 'running',
   brief = '',
-): Anthropic.Beta.BetaMessageParam[] {
+): unknown[] {
   const screen = input.elements.map(elementLine).join('\n');
   const text = [
     brief,
@@ -428,17 +407,24 @@ export function buildMessages(
     .filter(Boolean)
     .join('\n\n');
   return [
-    // La API rechaza turnos vacíos: una respuesta que no alcanzó a decir nada no se manda.
+    { role: 'system', content: SYSTEM_PROMPT },
+    // Una respuesta que no alcanzó a decir nada no aporta: no se manda.
     ...input.history
       .filter((h) => h.q.trim() && h.a.trim())
-      .flatMap((h): Anthropic.Beta.BetaMessageParam[] => [
+      .flatMap((h) => [
         { role: 'user', content: h.q },
         { role: 'assistant', content: h.a },
       ]),
     {
       role: 'user',
       content: input.screenshot
-        ? [imageBlock(input.screenshot), { type: 'text', text }]
+        ? [
+            { type: 'text', text },
+            {
+              type: 'image_url',
+              image_url: { url: input.screenshot, detail: 'high' },
+            },
+          ]
         : text,
     },
   ];
