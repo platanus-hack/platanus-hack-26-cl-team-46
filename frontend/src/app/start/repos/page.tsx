@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Button, ButtonLink, StatusChip } from "@/components/mayday";
+import { Button, ButtonLink, StatusChip, TypedLog } from "@/components/mayday";
 import { Avatar } from "@/components/onboarding/Avatar";
 import { OnboardingShell, StepHeading } from "@/components/onboarding/OnboardingShell";
 import { api } from "@/lib/api";
@@ -188,9 +188,7 @@ function RepoPicker({ connection }: { connection: GitHubConnection }) {
 
             {state.status === "error" && (
               <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-4">
-                <p role="alert" className="text-[13px] text-attack-strong">
-                  {state.message}
-                </p>
+                <TypedLog text={state.message} />
                 <Button
                   onClick={() => {
                     setState({ status: "loading" });
@@ -404,9 +402,7 @@ function SelectionPanel({
                     {send.status === "sending" ? "Enviando…" : "Despliega este repo"}
                   </Button>
                   {send.status === "error" && (
-                    <p role="alert" className="text-[13px] leading-5 text-attack-strong">
-                      {send.message}
-                    </p>
+                    <TypedLog text={send.message} />
                   )}
                 </div>
               </>

@@ -1,8 +1,8 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
-import { Button, GitHubIcon } from "@/components/mayday";
+import { Suspense, useRef, useState } from "react";
+import { Button, GitHubIcon, TypedLog } from "@/components/mayday";
 import { Avatar } from "@/components/onboarding/Avatar";
 import { OnboardingShell, StepHeading } from "@/components/onboarding/OnboardingShell";
 import { github, GitHubError, parseGitHubInput } from "@/lib/github";
@@ -73,9 +73,7 @@ function Connect() {
       ) : (
         <div className="flex max-w-[560px] flex-col gap-6">
           {callbackError && CALLBACK_ERRORS[callbackError] && (
-            <p role="alert" className="text-[13px] leading-5 text-attack-strong">
-              {CALLBACK_ERRORS[callbackError]}
-            </p>
+            <TypedLog text={CALLBACK_ERRORS[callbackError]} />
           )}
 
           {oauth && (
@@ -146,10 +144,19 @@ function UsernameForm({ primary, onConnected }: { primary: boolean; onConnected:
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Cada envío fallido vuelve a tipear el error, aunque el mensaje se repita.
+  const [attempt, setAttempt] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    setAttempt((n) => n + 1);
+    if (!value.trim()) {
+      setError("Escribe tu usuario o pega un repo para avanzar.");
+      inputRef.current?.focus();
+      return;
+    }
     const target = parseGitHubInput(value);
     if (!target) {
       setError("Eso no parece un usuario ni un repo de GitHub. Prueba con tu usuario, ej.: octocat.");
@@ -188,15 +195,23 @@ function UsernameForm({ primary, onConnected }: { primary: boolean; onConnected:
       </label>
       <div className="flex flex-col gap-2 sm:flex-row">
         <div
-          className={`flex flex-1 items-center gap-3 rounded-md border bg-bg-100 px-4 focus-within:border-defense ${
+          className={`flex flex-1 items-center gap-3 rounded-md border bg-bg-100 px-4 transition-[border-color,box-shadow] duration-150 ${
             primary ? "h-[52px]" : "h-10"
-          } ${error ? "border-attack" : "border-line-strong"}`}
+          } ${
+            error
+              ? "border-attack focus-within:shadow-[0_0_0_1px_var(--attack),0_0_24px_#FF8A0033]"
+              : "border-line-strong focus-within:border-defense focus-within:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33]"
+          }`}
         >
           <span className="size-4 shrink-0 text-ink-faint">
             <GitHubIcon />
           </span>
           <input
             id="gh"
+            ref={inputRef}
+            name="github-target"
+            data-1p-ignore
+            data-lpignore="true"
             autoFocus
             autoComplete="off"
             autoCapitalize="off"
@@ -209,19 +224,15 @@ function UsernameForm({ primary, onConnected }: { primary: boolean; onConnected:
             placeholder="tu-usuario  o  github.com/tu-usuario/tu-repo"
             aria-invalid={!!error}
             aria-describedby={error ? "gh-error" : undefined}
-            className="h-full min-w-0 flex-1 bg-transparent font-mono text-[15px] text-ink outline-none placeholder:text-ink-faint"
+            className="h-full min-w-0 flex-1 bg-transparent font-mono text-[15px] text-ink outline-none! placeholder:text-ink-faint"
           />
         </div>
         {/* Si hay login con GitHub, ese es el único primario de la pantalla. */}
-        <Button type="submit" variant={primary ? "primary" : "secondary"} size={primary ? "lg" : "md"} disabled={busy || !value.trim()}>
+        <Button type="submit" variant={primary ? "primary" : "secondary"} size={primary ? "lg" : "md"} disabled={busy}>
           {busy ? "Buscando…" : "Conecta"}
         </Button>
       </div>
-      {error && (
-        <p id="gh-error" role="alert" className="text-[13px] leading-5 text-attack-strong">
-          {error}
-        </p>
-      )}
+      {error && <TypedLog id="gh-error" text={error} replay={attempt} />}
     </form>
   );
 }

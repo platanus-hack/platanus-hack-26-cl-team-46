@@ -38,3 +38,19 @@ body {
   background-size: 16px 16px;
   background-position: 7px 7px;
 }
+
+/* Cursor de bloque de TypedLog: parpadeo lento (1 por segundo, DESIGN.md › seguridad fotosensible). */
+@keyframes md-caret-blink {
+  0%, 50% { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+.md-caret-blink { animation: md-caret-blink 1s steps(1) infinite; }
+@media (prefers-reduced-motion: reduce) { .md-caret-blink { animation: none; } }
+
+/* Menú del Select: entra corto desde arriba. */
+@keyframes md-select-pop {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: none; }
+}
+.md-select-pop { animation: md-select-pop .12s cubic-bezier(.2,.8,.2,1) both; transform-origin: top; }
+@media (prefers-reduced-motion: reduce) { .md-select-pop { animation: none; } }
