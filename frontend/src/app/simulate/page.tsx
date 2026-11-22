@@ -329,6 +329,7 @@ function SimulateConsole() {
           <AgentChat
             title={sim.repo_url.replace(/\/$/, "").split("/").pop() || "Respuesta a incidente"}
             events={chat}
+            live={sim.status === "running" || sim.status === "paused"}
             onSend={(msg) => run(() => simApi.message(sim.sim_id, msg))}
           />
         </div>
