@@ -7,7 +7,7 @@ import { headsetSvg } from './icons.js';
 const BAR_SHAPE = [0.6, 0.9, 1, 0.85, 0.65];
 const step4 = v => Math.max(4, Math.min(20, Math.round(v / 4) * 4)); // alturas en pasos de 4 px
 
-export function createIsland(parent, { hint = 'ESPACIO · Mantén apretado para hablar', onType } = {}) {
+export function createIsland(parent, { hint = '⌃⌥ / ESPACIO · Mantén apretado para hablar', onType } = {}) {
   const [key, label] = String(hint).split(' · ');
   const el = htmlEl('div', 'clicky-island', parent, `
     <div class="av">${headsetSvg(16, { mic: true })}</div>
@@ -15,7 +15,7 @@ export function createIsland(parent, { hint = 'ESPACIO · Mantén apretado para 
     <div class="dots"><i></i><i></i><i></i></div>
     <span class="err"></span>
     <div class="cap"></div>
-    <span class="hint"><kbd>${esc(key)}</kbd>${label ? `<span>${esc(label)}</span>` : ''}</span>`);
+    <span class="hint">${String(key).split(' / ').map(k => `<kbd>${esc(k)}</kbd>`).join('')}${label ? `<span>${esc(label)}</span>` : ''}</span>`);
   const cap = el.querySelector('.cap'), bars = [...el.querySelectorAll('.wave i')];
   let words = [], speakTimer = 0;
 
@@ -71,13 +71,17 @@ export function createIsland(parent, { hint = 'ESPACIO · Mantén apretado para 
     el.dataset.input = '';
     input.focus();
     const close = () => { input.remove(); cap.style.display = ''; delete el.dataset.input; };
+    // Control y Option pasan: con el input abierto igual se puede mantener ⌃⌥ para hablar y marcar
+    const modifier = e => e.key === 'Control' || e.key === 'Alt';
     input.addEventListener('keydown', e => {
+      if (modifier(e)) return;
       e.stopPropagation();
       if (e.key === 'Enter' && input.value.trim()) { const q = input.value.trim(); close(); onType?.(q); }
       if (e.key === 'Escape') close();
     });
-    input.addEventListener('keyup', e => e.stopPropagation());
-    input.addEventListener('blur', () => setTimeout(close, 150));
+    input.addEventListener('keyup', e => { if (!modifier(e)) e.stopPropagation(); });
+    // se cierra al perder el foco, salvo que vuelva (un clic en la misma isla lo devuelve al input)
+    input.addEventListener('blur', () => setTimeout(() => { if (document.activeElement !== input) close(); }, 150));
   }
   el.addEventListener('click', openInput);
 

@@ -170,7 +170,7 @@ function Dock({ simId, ended }: { simId: string; ended: boolean }) {
       theme: CLICKY_CONFIG.theme,
       surface: CLICKY_CONFIG.surface,
       voice: CLICKY_CONFIG.voice,
-      hint: "ESPACIO · Mantén apretado para hablar",
+      hint: "⌃⌥ / ESPACIO · Mantén apretado para hablar",
       context: CLICKY_CONFIG.context,
       screenshot: () => capture.current?.grab() ?? Promise.resolve(null),
     });
