@@ -1,24 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Button, StatusChip } from "@/components/mayday";
-import type { EngineFinding, Simulation } from "@/lib/sim-api";
+import { StatusChip } from "@/components/mayday";
+import type { Simulation } from "@/lib/sim-api";
 
 /**
- * Antes del simulacro con el motor real: la primera pasada (el motor ataca de
- * verdad el sandbox, en vivo) y el informe con lo que confirmó, donde el
- * developer elige los incidentes. Después, el simulacro repite esos pasos.
+ * Antes del simulacro: la preparación (deploy, primera pasada del motor y agentes) y,
+ * cuando TODOS los agentes están listos, el botón para partir. Al partir, las alertas
+ * empiezan a llegar al tiro: el backend ya tiene escritas las primeras.
  */
-export function EngineFirstPass({
-  sim,
-  onStart,
-}: {
-  sim: Simulation;
-  onStart: (vulns: string[]) => Promise<unknown>;
-}) {
-  const engine = sim.engine;
-  if (engine?.status === "done" && sim.status === "ready") return <EngineReport sim={sim} onStart={onStart} />;
-  return <EnginePrep sim={sim} />;
+export function SimGate({ sim, onStart }: { sim: Simulation; onStart: () => Promise<unknown> }) {
+  if (sim.status === "ready") return <ReadyGate sim={sim} onStart={onStart} />;
+  if (sim.engine_driven) return <EnginePrep sim={sim} />;
+  return <AgentsPrep sim={sim} />;
 }
 
 // ---------------------------------------------------------------- primera pasada
@@ -68,7 +62,18 @@ export function enginePhases(sim: Simulation): Phase[] {
       detail: attacks ? `${confirmed} de ${attacks} confirmadas` : undefined,
     },
     { label: "Armando tu simulacro", state: step(done, attacked && !done), detail: done ? "listo" : undefined },
+    agentsPhase(sim, done),
   ];
+}
+
+/** Última fase: los agentes (contexto, tu agente de código, primeras alertas) en posición. */
+function agentsPhase(sim: Simulation, canStart: boolean): Phase {
+  const ready = sim.status === "ready" || sim.status === "running";
+  return {
+    label: "Agentes en posición",
+    state: ready ? "done" : canStart && sim.status === "starting" ? "run" : "todo",
+    detail: ready ? "listos" : undefined,
+  };
 }
 
 function useElapsed(since?: string | null, stop?: string | null) {
@@ -103,26 +108,7 @@ export function EnginePrep({ sim }: { sim: Simulation }) {
             ? (engine?.error ?? sim.error ?? "Revisa el deploy y parte un simulacro nuevo.")
             : "Antes del simulacro, el motor prueba cada vulnerabilidad contra tu app desplegada. Solo toca tu sandbox. Tarda uno o dos minutos."}
         </p>
-        <ol className="mt-8 flex max-w-xl flex-col">
-          {phases.map((p) => (
-            <li key={p.label} className="grid grid-cols-[28px_1fr_auto] items-center gap-3 border-b border-line py-3.5">
-              <span
-                aria-hidden="true"
-                className={`size-3 border-[1.5px] ${
-                  p.state === "done"
-                    ? "border-defense bg-defense"
-                    : p.state === "run"
-                      ? "border-attack bg-attack shadow-[0_0_0_1px_#FF8A0080,0_0_28px_#FF8A0040]"
-                      : "border-line-strong"
-                }`}
-              />
-              <span className={p.state === "todo" || p.state === "skip" ? "text-ink-faint" : "text-ink"}>{p.label}</span>
-              <span className={`font-mono text-xs ${p.state === "run" ? "text-attack" : "text-ink-faint"}`}>
-                {p.state === "skip" ? "sin repo" : (p.detail ?? (p.state === "run" ? "en curso" : "—"))}
-              </span>
-            </li>
-          ))}
-        </ol>
+        <PhaseList phases={phases} />
       </div>
       <div className="flex min-h-0 flex-col rounded-md border border-line bg-bg-100 p-5 font-mono text-[13px] leading-7">
         <div className="mb-3 flex justify-between">
@@ -148,132 +134,89 @@ export function EnginePrep({ sim }: { sim: Simulation }) {
   );
 }
 
-// ---------------------------------------------------------------- informe
+// ---------------------------------------------------------------- sin motor
 
-const SEVERITY: Record<string, { label: string; cls: string }> = {
-  critical: { label: "Crítica", cls: "border-attack/50 bg-attack-soft text-attack" },
-  high: { label: "Alta", cls: "border-attack-strong/40 text-attack-strong" },
-  medium: { label: "Media", cls: "border-line-strong text-ink-muted" },
-  low: { label: "Baja", cls: "border-line-strong text-ink-faint" },
-};
-
-const MAX_INCIDENTS = 3;
-
-export function EngineReport({ sim, onStart }: { sim: Simulation; onStart: (vulns: string[]) => Promise<unknown> }) {
-  const engine = sim.engine!;
-  const confirmed = useMemo(
-    () => engine.findings.filter((f) => f.confirmed).sort((a, b) => a.order - b.order),
-    [engine.findings],
+/** Preparación con el hacker emulado: las mismas fases, sin el tráfico del motor. */
+function AgentsPrep({ sim }: { sim: Simulation }) {
+  const deployed = sim.sandbox.status === "ready";
+  const step = (done: boolean, running: boolean): PhaseState => (done ? "done" : running ? "run" : "todo");
+  const failed = sim.status === "failed";
+  const phases: Phase[] = [
+    { label: "Desplegando tu app", state: step(deployed, !deployed && !failed), detail: deployed ? "sandbox listo" : undefined },
+    { label: "Revisando tus herramientas", state: step(Boolean(sim.tools_detected), deployed && !sim.tools_detected) },
+    { label: "El atacante estudia tu código", state: step(Boolean(sim.attack_plan), !sim.attack_plan && !failed) },
+    agentsPhase(sim, Boolean(sim.attack_plan && sim.tools_detected && deployed)),
+  ];
+  return (
+    <div className="flex min-h-0 flex-1 flex-col justify-center px-10 py-12">
+      <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Preparando el simulacro</span>
+      <h2 className="mt-3 max-w-xl text-[40px] font-semibold leading-[1.08] tracking-[-0.035em]">
+        {failed ? "No pudimos preparar el simulacro." : "Los agentes están tomando posición."}
+      </h2>
+      {failed && sim.error && <p className="mt-4 max-w-lg text-[16px] leading-relaxed text-ink-muted">{sim.error}</p>}
+      <PhaseList phases={phases} />
+    </div>
   );
-  const [picked, setPicked] = useState<string[]>(() => engine.selected ?? confirmed.slice(0, MAX_INCIDENTS).map((f) => f.vuln_id));
+}
+
+function PhaseList({ phases }: { phases: Phase[] }) {
+  return (
+    <ol className="mt-8 flex max-w-xl flex-col">
+      {phases.map((p) => (
+        <li key={p.label} className="grid grid-cols-[28px_1fr_auto] items-center gap-3 border-b border-line py-3.5">
+          <span
+            aria-hidden="true"
+            className={`size-3 border-[1.5px] ${
+              p.state === "done"
+                ? "border-defense bg-defense"
+                : p.state === "run"
+                  ? "border-attack bg-attack shadow-[0_0_0_1px_#FF8A0080,0_0_28px_#FF8A0040]"
+                  : "border-line-strong"
+            }`}
+          />
+          <span className={p.state === "todo" || p.state === "skip" ? "text-ink-faint" : "text-ink"}>{p.label}</span>
+          <span className={`font-mono text-xs ${p.state === "run" ? "text-attack" : "text-ink-faint"}`}>
+            {p.state === "skip" ? "sin repo" : (p.detail ?? (p.state === "run" ? "en curso" : "—"))}
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+// ---------------------------------------------------------------- todo listo
+
+/**
+ * Todos los agentes listos: un solo botón grande al centro. No mostramos qué vulnerabilidades
+ * encontró el atacante: eso lo descubre el developer en el simulacro y lo ve en el reporte.
+ */
+function ReadyGate({ sim, onStart }: { sim: Simulation; onStart: () => Promise<unknown> }) {
   const [starting, setStarting] = useState(false);
-  const s = engine.summary;
-  const critical = confirmed.filter((f) => f.severity === "critical").length;
-  const toggle = (id: string) =>
-    setPicked((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : cur.length >= MAX_INCIDENTS ? cur : [...cur, id]));
-  const byId = new Map(confirmed.map((f) => [f.vuln_id, f]));
-
+  const vectors = sim.engine?.findings.filter((f) => f.confirmed).length ?? sim.attack_plan?.findings?.length ?? 0;
   return (
-    <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_360px] gap-10 overflow-y-auto px-10 py-8">
-      <div className="min-w-0">
-        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Lo que confirmó el motor</span>
-        <h2 className="mt-2 text-[40px] font-semibold tracking-[-0.035em]">
-          Tu app tiene {confirmed.length} {confirmed.length === 1 ? "puerta abierta" : "puertas abiertas"}.
-        </h2>
-        <p className="mt-1 max-w-2xl text-[16px] leading-relaxed text-ink-muted">
-          Cada una se probó con tráfico real contra tu sandbox. Van en el orden en que un atacante las usaría.
-        </p>
-        <div className="my-6 flex gap-10">
-          <Stat label="Confirmadas" value={`${s?.confirmed ?? confirmed.length}/${s?.total ?? engine.findings.length}`} attack />
-          <Stat label="Críticas" value={String(critical)} />
-          <Stat label="Con archivo y línea" value={`${s?.correlated ?? 0}/${confirmed.length}`} />
-          <Stat label="Requests" value={String(s?.requests ?? "—")} />
-        </div>
-        <ul>
-          {confirmed.map((f, i) => (
-            <FindingRow key={f.vuln_id} f={f} n={i + 1} picked={picked.includes(f.vuln_id)} />
-          ))}
-        </ul>
-      </div>
-      <aside className="self-start rounded-md border border-line bg-bg-100 p-6">
-        <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">Tu simulacro</span>
-        <h3 className="mt-2 text-xl font-semibold tracking-[-0.02em]">
-          {picked.length} {picked.length === 1 ? "incidente" : "incidentes"}
-        </h3>
-        <p className="mt-1 text-sm leading-relaxed text-ink-muted">
-          Elige hasta {MAX_INCIDENTS}, en el orden en que quieres vivirlos. El atacante repite lo que hizo de verdad, paso a paso.
-        </p>
-        <div className="my-4 flex flex-col gap-2">
-          {confirmed.map((f) => {
-            const idx = picked.indexOf(f.vuln_id);
-            const on = idx !== -1;
-            return (
-              <button
-                key={f.vuln_id}
-                type="button"
-                onClick={() => toggle(f.vuln_id)}
-                className={`flex items-start gap-3 rounded-md border px-3 py-2.5 text-left text-sm ${
-                  on ? "border-defense/40 bg-defense-soft" : "border-line hover:bg-bg-200"
-                }`}
-              >
-                <span className={`mt-0.5 grid size-4 shrink-0 place-items-center border-[1.5px] font-mono text-[10px] ${on ? "border-defense bg-defense text-on-defense" : "border-line-strong"}`}>
-                  {on ? idx + 1 : ""}
-                </span>
-                <span className="min-w-0">
-                  {byId.get(f.vuln_id)?.title}
-                  <small className="mt-0.5 block font-mono text-[11px] uppercase tracking-[0.1em] text-ink-faint">
-                    {on ? `Incidente ${idx + 1}` : "Opcional"}
-                  </small>
-                </span>
-              </button>
-            );
-          })}
-        </div>
-        <Button
-          variant="primary"
-          className="w-full justify-center"
-          disabled={!picked.length || starting}
-          onClick={() => {
-            setStarting(true);
-            // Si falla, el error se muestra arriba y el botón vuelve a quedar disponible.
-            void onStart(picked).finally(() => setStarting(false));
-          }}
-        >
-          {starting ? "Partiendo…" : "Empezar simulacro"}
-        </Button>
-        <p className="mt-3 flex gap-2.5 text-[13px] leading-snug text-ink-faint">
-          <span aria-hidden="true" className="mt-1.5 size-2 shrink-0 bg-defense" />
-          No mostramos cómo arreglarlas: eso lo descubres en el simulacro y lo ves en el reporte final.
-        </p>
-      </aside>
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-8 px-6 py-12 text-center">
+      <span className="md-index">TODO LISTO</span>
+      <h2 className="max-w-2xl text-[40px] font-semibold leading-[1.08] tracking-[-0.035em] text-ink">
+        Tu app está arriba y el atacante ya sabe por dónde entrar.
+      </h2>
+      <p className="max-w-xl text-[16px] leading-relaxed text-ink-muted">
+        Apenas partas empiezan a llegar las alertas. Si abres a Hinty, el incidente se pausa mientras hablan.
+      </p>
+      <button
+        type="button"
+        disabled={starting}
+        onClick={() => {
+          setStarting(true);
+          // Si falla, el error se muestra arriba y el botón vuelve a quedar disponible.
+          void onStart().finally(() => setStarting(false));
+        }}
+        className="md-btn md-btn--primary h-20! rounded-lg! px-16! text-[24px]! font-semibold tracking-[-0.01em] shadow-[0_0_0_1px_#2EE6FF66,0_0_48px_#2EE6FF55] transition-shadow hover:shadow-[0_0_0_1px_#2EE6FF99,0_0_72px_#2EE6FF77] disabled:opacity-60"
+      >
+        {starting ? "Partiendo…" : "Comenzar simulación"}
+      </button>
+      <span className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">
+        App desplegada · {vectors} {vectors === 1 ? "vector" : "vectores"} · agentes en posición
+      </span>
     </div>
-  );
-}
-
-function Stat({ label, value, attack }: { label: string; value: string; attack?: boolean }) {
-  return (
-    <div>
-      <div className="font-mono text-[11px] uppercase tracking-[0.12em] text-ink-faint">{label}</div>
-      <div className={`font-mono text-[32px] tabular-nums ${attack ? "text-attack" : "text-ink"}`}>{value}</div>
-    </div>
-  );
-}
-
-function FindingRow({ f, n, picked }: { f: EngineFinding; n: number; picked: boolean }) {
-  const sev = SEVERITY[f.severity] ?? SEVERITY.medium;
-  return (
-    <li
-      className={`grid grid-cols-[36px_92px_minmax(0,1fr)_auto] items-center gap-3.5 border-t border-line py-3 ${
-        picked ? "bg-gradient-to-r from-defense-soft to-transparent" : ""
-      }`}
-    >
-      <span className="pl-1 font-mono text-[13px] text-ink-faint">{String(n).padStart(2, "0")}</span>
-      <span className={`justify-self-start border px-1.5 py-1 font-mono text-[10.5px] uppercase tracking-[0.1em] ${sev.cls}`}>{sev.label}</span>
-      <div className="min-w-0">
-        <div className="text-[15px]">{f.title}</div>
-        {f.real_case && <div className="mt-0.5 truncate text-[12.5px] text-ink-faint">Caso real: {f.real_case}</div>}
-      </div>
-      <span className="font-mono text-xs text-ink-muted">{f.file ? `${f.file}${f.line ? `:${f.line}` : ""}` : "—"}</span>
-    </li>
   );
 }

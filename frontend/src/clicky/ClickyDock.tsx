@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API_URL } from "@/lib/api";
+import { simApi } from "@/lib/sim-api";
 import { useClickySimulation } from "./active-sim";
 import { CLICKY_CONFIG } from "./config";
 import { HintyHeadset } from "./HintyHeadset";
@@ -112,6 +113,7 @@ export function DockView({
  */
 function Dock({ simId, ended }: { simId: string; ended: boolean }) {
   const [status, setStatus] = useState<DockStatus>("off");
+  useHintyPause(simId, !ended && (status === "on" || status === "starting"));
   const [seeing, setSeeing] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [intro, setIntro] = useState(false);
@@ -248,4 +250,31 @@ function useColumnAnchor() {
       ANCHOR_VARS.forEach((v) => root.style.removeProperty(v));
     };
   }, []);
+}
+
+/**
+ * Mientras Hinty está encendido, el incidente se pausa (el atacante y el reloj se detienen) y
+ * se reanuda al apagarlo, al cambiar de página o al cerrar la pestaña. Si la simulación no está
+ * corriendo, el backend lo ignora; y si una pausa quedara colgada, se reanuda sola a los 10 min.
+ */
+function useHintyPause(simId: string, active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    void simApi.control(simId, "pause", undefined, "hinty").catch(() => {});
+    const resume = () => {
+      // keepalive: el pedido sale aunque la pestaña se esté cerrando.
+      void fetch(`${API_URL}/simulations/${simId}/control`, {
+        method: "POST",
+        credentials: "include",
+        keepalive: true,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "resume", reason: "hinty" }),
+      }).catch(() => {});
+    };
+    window.addEventListener("pagehide", resume);
+    return () => {
+      window.removeEventListener("pagehide", resume);
+      resume();
+    };
+  }, [simId, active]);
 }

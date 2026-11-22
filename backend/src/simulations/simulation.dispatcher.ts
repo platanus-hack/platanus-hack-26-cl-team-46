@@ -90,6 +90,7 @@ export class SimulationDispatcher implements OnModuleInit, OnModuleDestroy {
       for (const s of this.sims.active()) {
         try {
           this.sims.syncSandbox(s.sim_id);
+          this.sims.checkReady(s.sim_id);
           if (s.threads.some((t) => t.mode === 'api'))
             this.brain.tick(s.sim_id);
           if (!this.sims.launchingIds.has(s.sim_id)) {

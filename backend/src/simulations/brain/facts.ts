@@ -48,6 +48,12 @@ export interface IncidentFacts {
   last_change_seq: number;
   last_verify_t?: string;
   pending_verifies: string[];
+  /** El atacante consiguió lectura arbitraria de la base (foothold db): ya robó todo lo que había. */
+  db_exfiltrated: boolean;
+  /** Cuándo partió el ataque (control.start). */
+  started_t?: string;
+  /** Última notificación o pulso: cuándo fue lo último que "le llegó" al developer. */
+  last_signal_t?: string;
 }
 
 interface PlanFinding {
@@ -109,12 +115,16 @@ export function computeFacts(
     last_dev_action_seq: 0,
     last_change_seq: 0,
     pending_verifies: [],
+    db_exfiltrated: false,
   };
 
   for (const e of timeline) {
     const id = vulnOf(e);
     if (DEV_ACTIONS.has(e.type)) facts.last_dev_action_seq = e.seq;
     if (VERIFY_TRIGGERS.has(e.type)) facts.last_change_seq = e.seq;
+    if (e.type === 'notify' || e.type === 'incident.pulse')
+      facts.last_signal_t = e.t;
+    if (e.type === 'control.start') facts.started_t ??= e.t;
     switch (e.type) {
       case 'control.start':
       case 'control.next':
@@ -131,6 +141,7 @@ export function computeFacts(
           vuln(id).succeeded = true;
           vuln(id).attacker_active = true;
         }
+        if (stoleDatabase(e.raw)) facts.db_exfiltrated = true;
         break;
       case 'attack.done':
         facts.last_done_seq = e.seq;
@@ -177,6 +188,37 @@ export function computeFacts(
   return facts;
 }
 
+/** Lectura arbitraria de la base (SQLi, dump) o el hacker declara que ya la sacó entera. */
+function stoleDatabase(raw: Record<string, unknown> | undefined): boolean {
+  const foothold = raw?.foothold as { type?: unknown } | undefined;
+  return foothold?.type === 'db' || raw?.db_complete === true;
+}
+
+/**
+ * Milisegundos de tiempo ACTIVO entre `from` y `now`: descuenta las pausas
+ * (control.pause → control.resume). Con Hinty abierto el reloj del incidente se detiene.
+ */
+export function activeElapsedMs(
+  timeline: TimelineEvent[],
+  from: string | undefined,
+  now: number,
+): number {
+  if (!from) return Infinity;
+  const start = Date.parse(from);
+  let paused = 0;
+  let pausedAt: number | null = null;
+  for (const e of timeline) {
+    const t = Date.parse(e.t);
+    if (e.type === 'control.pause' && pausedAt === null) pausedAt = t;
+    else if (e.type === 'control.resume' && pausedAt !== null) {
+      paused += Math.max(0, Math.min(t, now) - Math.max(pausedAt, start));
+      pausedAt = null;
+    }
+  }
+  if (pausedAt !== null) paused += Math.max(0, now - Math.max(pausedAt, start));
+  return Math.max(0, now - start - paused);
+}
+
 function statusOf(v: VulnFacts): VulnStatus {
   if (!v.attacked_seq) return 'pending';
   if (!v.done_seq) return 'exploiting';
@@ -204,23 +246,19 @@ export function attackedVulns(f: IncidentFacts): string[] {
 export type DirectorAction =
   | { type: 'verify'; vuln_id: string; reason: string }
   | { type: 'next'; vuln_id: string; reason: string }
+  | { type: 'pulse'; reason: string }
   | { type: 'finish'; reason: string };
 
 export interface DirectorOptions {
-  maxIncidents: number;
-  /** Con todo contenido, esperar esto antes de escalar (para que se vea la buena noticia). */
-  nextAfterContainedMs: number;
-  /** Si el developer ya actuó después del último ataque, escalar pasado este tiempo. */
-  escalateAfterActionMs: number;
-  /** Si el developer no hace nada, escalar igual pasado este tiempo. */
-  escalateIdleMs: number;
+  /** Tiempo activo entre que termina un ataque y parte el siguiente. */
+  attackGapMs: number;
+  /** Con el atacante adentro y sin nada nuevo, cada cuánto le llega una consecuencia al developer. */
+  pulseMs: number;
 }
 
 export const DEFAULT_DIRECTOR: DirectorOptions = {
-  maxIncidents: 3,
-  nextAfterContainedMs: 20_000,
-  escalateAfterActionMs: 3 * 60_000,
-  escalateIdleMs: 8 * 60_000,
+  attackGapMs: 45_000,
+  pulseMs: 75_000,
 };
 
 /**
@@ -240,9 +278,16 @@ export function nextBlockedReason(
 }
 
 /**
- * El ritmo de la simulación, en código. Reemplaza las reglas que antes iban en
- * prosa en el brief del observer. Es idempotente: mira el timeline y devuelve
- * solo lo que falta hacer (no repite un verify ya pedido ni un next en curso).
+ * El ritmo de la simulación, en código y continuo: el atacante encadena un ataque
+ * tras otro sin esperar al developer (solo las pausas por Hinty detienen el reloj).
+ * Es idempotente: mira el timeline y devuelve solo lo que falta hacer.
+ *
+ * - Re-verifica después de cada cambio desplegado o en la base.
+ * - El atacante se detiene solo si robó la base entera o se le acabaron los ataques.
+ * - Mientras siga adentro sin atacar, cada `pulseMs` el generador recibe un pulso
+ *   para contar las consecuencias.
+ * - La simulación termina sola cuando la amenaza quedó eliminada: el atacante
+ *   afuera, todo lo que atacó contenido o arreglado y nada más que intentar.
  */
 export function direct(
   s: Pick<SimulationRecord, 'status' | 'timeline' | 'attack_plan'>,
@@ -273,49 +318,54 @@ export function direct(
   const attacked = attackedVulns(f);
   const active = activeVulns(f);
   const nextId = f.order.find((id) => f.vulns[id].status === 'pending');
-  const sinceDone = f.last_done_t
-    ? now - new Date(f.last_done_t).getTime()
-    : Infinity;
+  // El atacante no tiene nada más que hacer: robó la base o probó todo lo que encontró.
+  const hackerDone = !nextId || f.db_exfiltrated;
 
-  // 2. Todo lo jugado quedó contenido: cerrar o escalar.
-  if (active.length === 0 && !f.attacker_active && attacked.length > 0) {
-    if (attacked.length >= opts.maxIncidents || !nextId)
-      return [
-        {
-          type: 'finish',
-          reason:
-            'Las vulnerabilidades jugadas quedaron contenidas o arregladas',
-        },
-      ];
-    const sinceVerify = f.last_verify_t
-      ? now - new Date(f.last_verify_t).getTime()
-      : Infinity;
-    if (sinceVerify >= opts.nextAfterContainedMs)
-      return [
-        {
-          type: 'next',
-          vuln_id: nextId,
-          reason: 'Lo anterior quedó contenido: el atacante prueba otra vía',
-        },
-      ];
-    return [];
-  }
-
-  // 3. Escalar si el developer ya tuvo tiempo de reaccionar.
-  if (!nextId || attacked.length >= opts.maxIncidents || active.length >= 2)
-    return [];
-  const acted = f.last_dev_action_seq > f.last_done_seq;
+  // 2. Amenaza eliminada: se cierra sola.
   if (
-    (acted && sinceDone >= opts.escalateAfterActionMs) ||
-    sinceDone >= opts.escalateIdleMs
+    hackerDone &&
+    attacked.length > 0 &&
+    !f.attacker_active &&
+    active.length === 0
   )
+    return [
+      {
+        type: 'finish',
+        reason: f.db_exfiltrated
+          ? 'Sacaste al atacante después de que robó la base'
+          : 'Amenaza eliminada: el atacante quedó afuera y ya no tiene por dónde entrar',
+      },
+    ];
+
+  // 3. El siguiente ataque, uno tras otro.
+  const sinceDone = activeElapsedMs(
+    s.timeline,
+    f.last_done_t ?? f.started_t,
+    now,
+  );
+  if (!hackerDone && sinceDone >= opts.attackGapMs)
     return [
       {
         type: 'next',
         vuln_id: nextId,
-        reason: acted
-          ? 'El developer ya reaccionó: el atacante escala'
-          : 'Sin respuesta del developer: el atacante escala',
+        reason: f.attacker_active
+          ? 'El atacante aprovecha lo que ya tiene y escala'
+          : 'El atacante prueba otra vía',
+      },
+    ];
+
+  // 4. Sigue adentro (y ya no ataca, o espera el próximo): las consecuencias siguen llegando.
+  if (
+    f.attacker_active &&
+    activeElapsedMs(s.timeline, f.last_signal_t ?? f.last_done_t, now) >=
+      opts.pulseMs
+  )
+    return [
+      {
+        type: 'pulse',
+        reason: hackerDone
+          ? 'El atacante sigue adentro con lo que robó'
+          : 'El atacante sigue adentro',
       },
     ];
   return [];

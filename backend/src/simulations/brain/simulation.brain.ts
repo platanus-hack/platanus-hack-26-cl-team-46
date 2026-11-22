@@ -10,7 +10,9 @@ import { SandboxesService } from '../../sandboxes/sandboxes.service.js';
 import { SimulationStore } from '../simulation.store.js';
 import {
   EVENT_TYPES,
+  type EngineReplayEvent,
   type IncidentState,
+  type SimOpening,
   type SimRole,
   type SimulationRecord,
   type TimelineEvent,
@@ -19,8 +21,8 @@ import { SimulationsService } from '../simulations.service.js';
 import { pendingFor, TimelineService } from '../timeline.service.js';
 import {
   computeFacts,
-  DEFAULT_DIRECTOR,
   direct,
+  planOrder,
   type DirectorOptions,
 } from './facts.js';
 import { SimLlm, type StructuredResult, type TaskModel } from './llm.client.js';
@@ -50,7 +52,11 @@ const MAX_ATTEMPTS = 3;
 const OBSERVER_SIGNIFICANT =
   /^(attack\.(success|blocked|done|verify)|change\.|user\.action)/;
 /** Eventos que pueden producir una notificación. */
-const GENERATOR_SIGNIFICANT = /^(attack\.|state\.update)/;
+const GENERATOR_SIGNIFICANT = /^(attack\.|state\.update|incident\.pulse)/;
+/** Separación entre las alertas de apertura al partir (la primera sale casi al tiro). */
+const OPENING_STAGGER_MS = [800, 7_000, 14_000];
+/** Una pausa por Hinty no puede dejar la simulación congelada: se reanuda sola pasado esto. */
+const MAX_HINTY_PAUSE_MS = 10 * 60_000;
 
 /**
  * Los roles que corren dentro del backend con la API de Claude (mode=api):
@@ -111,8 +117,8 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
       debrief: m('SIM_MODEL_DEBRIEF', 'SIM_EFFORT_DEBRIEF', 16_000, 300_000),
     };
     this.director = {
-      ...DEFAULT_DIRECTOR,
-      maxIncidents: config.get('SIM_MAX_INCIDENTS', { infer: true }),
+      attackGapMs: config.get('SIM_ATTACK_GAP_SECONDS', { infer: true }) * 1000,
+      pulseMs: config.get('SIM_PULSE_SECONDS', { infer: true }) * 1000,
     };
   }
 
@@ -138,6 +144,8 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
   tick(simId: string) {
     const s = this.store.get(simId);
     if (!s) return;
+    if (s.status === 'starting') void this.prepareOpening(simId);
+    if (s.status === 'paused') this.resumeStalePause(s);
     if (this.isApi(s, 'observer')) this.scheduleDirect(simId);
     for (const t of s.threads) {
       if (t.mode !== 'api') continue;
@@ -153,6 +161,9 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
   private onEvent(e: TimelineEvent) {
     const s = this.store.get(e.sim_id);
     if (!s) return;
+    if (['attack.plan', 'context.ready', 'deploy.ready'].includes(e.type))
+      void this.prepareOpening(e.sim_id);
+    if (e.type === 'control.start') this.publishOpening(e.sim_id);
     for (const role of EVENT_TYPES[e.type]?.wakes ?? []) {
       if (e.actor !== role && this.isApi(s, role))
         this.schedule(e.sim_id, role);
@@ -408,6 +419,16 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
         void this.finish(simId, a.reason);
         return;
       }
+      if (a.type === 'pulse') {
+        const st = s.state;
+        this.sims.postFromAgent(simId, 'observer', {
+          type: 'incident.pulse',
+          title: a.reason,
+          body: st?.summary ?? '',
+          raw: { attacker_active: true, compromised: st?.compromised ?? [] },
+        });
+        continue;
+      }
       this.sims.postFromAgent(simId, 'observer', {
         type: `control.${a.type}`,
         title: `${a.type} ${a.vuln_id}`,
@@ -416,6 +437,121 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
         raw: { vuln_id: a.vuln_id },
       });
     }
+  }
+
+  // ------------------------------------------------------------ apertura
+
+  private readonly preparing = new Set<string>();
+
+  /**
+   * Antes de partir, el generador escribe las primeras alertas a partir del primer
+   * ataque del plan (los pasos reales del motor, o el hallazgo del plan). Salen apenas
+   * el developer parte: así no espera a que el atacante avance para ver algo.
+   */
+  async prepareOpening(simId: string) {
+    const s = this.store.get(simId);
+    if (!s || s.status !== 'starting' || s.opening || this.preparing.has(simId))
+      return;
+    if (!s.attack_plan || !s.context || !s.tools_detected) return;
+    if (!this.llm || !this.isApi(s, 'generator')) {
+      this.setOpening(simId, { status: 'skipped', notifications: [] });
+      return;
+    }
+    const pending = openingEvents(s);
+    if (!pending.length) {
+      this.setOpening(simId, { status: 'skipped', notifications: [] });
+      return;
+    }
+    this.preparing.add(simId);
+    this.setOpening(simId, { status: 'preparing', notifications: [] });
+    try {
+      const channels = this.sims.channels(s);
+      const res = await runGenerator(
+        this.llm,
+        this.models.generator,
+        { ...s, status: 'running' },
+        channels,
+        this.app(s),
+        pending,
+      );
+      this.record(simId, 'generator', res);
+      this.setOpening(simId, {
+        status: 'ready',
+        notifications: res.data.notifications
+          .filter((n) => channels.includes(n.channel))
+          .map((n) => ({
+            channel: n.channel,
+            title: n.title,
+            body: n.body,
+            severity: n.severity,
+            vuln_id: n.vuln_id ?? null,
+            ...(n.from ? { from: n.from } : {}),
+            ...(n.channel === 'slack' && n.room ? { room: n.room } : {}),
+          })),
+      });
+    } catch (err) {
+      this.logger.warn(
+        `[${simId}] alertas de apertura: ${(err as Error).message}`,
+      );
+      this.setOpening(simId, {
+        status: 'failed',
+        notifications: [],
+        error: (err as Error).message.slice(0, 300),
+      });
+    } finally {
+      this.preparing.delete(simId);
+    }
+  }
+
+  private setOpening(simId: string, opening: SimOpening) {
+    this.store.update(simId, { opening });
+    this.sims.checkReady(simId);
+  }
+
+  /** Al partir: las alertas de apertura, la primera casi al tiro y el resto escalonadas. */
+  private publishOpening(simId: string) {
+    const s = this.store.get(simId);
+    const o = s?.opening;
+    if (!o || o.status !== 'ready' || o.published) return;
+    this.store.update(simId, (r) => {
+      r.opening!.published = true;
+    });
+    o.notifications.forEach((n, i) => {
+      const t = setTimeout(
+        () => {
+          const cur = this.store.get(simId);
+          if (!cur || !['running', 'paused'].includes(cur.status)) return;
+          this.sims.postFromAgent(simId, 'generator', {
+            type: 'notify',
+            title: n.title,
+            body: n.body,
+            severity: n.severity,
+            vuln_id: n.vuln_id,
+            raw: {
+              channel: n.channel,
+              opening: true,
+              ...(n.from ? { from: n.from } : {}),
+              ...(n.room ? { room: n.room } : {}),
+            },
+          });
+        },
+        OPENING_STAGGER_MS[i] ?? 14_000 + i * 7_000,
+      );
+      t.unref?.();
+    });
+  }
+
+  /** Seguro: si una pausa (Hinty abierto) quedó colgada, se reanuda sola. */
+  private resumeStalePause(s: SimulationRecord) {
+    const last = [...s.timeline]
+      .reverse()
+      .find((e) => e.type === 'control.pause');
+    if (!last || Date.now() - Date.parse(last.t) < MAX_HINTY_PAUSE_MS) return;
+    this.sims.postFromAgent(s.sim_id, 'observer', {
+      type: 'control.resume',
+      title: 'La pausa duró demasiado: el incidente continúa',
+      raw: { reason: 'auto' },
+    });
   }
 
   // ------------------------------------------------------------ debrief
@@ -496,4 +632,51 @@ function key(simId: string, role: SimRole) {
 
 function firstLine(s: string): string {
   return (s.split('\n').find((x) => x.trim()) ?? s).slice(0, 100);
+}
+
+/**
+ * Los eventos del primer ataque, como si ya hubieran pasado: los pasos reales que
+ * repetirá el motor o, sin motor, el primer hallazgo del plan.
+ */
+export function openingEvents(s: SimulationRecord): TimelineEvent[] {
+  const now = new Date().toISOString();
+  const ev = (
+    i: number,
+    e: Pick<EngineReplayEvent, 'type' | 'vuln_id' | 'title'> &
+      Partial<Pick<EngineReplayEvent, 'severity' | 'body' | 'raw'>>,
+  ): TimelineEvent => ({
+    seq: 1_000_000_000 + i,
+    t: now,
+    sim_id: s.sim_id,
+    actor: 'hacker',
+    type: e.type,
+    visibility: 'internal',
+    vuln_id: e.vuln_id,
+    source: 'hacker',
+    severity: e.severity ?? 'info',
+    title: e.title,
+    body: e.body ?? '',
+    raw: e.raw ?? {},
+  });
+  const first = planOrder(s.attack_plan)[0];
+  if (!first) return [];
+  const replay = s.engine?.replay?.[first];
+  if (replay?.length)
+    return replay.map((e, i) => ev(i, { ...e, vuln_id: e.vuln_id ?? first }));
+  const finding = (
+    (s.attack_plan?.findings as Array<Record<string, unknown>>) ?? []
+  ).find((f) => f.vuln_id === first);
+  const text = (v: unknown) => (typeof v === 'string' ? v : '');
+  return [
+    ev(0, {
+      type: 'attack.success',
+      vuln_id: first,
+      severity: 'critical',
+      title: text(finding?.title) || `El atacante explota ${first}`,
+      body: [text(finding?.exploit_summary), text(finding?.symptoms)]
+        .filter(Boolean)
+        .join('\n'),
+      raw: {},
+    }),
+  ];
 }

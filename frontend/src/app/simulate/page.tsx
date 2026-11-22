@@ -11,7 +11,7 @@ import { ChannelIcon } from "@/components/workspace/ChannelIcon";
 import { Logo } from "@/components/mayday";
 import { CmdK, RenameInput, repoShortName, SandboxPicker, type SandboxEntry } from "@/components/sandbox/SandboxPicker";
 import { api, type Sandbox } from "@/lib/api";
-import { EngineFirstPass } from "@/components/engine/EngineFirstPass";
+import { SimGate } from "@/components/engine/EngineFirstPass";
 import { simApi, type Simulation, type TimelineEvent } from "@/lib/sim-api";
 import { eventToMessage, seedMessages } from "@/lib/workspace-chat";
 import { eventToMail, seedMails } from "@/lib/workspace-mail";
@@ -218,11 +218,11 @@ function SimulateConsole() {
     }
   };
 
-  // Motor real: antes de partir se ve la primera pasada (en vivo) y el informe, no el escritorio.
+  // Antes de partir no se ve el escritorio: la preparación y, con todos los agentes listos, el botón.
+  // Una simulación que falló antes de partir (sin reporte) se queda en esa pantalla con el error.
   const firstPass =
     Boolean(sim) &&
-    sim!.engine_driven &&
-    (sim!.status === "starting" || sim!.status === "ready" || (sim!.status === "failed" && Boolean(sim!.engine)));
+    (sim!.status === "starting" || sim!.status === "ready" || (sim!.status === "failed" && !sim!.report));
   const project = sim ? sim.repo_url.replace(/\/$/, "").split("/").pop() || "proyecto" : "proyecto";
   const simStart = sim?.created_at;
   const mails = [
@@ -299,7 +299,7 @@ function SimulateConsole() {
       {error && <p className="rounded-md border border-attack bg-attack-soft px-3 py-2 text-attack-strong">{error}</p>}
 
       {sim && firstPass && (
-        <EngineFirstPass sim={sim} onStart={(vulns) => run(() => simApi.start(sim.sim_id, vulns))} />
+        <SimGate sim={sim} onStart={() => run(() => simApi.start(sim.sim_id))} />
       )}
 
       {sim && !firstPass && (
@@ -372,16 +372,10 @@ const STATUS_LABEL: Record<string, string> = {
   stopped: "Detenida",
 };
 
-/** Qué le falta a una simulación en `starting` para quedar lista (mismo criterio que el backend). */
-function pendingSteps(sim: Simulation): string[] {
-  return [
-    sim.sandbox.status !== "ready" && "desplegando la app",
-    !sim.tools_detected && "revisando herramientas",
-    !sim.attack_plan && (sim.engine_driven ? "el motor ataca tu sandbox" : "el atacante analiza el código"),
-  ].filter((x): x is string => Boolean(x));
-}
-
-/** Estado de la simulación y control del flujo: partir, pausar, siguiente vuln y terminar. */
+/**
+ * Estado de la simulación y su único control: terminar. El atacante avanza solo y la
+ * simulación se pausa sola mientras Hinty está abierto.
+ */
 function FlowControls({
   sim,
   run,
@@ -392,22 +386,24 @@ function FlowControls({
   onNewRun: () => void;
 }) {
   const live = sim.status === "running" || sim.status === "paused";
-  const pending = sim.status === "starting" ? pendingSteps(sim) : [];
   return (
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-ink-muted max-md:w-full" title={sim.error ?? undefined}>
         <span className="font-medium text-ink">{STATUS_LABEL[sim.status] ?? sim.status}</span>
-        {pending.length > 0 && <> · {pending.join(" · ")}…</>}
+        {sim.status === "paused" && <> · hablando con Hinty</>}
         {sim.status === "failed" && sim.error && <> · {sim.error.slice(0, 80)}</>}
       </span>
-      {(sim.status === "starting" || sim.status === "ready") && (
-        <Btn disabled={sim.status !== "ready"} onClick={() => run(() => simApi.start(sim.sim_id))}>
-          Partir
+      {live && (
+        <Btn
+          onClick={() => {
+            if (window.confirm("¿Terminar el simulacro? El atacante se detiene y se arma tu reporte.")) {
+              run(() => simApi.control(sim.sim_id, "finish"));
+            }
+          }}
+        >
+          Terminar
         </Btn>
       )}
-      {sim.status === "running" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "pause"))}>Pausa</Btn>}
-      {sim.status === "paused" && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "resume"))}>Reanudar</Btn>}
-      {live && <Btn onClick={() => run(() => simApi.control(sim.sim_id, "finish"))}>Terminar</Btn>}
       {(sim.status === "finished" || sim.status === "failed" || sim.status === "stopped") && (
         <Btn onClick={onNewRun}>Nuevo simulacro</Btn>
       )}

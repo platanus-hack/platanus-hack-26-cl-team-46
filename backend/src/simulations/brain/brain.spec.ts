@@ -8,12 +8,12 @@ import { TimelineService } from '../timeline.service.js';
 import {
   computeFacts,
   direct,
-  DEFAULT_DIRECTOR,
+  activeElapsedMs,
   nextBlockedReason,
 } from './facts.js';
 import type { SimLlm } from './llm.client.js';
 import { generatorSchema, type ObserverOutput } from './schemas.js';
-import { SimulationBrain } from './simulation.brain.js';
+import { openingEvents, SimulationBrain } from './simulation.brain.js';
 import { toIncidentState } from './tasks.js';
 
 const T0 = Date.parse('2026-11-21T20:00:00.000Z');
@@ -141,28 +141,73 @@ describe('director', () => {
     );
   });
 
-  it('no escala en el mismo momento del ataque ni mientras hay un ataque en curso', () => {
-    expect(direct(sim(attacked), now(0.6))).toEqual([]);
-    const inProgress = [...attacked, ev(6, 'user', 'control.next')];
+  it('encadena el siguiente ataque a los 45 s de tiempo activo, sin esperar al developer', () => {
+    // El ataque terminó en el minuto 0,5: el siguiente parte en 1,25.
+    expect(direct(sim(attacked), now(1.2))).toEqual([]);
+    expect(direct(sim(attacked), now(1.3))).toEqual([
+      expect.objectContaining({ type: 'next', vuln_id: 'idor' }),
+    ]);
+  });
+
+  it('no escala mientras hay un ataque en curso', () => {
+    const inProgress = [...attacked, ev(6, 'observer', 'control.next')];
     expect(direct(sim(inProgress), now(30))).toEqual([]);
   });
 
-  it('escala cuando el developer ya reaccionó y pasó el tiempo', () => {
-    const t = [...attacked, ev(6, 'user', 'user.message', { min: 1 })];
-    expect(direct(sim(t), now(2))).toEqual([]);
-    expect(direct(sim(t), now(0.5 + 3.1))).toEqual([
+  it('las pausas (Hinty abierto) detienen el reloj del atacante', () => {
+    const t = [
+      ...attacked,
+      ev(6, 'user', 'control.pause', { min: 0.6 }),
+      ev(7, 'user', 'control.resume', { min: 5 }),
+    ];
+    // Activo: 0,1 min antes de la pausa + lo que va desde que se reanudó.
+    expect(direct(sim(t), now(5.5))).toEqual([]);
+    expect(direct(sim(t), now(5.7))).toEqual([
       expect.objectContaining({ type: 'next', vuln_id: 'idor' }),
+    ]);
+    expect(direct(sim(t.slice(0, -1), 'paused'), now(30))).toEqual([]);
+    expect(activeElapsedMs(t.slice(0, -1), attacked[4].t, now(30))).toBe(6_000);
+  });
+
+  const ONE = { findings: [{ vuln_id: W, order: 1 }] };
+  const only = (timeline: TimelineEvent[]) => ({
+    status: 'running' as const,
+    timeline,
+    attack_plan: ONE,
+  });
+
+  it('sin más ataques y con el atacante adentro: no cierra, manda pulsos', () => {
+    expect(direct(only(attacked), now(1.5))).toEqual([]);
+    expect(direct(only(attacked), now(1.8))).toEqual([
+      expect.objectContaining({ type: 'pulse' }),
+    ]);
+    const pulsed = [
+      ...attacked,
+      ev(6, 'observer', 'incident.pulse', { min: 1.8 }),
+    ];
+    expect(direct(only(pulsed), now(2.5))).toEqual([]);
+    expect(direct(only(pulsed), now(3.1))).toEqual([
+      expect.objectContaining({ type: 'pulse' }),
     ]);
   });
 
-  it('si el developer no hace nada, escala igual después de un rato largo', () => {
-    expect(direct(sim(attacked), now(5))).toEqual([]);
-    expect(direct(sim(attacked), now(9))).toEqual([
-      expect.objectContaining({ type: 'next', vuln_id: 'idor' }),
+  it('si robó la base deja de atacar (aunque queden vulns), pero siguen las consecuencias', () => {
+    const t = [
+      ...attacked.slice(0, 3),
+      ev(4, 'hacker', 'attack.success', {
+        vuln_id: W,
+        raw: { foothold: { type: 'db' } },
+      }),
+      attacked[4],
+    ];
+    expect(computeFacts(t, PLAN).db_exfiltrated).toBe(true);
+    expect(direct(sim(t), now(1.3))).toEqual([]);
+    expect(direct(sim(t), now(1.8))).toEqual([
+      expect.objectContaining({ type: 'pulse' }),
     ]);
   });
 
-  it('con todo contenido pasa a la siguiente, y cierra al llegar al máximo', () => {
+  it('se cierra sola cuando la amenaza quedó eliminada; si quedan ataques, sigue', () => {
     const contained = [
       ...attacked,
       ev(6, 'system', 'change.deployed', { min: 2 }),
@@ -173,16 +218,12 @@ describe('director', () => {
         raw: { still_exploitable: false, attacker_active: false },
       }),
     ];
-    expect(direct(sim(contained), now(3.1))).toEqual([]); // deja ver la buena noticia
-    expect(direct(sim(contained), now(3.5))).toEqual([
+    expect(direct(only(contained), now(3.1))).toEqual([
+      expect.objectContaining({ type: 'finish' }),
+    ]);
+    expect(direct(sim(contained), now(3.1))).toEqual([
       expect.objectContaining({ type: 'next', vuln_id: 'idor' }),
     ]);
-    expect(
-      direct(sim(contained), now(3.5), {
-        ...DEFAULT_DIRECTOR,
-        maxIncidents: 1,
-      }),
-    ).toEqual([expect.objectContaining({ type: 'finish' })]);
   });
 });
 
@@ -603,5 +644,74 @@ describe('coherencia del incidente (sim-a53b6f4f)', () => {
     );
     expect(p).toContain('no sabes de qué te hablan');
     expect(p).toContain('como si fuera producción');
+  });
+});
+
+describe('alertas de apertura', () => {
+  const base = {
+    sim_id: 'sim-1',
+    timeline: [],
+    status: 'starting',
+  } as unknown as SimulationRecord;
+
+  it('con motor: los pasos reales del primer ataque del plan', () => {
+    const s = {
+      ...base,
+      attack_plan: PLAN,
+      engine: {
+        replay: {
+          [W]: [
+            {
+              type: 'attack.step',
+              vuln_id: W,
+              severity: 'info',
+              title: 'Prueba claves',
+              body: '',
+              raw: {},
+            },
+            {
+              type: 'attack.success',
+              vuln_id: W,
+              severity: 'critical',
+              title: 'Entró como martin',
+              body: '',
+              raw: {},
+            },
+          ],
+        },
+      },
+    } as unknown as SimulationRecord;
+    const evs = openingEvents(s);
+    expect(evs.map((e) => e.type)).toEqual(['attack.step', 'attack.success']);
+    expect(evs.every((e) => e.vuln_id === W && e.actor === 'hacker')).toBe(
+      true,
+    );
+  });
+
+  it('sin motor: el primer hallazgo del plan como un éxito', () => {
+    const s = {
+      ...base,
+      attack_plan: {
+        findings: [
+          {
+            vuln_id: 'idor',
+            order: 1,
+            title: 'IDOR en notas',
+            symptoms: 'notas ajenas',
+          },
+        ],
+      },
+    } as unknown as SimulationRecord;
+    const [e] = openingEvents(s);
+    expect(e).toMatchObject({
+      type: 'attack.success',
+      vuln_id: 'idor',
+      title: 'IDOR en notas',
+    });
+    expect(e.body).toContain('notas ajenas');
+  });
+
+  it('sin plan no hay apertura', () => {
+    expect(openingEvents(base)).toEqual([]);
   });
 });
