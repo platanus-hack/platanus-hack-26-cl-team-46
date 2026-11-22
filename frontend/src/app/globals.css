@@ -107,7 +107,6 @@ body {
 /* text-box recorta el interlineado a la altura de las mayúsculas: así "ON" queda centrado ópticamente con el pixel. */
 .md-power span { font: 300 11px/1 var(--font-geist-mono), ui-monospace, monospace; letter-spacing: .18em; text-transform: uppercase; color: var(--ink-muted); text-box: trim-both cap alphabetic; }
 @keyframes md-power { 50% { background: var(--line-strong); } }
-/* En pausa: la luz queda roja y fija, como un equipo en standby, y el estado va a la derecha de la etiqueta. */
+/* En pausa: la luz queda roja y fija y la etiqueta dice OFF, como un equipo en standby. */
 .md-power.is-paused i { background: var(--sim-close); animation: none; }
-.md-power em { font: 300 11px/1 var(--font-geist-mono), ui-monospace, monospace; font-style: normal; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-faint); text-box: trim-both cap alphabetic; }
 @media (prefers-reduced-motion: reduce) { .md-power i { animation: none; } }

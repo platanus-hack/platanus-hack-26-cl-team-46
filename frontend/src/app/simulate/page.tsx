@@ -555,8 +555,7 @@ function FeedLog({ status, follow, children }: { status: Simulation["status"]; f
           {loading || status === "paused" ? (
             <span className={`md-power${status === "paused" ? " is-paused" : ""}`} aria-label={STATUS_LABEL[status]}>
               <i />
-              <span>On</span>
-              {status === "paused" && <em>({STATUS_LABEL.paused})</em>}
+              <span>{status === "paused" ? "Off" : "On"}</span>
             </span>
           ) : (
             <span className="uppercase tracking-[0.12em] text-ink-muted">
