@@ -391,17 +391,20 @@ function SimulateConsole() {
       )}
 
       {(pickerInline || pickerOverlay) && (
-        <SandboxPicker
-          inline={pickerInline}
-          entries={entries}
-          loading={!loaded}
-          currentId={entry?.sandbox.sandbox_id ?? null}
-          dismissable={Boolean(entry)}
-          onClose={() => setPickerOpen(false)}
-          onSelect={openSandbox}
-          onCreate={() => router.push("/start")}
-          onRename={rename}
-        />
+        <div data-clicky-exit className="contents">
+          {/* data-clicky-exit: elegir o crear otro sandbox saca de esta simulación; Hinty no lo aprieta. */}
+          <SandboxPicker
+            inline={pickerInline}
+            entries={entries}
+            loading={!loaded}
+            currentId={entry?.sandbox.sandbox_id ?? null}
+            dismissable={Boolean(entry)}
+            onClose={() => setPickerOpen(false)}
+            onSelect={openSandbox}
+            onCreate={() => router.push("/start")}
+            onRename={rename}
+          />
+        </div>
       )}
       <PixelTransition
         runKey={startFx.key}
@@ -471,7 +474,9 @@ function FlowControls({
       {/* Una app no desplegable no mejora con otro simulacro: la pantalla ofrece probar con otro repo. */}
       {(sim.status === "finished" || sim.status === "failed" || sim.status === "stopped") &&
         sim.sandbox.failure_kind !== "unsupported" && (
-        <Btn onClick={onNewRun}>Nuevo simulacro</Btn>
+        <Btn onClick={onNewRun} exit>
+          Nuevo simulacro
+        </Btn>
       )}
       {/* Toda simulación que cierra (terminada, o cortada después de partir) deja un reporte. */}
       {(sim.status === "finished" || sim.report) && (
@@ -525,10 +530,12 @@ function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<
   );
 }
 
-function Btn({ onClick, children, disabled }: { onClick: () => void; children: React.ReactNode; disabled?: boolean }) {
+/** `exit`: sale de esta simulación (Hinty lo puede señalar, pero no lo aprieta). */
+function Btn({ onClick, children, disabled, exit }: { onClick: () => void; children: React.ReactNode; disabled?: boolean; exit?: boolean }) {
   return (
     <button
       type="button"
+      data-clicky-exit={exit || undefined}
       className="rounded-md border border-line-strong px-2 py-1 hover:bg-bg-200 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
       disabled={disabled}
       onClick={onClick}

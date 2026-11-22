@@ -42,6 +42,8 @@ export const lessonSchema = z.object({
         box: z.array(z.number().finite()).length(4).optional(),
         attack: z.boolean().optional(),
         disabled: z.boolean().optional(),
+        /** Apretarlo saca de la simulación (otra página, otra pestaña): Hinty no lo aprieta. */
+        exit: z.boolean().optional(),
       }),
     )
     .max(200)

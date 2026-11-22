@@ -9,6 +9,23 @@ const KINDS = { H1: 'título', H2: 'título', H3: 'subtítulo', H4: 'subtítulo'
 export const ATTACK = '.md-evidence, [data-attack], .md-log--attack, .bg-attack-soft, .text-attack, .text-attack-strong, .is-compromised';
 const MAX = 180;
 
+// Lo que saca de la simulación: un enlace a otra página de la app (o a otra pestaña, a otro sitio,
+// a un correo o a una descarga), o lo que la página marcó con data-clicky-exit (botones que navegan
+// por código, como "Crear otro sandbox"). Hinty lo puede señalar, pero nunca lo aprieta.
+// Un enlace a otra parte de esta misma página (#…) no saca a nadie.
+export function leavesSimulation(el) {
+  if (!el?.closest) return false;
+  if (el.closest('[data-clicky-exit]')) return true;
+  const a = el.closest('a[href], area[href]');
+  if (!a) return false;
+  if ((a.target && a.target !== '_self') || a.hasAttribute('download')) return true;
+  try {
+    const u = new URL(a.getAttribute('href'), location.href);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return true;
+    return u.origin !== location.origin || u.pathname !== location.pathname || u.search !== location.search;
+  } catch { return true; }
+}
+
 // Lo que se ve de verdad: la caja recortada por cada panel con scroll u overflow oculto que la
 // contiene (un mensaje que quedó arriba en un chat con scroll no se ve, aunque esté en la ventana).
 // `cache` guarda el recorte de cada contenedor durante una cosecha.
@@ -57,7 +74,7 @@ function label(el) {
   return clean(el.getAttribute('aria-label') || el.innerText || el.alt || el.title || '');
 }
 
-// { list: [{ id, kind, text, box: [x,y,w,h], attack?, disabled? }], map: Map(id → element) }
+// { list: [{ id, kind, text, box: [x,y,w,h], attack?, disabled?, exit? }], map: Map(id → element) }
 export function harvestScreen({ skip = () => false } = {}) {
   clips = new Map();
   const picked = new Set(), out = [];
@@ -120,6 +137,7 @@ export function harvestScreen({ skip = () => false } = {}) {
     const item = { id, kind: o.kind, text, box: [v.x, v.y, v.w, v.h].map(Math.round) };
     if (o.el.closest(ATTACK)) item.attack = true;
     if (o.el.disabled || o.el.getAttribute('aria-disabled') === 'true') item.disabled = true;
+    if (leavesSimulation(o.el)) item.exit = true;
     list.push(item);
   }
   return { list, map };
