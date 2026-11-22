@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ButtonLink, StatusChip, TypedLog } from "@/components/mayday";
+import { Button, ButtonLink, GitHubIcon, StatusChip, TypedLog } from "@/components/mayday";
 import { Avatar } from "@/components/onboarding/Avatar";
 import { OnboardingShell, StepHeading } from "@/components/onboarding/OnboardingShell";
 import { api } from "@/lib/api";
@@ -117,6 +117,10 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
     }
   }
 
+  // Sin repos compartidos no hay nada que buscar: en vez del buscador va el botón para conectar la app.
+  const hasShared = state.status === "ready" && state.repos.length > 0;
+  const canConnect = Boolean(user && installUrl) && state.status === "ready" && !hasShared;
+
   // Orden de la lista, para moverse con flechas (radiogroup con roving tabindex).
   const choices: Choice[] = [...(query ? [] : [DEMO_CHOICE]), ...filtered.filter((r) => r.size > 0)];
   const tabbable = selected && choices.some((c) => c.full_name === selected.full_name) ? selected.full_name : choices[0]?.full_name;
@@ -140,7 +144,7 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
           Funciona mejor con una app web con backend: una API, un login, una base de datos.
         </StepHeading>
 
-        {user && (
+        {user && hasShared && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-muted">
             <Avatar src={user.avatar_url} login={user.login} size={24} />
             <span className="min-w-0 flex-1 sm:flex-none">
@@ -171,6 +175,17 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
         )}
 
         <div className="flex flex-col gap-3">
+          {canConnect && installUrl && (
+            // GitHub vuelve a esta página al terminar (Setup URL de la app).
+            <a
+              href={installUrl}
+              className={`md-btn md-btn--lg ${selected ? "" : "md-btn--primary"} h-14! justify-center text-[16px]!`}
+            >
+              <GitHubIcon />
+              Conecta tus repos de GitHub
+            </a>
+          )}
+          {hasShared && (
           <input
             type="search"
             value={query}
@@ -180,6 +195,7 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
             // 16 px en mobile: con menos, iOS hace zoom al enfocar.
             className="h-12 rounded-md border border-line-strong bg-bg-100 px-4 text-[16px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] sm:h-10 sm:text-[15px]"
           />
+          )}
 
           <div
             role="radiogroup"
@@ -233,21 +249,10 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
                 />
               ))}
 
-            {state.status === "ready" && filtered.length === 0 && (
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-5 first:border-t-0">
-                <p className="text-[13px] leading-5 text-ink-muted">
-                  {query
-                    ? `Ningún repo calza con “${query}”.`
-                    : user
-                      ? "Todavía no compartes repos con Mayday. Elige cuáles en GitHub, o prueba con Apuntes."
-                      : "Login apagado: prueba con Apuntes o pega la URL de un repo público."}
-                </p>
-                {!query && user && installUrl && (
-                  <a href={installUrl} className="md-btn">
-                    Elige repos en GitHub ↗
-                  </a>
-                )}
-              </div>
+            {state.status === "ready" && query && filtered.length === 0 && (
+              <p className="border-t border-line px-4 py-5 text-[13px] leading-5 text-ink-muted first:border-t-0">
+                Ningún repo calza con “{query}”.
+              </p>
             )}
           </div>
 
@@ -488,14 +493,19 @@ function SelectionPanel({
 function PublicRepoInput({ disabled, onPick }: { disabled: boolean; onPick: (c: Choice) => void }) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // El prefijo https://github.com/ va fijo: se escribe solo dueño/repo. Si pegan la URL entera, se recorta.
+  const setRepo = (v: string) => {
+    setValue(v.trim().replace(/^(?:https?:\/\/)?(?:www\.)?github\.com\//i, ""));
+    setError(null);
+  };
   return (
     <form
       className="flex flex-col gap-2"
       onSubmit={(e) => {
         e.preventDefault();
-        const m = value.trim().match(/^(?:https?:\/\/)?(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/i);
+        const m = value.trim().match(/^([\w.-]+)\/([\w.-]+?)(?:\.git)?\/?$/);
         if (!m) {
-          setError("Pega una URL como https://github.com/dueño/repo");
+          setError("Escribe el repo como dueño/repo");
           return;
         }
         setError(null);
@@ -508,24 +518,28 @@ function PublicRepoInput({ disabled, onPick }: { disabled: boolean; onPick: (c: 
       }}
     >
       <label htmlFor="public-repo" className="text-[13px] text-ink-muted">
-        ¿Otro repo público? Pega su URL
+        ¿Otro repo público?
       </label>
       {/* Mobile: input y botón apilados, a todo el ancho. */}
       <div className="flex flex-col gap-2 sm:flex-row">
-        <input
-          id="public-repo"
-          value={value}
-          disabled={disabled}
-          onChange={(e) => {
-            setValue(e.target.value);
-            setError(null);
-          }}
-          placeholder="github.com/dueño/repo"
-          autoComplete="off"
-          spellCheck={false}
-          // 16 px en mobile: con menos, iOS hace zoom al enfocar. flex-none: en columna, flex-1 le pisa el alto.
-          className="h-12 min-w-0 flex-none rounded-md border border-line-strong bg-bg-100 px-4 font-mono text-[16px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] sm:h-10 sm:flex-1 sm:px-3 sm:text-[13px]"
-        />
+        <div className="flex h-12 min-w-0 flex-none items-center rounded-md border border-line-strong bg-bg-100 font-mono text-[16px] transition-[border-color,box-shadow] duration-150 focus-within:border-defense focus-within:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] sm:h-10 sm:flex-1 sm:text-[13px]">
+          <span className="shrink-0 pl-4 text-ink-muted select-none sm:pl-3" aria-hidden="true">
+            https://github.com/
+          </span>
+          <input
+            id="public-repo"
+            value={value}
+            disabled={disabled}
+            onChange={(e) => setRepo(e.target.value)}
+            placeholder="dueño/repo"
+            aria-label="Repo público: https://github.com/ seguido de dueño/repo"
+            autoComplete="off"
+            spellCheck={false}
+            autoCapitalize="none"
+            // 16 px en mobile: con menos, iOS hace zoom al enfocar.
+            className="h-full min-w-0 flex-1 bg-transparent pr-4 text-ink outline-none! placeholder:text-ink-faint sm:pr-3"
+          />
+        </div>
         <Button type="submit" disabled={disabled || !value.trim()} className="justify-center max-sm:h-12! max-sm:text-[15px]!">
           Usar este
         </Button>
