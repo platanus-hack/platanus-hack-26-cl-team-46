@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { SandboxesModule } from '../sandboxes/sandboxes.module.js';
 import { SimulationBrain } from './brain/simulation.brain.js';
+import { EngineClient } from './engine/engine.client.js';
+import { EngineHacker } from './engine/engine.hacker.js';
 import { ReportAgent } from './report/report.agent.js';
 import { ReportsController } from './report/reports.controller.js';
 import { SimAgentController } from './sim-agent.controller.js';
@@ -26,6 +28,8 @@ import { TimelineService } from './timeline.service.js';
     SimulationDispatcher,
     SimulationBrain,
     ReportAgent,
+    EngineClient,
+    EngineHacker,
     SimTokenGuard,
   ],
   exports: [SimulationsService],

@@ -8,8 +8,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "diagnose": "node src/run.ts",
-    "help": "node src/run.ts --help",
-    "test": "node --test test/*.test.ts"
+    "diagnose": "node src/cli/run.ts",
+    "help": "node src/cli/run.ts --help",
+    "test": "node --test test/*.test.ts",
+    "modal:selftest": "cd .. && ENGINE_MODAL_SECRETS= modal run engine/modal_app.py::selftest",
+    "modal:serve": "cd .. && modal serve engine/modal_app.py",
+    "modal:deploy": "cd .. && modal deploy engine/modal_app.py"
   }
 }

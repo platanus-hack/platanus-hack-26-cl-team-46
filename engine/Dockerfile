@@ -1,6 +1,8 @@
-# Imagen ÚNICA del motor (la usan Modal —primario— y Render —fallback—).
+# Imagen del motor para Render (fallback). Modal (primario) NO usa este archivo:
+# arma su propia imagen en modal_app.py, porque Modal ignora el CMD de un
+# Dockerfile (ver docs/MODAL.md).
 # Hornea las herramientas APROBADAS como binarios: no hay Docker-in-Docker en
-# Modal/Render, así que el adapter las corre directo (ver providers/semgrep.ts).
+# Render, así que el adapter las corre directo (ver providers/semgrep.ts).
 FROM node:22-slim
 
 # semgrep (SAST, APROBADO en provenance). nuclei/ARTEX NO se hornean: aún no

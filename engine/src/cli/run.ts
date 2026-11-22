@@ -6,16 +6,17 @@
  * HTTP aplica scope guard: solo se ataca el host de `--url`.
  *
  * Uso:
- *   node engine/src/run.ts --url https://sbx-xxxx.onrender.com [opciones]
+ *   node engine/src/cli/run.ts --url https://sbx-xxxx.onrender.com [opciones]
  */
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { diagnose } from '../core/diagnose.ts';
 import { buildDiagnoses, type CodeRef } from '../core/diagnosis.ts';
-import { buildAttackPlan } from '../core/events.ts';
+import { buildAttackPlan, toTimelineEvents } from '../core/events.ts';
 import { CostLedger } from '../core/ledger.ts';
 import { correlate, discoverRepo } from '../discovery/index.ts';
 import { buildCascadeFromEnv } from '../providers/cascade.ts';
+import { runSemgrep } from '../providers/semgrep.ts';
 import { recon } from '../core/recon.ts';
 import { renderGuide } from '../core/report.ts';
 import { buildScenarioPack } from '../core/scenario.ts';
@@ -33,7 +34,7 @@ const PLUGINS: Record<string, typeof apuntesPlugin> = {
 const HELP = `Motor de hacking — diagnóstico real contra una app controlada y autorizada.
 
 Uso:
-  node src/run.ts --url <https://host> [opciones]
+  node src/cli/run.ts --url <https://host> [opciones]
 
 Obligatorio:
   --url <url>            Target autorizado. SOLO se ataca este host (scope guard).
@@ -51,12 +52,13 @@ Opciones:
   --repo <path>         Ruta al repo del target: discovery estática + correlación archivo/línea
   --commit <sha>        Commit del target, para versionar el escenario y los FileRef
   --no-recon            Saltar la fase de reconocimiento
+  --semgrep             Correr semgrep (SAST) sobre --repo; requiere el binario o Docker
   --providers           Correr el provider LLM (requiere ANTHROPIC_API_KEY y --repo); cuesta $
   --out <dir>           Carpeta de salida                        (default: engine/out)
   --help, -h            Mostrar esta ayuda (sin efectos secundarios)
 
 Ejemplo (app víctima Apuntes):
-  node src/run.ts --url https://sbx-xxxx.onrender.com \\
+  node src/cli/run.ts --url https://sbx-xxxx.onrender.com \\
     --weak-email martin.soto@example.com --weak-pass qwerty123 --seed demo-1
 `;
 
@@ -136,6 +138,21 @@ async function main() {
     if (cicd.length) console.log(`▶ cicd: ${cicd.length} hallazgo(s) en workflows (${[...new Set(cicd.map((c) => c.kind))].join(', ')})`);
   }
 
+  // SAST con semgrep (fuente externa aprobada). Binario horneado en Modal/Render.
+  let semgrep;
+  if (flag('semgrep')) {
+    if (!repoPath) {
+      console.log('⚠ --semgrep requiere --repo: se omite.');
+    } else {
+      try {
+        semgrep = await runSemgrep(path.resolve(repoPath));
+        console.log(`▶ semgrep: ${semgrep.length} hallazgo(s)`);
+      } catch (e) {
+        console.log(`⚠ semgrep falló: ${e instanceof Error ? e.message : e}`);
+      }
+    }
+  }
+
   const scenarios = buildScenarioPack(diag, plugin);
   const plan = buildAttackPlan(diag, plugin, reconReport);
   const guide = renderGuide(diag, plugin, scenarios, reconReport);
@@ -208,7 +225,11 @@ async function main() {
   await writeFile(path.join(outDir, 'diagnoses.json'), JSON.stringify(diagnoses, null, 2));
   if (repoModel) await writeFile(path.join(outDir, 'repo-model.json'), JSON.stringify(repoModel, null, 2));
   if (cicd && cicd.length) await writeFile(path.join(outDir, 'cicd.json'), JSON.stringify(cicd, null, 2));
+  if (semgrep) await writeFile(path.join(outDir, 'semgrep.json'), JSON.stringify(semgrep, null, 2));
   if (llmAngles) await writeFile(path.join(outDir, 'llm-angles.json'), JSON.stringify(llmAngles, null, 2));
+  // Pasos reales por vuln, en el contrato attack.* del backend: el simulador los repite con reloj humano.
+  const replay = Object.fromEntries(diag.results.map((r) => [r.vuln_id, toTimelineEvents(r, plugin)]));
+  await writeFile(path.join(outDir, 'replay.json'), JSON.stringify(replay, null, 2));
   await writeFile(path.join(outDir, 'GUIA-DEL-HACKEO.md'), guide);
   for (const sc of scenarios) {
     await writeFile(path.join(outDir, 'scenarios', `${sc.vuln_id}.json`), JSON.stringify(sc, null, 2));

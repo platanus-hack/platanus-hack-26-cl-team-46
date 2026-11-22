@@ -1,7 +1,8 @@
 /**
  * Servidor HTTP mínimo del motor, para correr en SU PROPIO contenedor (separado
- * de la app diagnosticada). Render primario / Modal fallback (ver Dockerfile,
- * render.yaml, modal_app.py). Recibe un EngagementSpec y corre el estudio.
+ * de la app diagnosticada). Lo usa Render (fallback, ver Dockerfile y render.yaml).
+ * En Modal (primario) el motor corre vía modal_app.py, no con este servidor.
+ * Recibe un EngagementSpec y corre el estudio.
  *
  * POST /run  { url, repo?, plugin?, profile?, seed?, destructive?, weak_login? }
  * GET  /health

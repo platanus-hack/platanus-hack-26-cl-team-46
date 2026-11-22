@@ -387,6 +387,8 @@ export interface SimulationRecord {
    */
   tools_detected?: string[];
   hacker_mode: 'emulated' | 'external';
+  /** El rol hacker lo opera el motor real en Modal (EngineHacker), no un cliente externo. */
+  engine_driven?: boolean;
 
   workspace_id?: string;
   workspace_link?: string;
@@ -398,6 +400,8 @@ export interface SimulationRecord {
   debrief?: Record<string, unknown>;
   /** Reporte final que arma el agente de reportes al cerrar (report/report.agent.ts). */
   report?: ReportRecord;
+  /** Motor de hacking real (hacker_mode external): primera pasada, repetición y verificaciones. */
+  engine?: EngineRecord;
 
   /** Cuándo quedó arriba la app por primera vez. */
   deploy_ready_at?: string;
@@ -406,4 +410,67 @@ export interface SimulationRecord {
   sandbox_commit?: string;
   next_seq: number;
   timeline: TimelineEvent[];
+}
+
+/** Un hallazgo confirmado (o no) por la primera pasada del motor real. */
+export interface EngineFinding {
+  vuln_id: string;
+  title: string;
+  severity: string;
+  order: number;
+  confirmed: boolean;
+  file?: string;
+  line?: number;
+  real_case?: string;
+}
+
+/** Un evento attack.* tal como lo produjo el motor (engine/src/core/events.ts). */
+export interface EngineReplayEvent {
+  type: string;
+  vuln_id: string;
+  severity: Severity;
+  title: string;
+  body: string;
+  raw: Record<string, unknown>;
+}
+
+export interface EngineVerify {
+  vuln_id: string;
+  call_id?: string;
+  requested_at: string;
+  /** seq del control.verify que la pidió. */
+  seq: number;
+  status: 'running' | 'done' | 'failed';
+  error?: string;
+}
+
+/**
+ * Estado del motor real en una simulación. La primera pasada ataca de verdad el
+ * sandbox (en Modal) y deja el informe; el simulacro repite esos pasos con
+ * reloj humano y cada control.verify vuelve a atacar de verdad esa vuln.
+ */
+export interface EngineRecord {
+  status: 'running' | 'done' | 'failed';
+  call_id?: string;
+  started_at: string;
+  finished_at?: string;
+  error?: string;
+  /** Salida del motor en vivo (últimas líneas). */
+  log: string[];
+  summary?: {
+    confirmed: number;
+    total: number;
+    requests: number;
+    duration_ms: number;
+    correlated: number;
+  };
+  findings?: EngineFinding[];
+  /** Pasos reales por vuln, para la repetición. */
+  replay?: Record<string, EngineReplayEvent[]>;
+  /** Incidentes que eligió el developer, en orden. */
+  selected?: string[];
+  /** Vulns cuya repetición ya partió. */
+  played: string[];
+  current?: string | null;
+  verifies: EngineVerify[];
 }

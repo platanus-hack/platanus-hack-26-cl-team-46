@@ -14,8 +14,8 @@ preconfigurados para el simulador.
 ```bash
 # Requiere Node >= 22 (type-stripping nativo; sin build ni dependencias).
 cd engine
-node src/run.ts --url https://host-autorizado [opciones]
-node src/run.ts --help            # ayuda, sin efectos secundarios
+node src/cli/run.ts --url https://host-autorizado [opciones]
+node src/cli/run.ts --help            # ayuda, sin efectos secundarios
 npm test                          # suite contra un fixture víctima local
 ```
 
@@ -30,6 +30,8 @@ npm test                          # suite contra un fixture víctima local
 | `--only` | (todas) | CSV de `vuln_id`. |
 | `--weak-email` / `--weak-pass` | — | Credencial conocida (fuerza bruta / sesión de baja privilegia). |
 | `--repo <path>` | — | Repo del target: discovery estática (rutas/señales/OpenAPI) + correlación archivo/línea. |
+| `--semgrep` | off | Corre semgrep (SAST) sobre `--repo`; usa el binario o, si no está, Docker. |
+| `--providers` | off | Análisis LLM (cascada Anthropic → DeepSeek → GLM) sobre `--repo`; cuesta $. |
 | `--budget <usd>` | 5 | Tope de costo LLM por corrida. |
 | `--commit` | — | Commit del target, para versionar el escenario y los FileRef. |
 | `--no-recon` | off | Saltar la fase de reconocimiento. |
@@ -38,8 +40,20 @@ npm test                          # suite contra un fixture víctima local
 Ejemplo (plugin Apuntes):
 
 ```bash
-node src/run.ts --url https://sbx-xxxx.onrender.com \
+node src/cli/run.ts --url https://sbx-xxxx.onrender.com \
   --weak-email martin.soto@example.com --weak-pass qwerty123 --seed demo-1
+```
+
+## Correr en Modal (producción)
+
+El motor corre en [Modal](https://modal.com): cada corrida es un contenedor
+desechable y el backend lo maneja con una API privada (`POST /runs` → `call_id`,
+`GET /runs/{call_id}` hasta que termine). Instalación, secrets, despliegue,
+contrato de la API y problemas conocidos: **[docs/MODAL.md](docs/MODAL.md)**.
+
+```bash
+ENGINE_MODAL_SECRETS= modal run engine/modal_app.py::selftest   # tests + corrida de prueba en Modal
+modal deploy engine/modal_app.py                                  # API permanente
 ```
 
 ## Garantías de seguridad
