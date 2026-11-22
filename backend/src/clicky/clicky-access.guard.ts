@@ -11,6 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import type { Request } from 'express';
 import { AuthService } from '../auth/auth.service.js';
 import type { Env } from '../config/env.js';
+import type { SimulationRecord } from '../simulations/simulation.types.js';
 import { SimulationsService } from '../simulations/simulations.service.js';
 
 /**
@@ -29,6 +30,8 @@ export interface ClickyRequest extends Request {
   clickySimId: string;
   /** Estado de la simulación: en curso, Clicky guía sin dar la solución; terminada, explica todo. */
   clickySimStatus: string;
+  /** La simulación completa: de ahí sale lo que Hinty sabe del simulacro (sim-brief.ts). */
+  clickySim: SimulationRecord;
 }
 
 /**
@@ -66,6 +69,7 @@ export class ClickyAccessGuard implements CanActivate {
       );
     req.clickySimId = simId;
     req.clickySimStatus = sim.status;
+    req.clickySim = sim;
     return true;
   }
 

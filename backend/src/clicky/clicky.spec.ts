@@ -601,7 +601,7 @@ describe('fase de la simulación en el prompt de Clicky', () => {
     const { phaseNote } = await import('./clicky.service.js');
     expect(phaseNote('running')).toContain('no le digas qué acción tomar');
     expect(phaseNote('paused')).toContain('no le digas qué acción tomar');
-    expect(phaseNote('finished')).toContain('Puedes explicar todo');
+    expect(phaseNote('finished')).toMatch(/puedes explicar todo/i);
   });
 });
 

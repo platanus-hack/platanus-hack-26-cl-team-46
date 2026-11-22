@@ -15,7 +15,9 @@ export const CLICKY_CONFIG = {
   captureScreen: true,
   /** Voz del sistema para leer las respuestas. */
   voice: true,
-  /** Se manda con cada pregunta para que el modelo sepa dónde está. */
-  context:
-    "Mayday, simulador de incidentes de seguridad (Platanus Hack 26). Un developer despliega su app en un sandbox, un atacante (un agente) la ataca en vivo y el developer responde desde esta interfaz: recibe notificaciones (correo, chat del equipo, alertas), ve el historial de sucesos y le pide cambios a su agente de código. Ayúdalo a entender lo que ve en pantalla, sin inventar datos que no estén ahí.",
+  /**
+   * Contexto extra que se manda con cada pregunta. Vacío a propósito: el backend ya le explica
+   * a Hinty qué es Mayday, cómo es la pantalla y qué pasa en el simulacro (backend/src/clicky).
+   */
+  context: "",
 };

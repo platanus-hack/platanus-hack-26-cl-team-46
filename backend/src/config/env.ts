@@ -135,17 +135,13 @@ export const envSchema = z.object({
     .transform((v) => v === 'true'),
 
   // Clicky: copiloto en pantalla (src/clicky). Sin las keys, sus rutas responden 503.
-  /** Cerebro de Clicky: mira la captura y decide qué decir y qué marcar. */
-  OPENAI_API_KEY: z.string().optional(),
-  CLICKY_BRAIN_MODEL: z.string().default('gpt-6-luna'),
+  /** Cerebro de Hinty (Clicky): Claude mira la captura y el simulacro y decide qué decir y qué marcar. Usa ANTHROPIC_API_KEY. */
+  CLICKY_BRAIN_MODEL: z.string().default('claude-opus-5-5'),
   /**
-   * Cuánto razona el cerebro antes de responder. gpt-6-luna razona "medium" si no se
-   * le dice nada, y eso se nota en la espera: "low" responde mucho antes y alcanza para
-   * leer la pantalla. "none" es aún más rápido; "default" no manda el parámetro.
+   * Cuánto razona el cerebro antes de responder. Se nota en la espera del primer beat:
+   * "low" responde rápido y alcanza para leer la pantalla y graduar una pista.
    */
-  CLICKY_BRAIN_EFFORT: z
-    .enum(['default', 'none', 'low', 'medium', 'high'])
-    .default('low'),
+  CLICKY_BRAIN_EFFORT: effortSchema.default('low'),
   /** Voz de Clicky (texto a voz) y reconocimiento de lo que dice el usuario. */
   ELEVENLABS_API_KEY: z.string().optional(),
   /** Voz de la biblioteca de ElevenLabs. Default: "Norah" (español latino, cálida y clara). */
@@ -156,7 +152,7 @@ export const envSchema = z.object({
   CLICKY_STT_MODEL: z.string().default('scribe_v3'),
   /** Transcripción en vivo mientras el usuario habla (WebSocket con token de un solo uso). */
   CLICKY_STT_LIVE_MODEL: z.string().default('scribe_v3_live'),
-  /** `true`: respuestas de ensayo, sin llamar a OpenAI ni ElevenLabs. */
+  /** `true`: respuestas de ensayo, sin llamar a Claude ni ElevenLabs. */
   CLICKY_MOCK: z
     .enum(['true', 'false', '1', '0'])
     .default('false')

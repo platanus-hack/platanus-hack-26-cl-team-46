@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import Anthropic from '@anthropic-ai/sdk';
 import type { Env } from '../config/env.js';
 import { SimulationsService } from '../simulations/simulations.service.js';
 import { BrainError, streamBeats } from './brain.js';
@@ -19,6 +20,7 @@ import {
 } from './elevenlabs.js';
 import { SYSTEM_PROMPT } from './prompt.js';
 import { cleanBeat, newBudget, type Beat } from './protocol.js';
+import { simBrief, type BriefSim } from './sim-brief.js';
 
 export type SpokenBeat = Beat & { audio?: Speech };
 
@@ -34,7 +36,8 @@ const TTS_TIMEOUT_MS = 8_000;
 const STT_MAX_SECONDS = 90;
 
 /**
- * Clicky: arma la explicación (OpenAI, con la captura), le pone voz (ElevenLabs) y
+ * Hinty (antes Clicky): el profesor del simulacro. Arma la explicación con Claude (la
+ * captura, lo que hay en pantalla y lo que sabe del simulacro), le pone voz (ElevenLabs) y
  * transcribe lo que dice el usuario. Todo en streaming: el primer beat suena mientras el
  * modelo escribe el resto. Las keys nunca salen del backend y el gasto queda acotado
  * por simulación.
@@ -48,10 +51,16 @@ export class ClickyService {
     { questions: number; ttsChars: number; sttSessions: number }
   >();
 
+  private client?: Anthropic;
+
   constructor(
     private readonly config: ConfigService<Env, true>,
     private readonly sims: SimulationsService,
   ) {}
+
+  private anthropic(key: string): Anthropic {
+    return (this.client ??= new Anthropic({ apiKey: key }));
+  }
 
   private cfg<K extends keyof Env>(k: K): Env[K] {
     return this.config.get(k, { infer: true });
@@ -74,18 +83,20 @@ export class ClickyService {
   async *lesson(
     simId: string,
     input: LessonBody,
-    simStatus = 'running',
+    /** La simulación (para saber qué está pasando) o, en pruebas, solo su estado. */
+    sim: BriefSim | string = 'running',
   ): AsyncGenerator<LessonEvent> {
+    const simStatus = typeof sim === 'string' ? sim : sim.status;
     const u = this.use(simId);
     if (u.questions >= this.cfg('CLICKY_MAX_QUESTIONS_PER_SIM'))
       throw new HttpException(
         'Clicky llegó al máximo de preguntas de esta simulación',
         HttpStatus.TOO_MANY_REQUESTS,
       );
-    const key = this.cfg('OPENAI_API_KEY');
+    const key = this.cfg('ANTHROPIC_API_KEY');
     if (!this.cfg('CLICKY_MOCK') && !key)
       throw new ServiceUnavailableException(
-        'Falta OPENAI_API_KEY en el backend',
+        'Falta ANTHROPIC_API_KEY en el backend',
       );
     u.questions++;
 
@@ -96,10 +107,15 @@ export class ClickyService {
     const source = this.cfg('CLICKY_MOCK')
       ? mockBeats(input)
       : streamBeats({
-          key: key!,
+          client: this.anthropic(key!),
           model: this.cfg('CLICKY_BRAIN_MODEL'),
           effort: this.cfg('CLICKY_BRAIN_EFFORT'),
-          messages: buildMessages(input, simStatus),
+          system: SYSTEM_PROMPT,
+          messages: buildMessages(
+            input,
+            simStatus,
+            typeof sim === 'string' ? '' : this.brief(simId, sim),
+          ),
           signal: abort.signal,
         });
 
@@ -193,9 +209,19 @@ export class ClickyService {
     }
   }
 
+  /** Lo que Hinty sabe del simulacro. Si algo del registro viene raro, sigue sin eso. */
+  private brief(simId: string, sim: BriefSim): string {
+    try {
+      return simBrief(sim);
+    } catch (err) {
+      this.logger.warn(`[${simId}] brief: ${(err as Error).message}`);
+      return '';
+    }
+  }
+
   private describe(err: unknown): string {
     if (err instanceof BrainError) {
-      this.logger.error(`OpenAI ${err.status}: ${err.message}`);
+      this.logger.error(`Claude ${err.status}: ${err.message}`);
       return 'El modelo no pudo responder, intenta de nuevo';
     }
     if ((err as Error)?.name === 'AbortError') return 'Respuesta cancelada';
@@ -326,13 +352,13 @@ export function describeAnnotation({
 }
 
 /**
- * La simulación es un ejercicio: mientras corre, Clicky explica lo que se ve pero no
- * entrega la contención (descubrirla es la lección, como con el agente de código).
+ * La simulación es un ejercicio: mientras corre, Hinty da pistas graduadas y enseña, pero
+ * no entrega la contención (descubrirla es la lección). Al terminar, explica todo.
  */
 export function phaseNote(simStatus: string): string {
   return simStatus === 'finished'
-    ? 'Fase: la simulación terminó. Puedes explicar todo: qué pasó, qué faltó hacer y cuál era el arreglo correcto.'
-    : 'Fase: la simulación está en curso y es un ejercicio de entrenamiento. Explica lo que muestra la pantalla y qué significa cada señal, pero no le digas qué acción tomar para contener el ataque ni nombres una vulnerabilidad que no aparezca en pantalla. Guíalo con una pregunta (por ejemplo, "¿esa sesión sigue sirviendo después del cambio?"). Si te pide la respuesta directamente, dale una pista, no la solución. Puedes guiarlo paso a paso para moverse por la pantalla (abrir un panel, leer un log), pero nunca pongas un step, click ni type sobre la acción que contiene el ataque ni escribas por él el pedido que la resuelve.';
+    ? 'Fase: la simulación terminó. Ya nada es secreto: puedes explicar todo, qué pasó, qué faltó hacer y cuál era el arreglo correcto, apoyándote en el debrief y el reporte de la sección del simulacro. Enséñale cómo llevarlo a su app real.'
+    : 'Fase: la simulación está en curso y es un ejercicio de entrenamiento. Eres su profesor: dale el siguiente peldaño de la escalera de pistas (no le digas qué acción tomar para contener el ataque ni nombres una falla que todavía no descubrió) y termina con una pregunta que lo haga pensar. Si te pide la respuesta directamente, dale una pista, no la solución. Puedes guiarlo paso a paso para moverse por la pantalla (abrir una pestaña, leer una alerta), pero nunca pongas un step, click ni type sobre la acción que contiene el ataque ni escribas por él el pedido que la resuelve.';
 }
 
 /** Un elemento de la lista, con su caja: "- e7 (botón) [120 340 160×32] Rotar clave". */
@@ -359,12 +385,31 @@ export function describeWalk({ walk }: LessonBody): string {
   ].join('\n');
 }
 
+/** Una captura en data URL → bloque de imagen de Claude. */
+function imageBlock(dataUrl: string): Anthropic.Beta.BetaImageBlockParam {
+  const m = /^data:(image\/(?:jpeg|png|webp));base64,(.+)$/.exec(dataUrl)!;
+  return {
+    type: 'image',
+    source: {
+      type: 'base64',
+      media_type: m[1] as 'image/jpeg' | 'image/png' | 'image/webp',
+      data: m[2],
+    },
+  };
+}
+
+/**
+ * La conversación para Claude (el prompt de sistema va aparte, cacheado). El último
+ * mensaje lleva lo que sabe del simulacro, la fase, la pantalla y la pregunta.
+ */
 export function buildMessages(
   input: LessonBody,
   simStatus = 'running',
-): unknown[] {
+  brief = '',
+): Anthropic.Beta.BetaMessageParam[] {
   const screen = input.elements.map(elementLine).join('\n');
   const text = [
+    brief,
     input.context && `Contexto de la app: ${input.context}`,
     phaseNote(simStatus),
     `Página: ${input.page.title} (${input.page.path})` +
@@ -383,21 +428,17 @@ export function buildMessages(
     .filter(Boolean)
     .join('\n\n');
   return [
-    { role: 'system', content: SYSTEM_PROMPT },
-    ...input.history.flatMap((h) => [
-      { role: 'user', content: h.q },
-      { role: 'assistant', content: h.a },
-    ]),
+    // La API rechaza turnos vacíos: una respuesta que no alcanzó a decir nada no se manda.
+    ...input.history
+      .filter((h) => h.q.trim() && h.a.trim())
+      .flatMap((h): Anthropic.Beta.BetaMessageParam[] => [
+        { role: 'user', content: h.q },
+        { role: 'assistant', content: h.a },
+      ]),
     {
       role: 'user',
       content: input.screenshot
-        ? [
-            { type: 'text', text },
-            {
-              type: 'image_url',
-              image_url: { url: input.screenshot, detail: 'high' },
-            },
-          ]
+        ? [imageBlock(input.screenshot), { type: 'text', text }]
         : text,
     },
   ];

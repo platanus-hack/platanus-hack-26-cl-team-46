@@ -47,7 +47,7 @@ export class ClickyController {
     yield* this.clicky.lesson(
       req.clickySimId,
       parsed.data,
-      req.clickySimStatus,
+      req.clickySim ?? req.clickySimStatus,
     );
   }
 

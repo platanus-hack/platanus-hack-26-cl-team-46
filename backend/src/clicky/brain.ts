@@ -1,9 +1,9 @@
-// Cerebro de Clicky: OpenAI con la captura, en streaming. En vez de esperar el JSON
+// Cerebro de Hinty: Claude con la captura, en streaming. En vez de esperar el JSON
 // completo, entrega cada beat apenas el modelo cierra su objeto, para que su voz se
 // genere y suene mientras el modelo sigue escribiendo los siguientes.
-const OPENAI = 'https://api.openai.com/v1';
+import Anthropic from '@anthropic-ai/sdk';
 
-/** El modelo no pudo responder: `status` es el código HTTP de OpenAI (0 si no hubo respuesta). */
+/** El modelo no pudo responder: `status` es el código HTTP de la API de Claude (0 si no hubo respuesta). */
 export class BrainError extends Error {
   constructor(
     message: string,
@@ -63,68 +63,81 @@ export class BeatScanner {
   }
 }
 
-/** Cada trozo de texto del stream SSE de chat/completions. */
-async function* deltas(
-  body: ReadableStream<Uint8Array>,
-): AsyncGenerator<string> {
-  const decoder = new TextDecoder();
-  let pending = '';
-  for await (const bytes of body as unknown as AsyncIterable<Uint8Array>) {
-    pending += decoder.decode(bytes, { stream: true });
-    const lines = pending.split('\n');
-    pending = lines.pop() ?? '';
-    for (const line of lines) {
-      if (!line.startsWith('data:')) continue;
-      const data = line.slice(5).trim();
-      if (!data || data === '[DONE]') continue;
-      try {
-        const evt = JSON.parse(data) as {
-          choices?: { delta?: { content?: string } }[];
-        };
-        const text = evt.choices?.[0]?.delta?.content;
-        if (text) yield text;
-      } catch {
-        // línea incompleta o de control
-      }
-    }
-  }
-}
+export type BrainEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
+/** Si el modelo no termina en este tiempo, se corta (el usuario ya está esperando). */
+const BRAIN_TIMEOUT_MS = 60_000;
 
 export async function* streamBeats(opts: {
-  key: string;
+  client: Anthropic;
   model: string;
-  effort: string;
-  messages: unknown[];
+  effort: BrainEffort;
+  system: string;
+  messages: Anthropic.Beta.BetaMessageParam[];
   signal: AbortSignal;
 }): AsyncGenerator<unknown> {
-  const send = (withEffort: boolean) =>
-    fetch(`${OPENAI}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${opts.key}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: opts.model,
-        messages: opts.messages,
-        response_format: { type: 'json_object' },
-        stream: true,
-        ...(withEffort ? { reasoning_effort: opts.effort } : {}),
-      }),
-      signal: AbortSignal.any([opts.signal, AbortSignal.timeout(45_000)]),
-    });
+  // Fallback del servidor ante un rechazo de los clasificadores de seguridad: Hinty habla
+  // de ataques todo el rato y eso puede gatillar la categoría `cyber`.
+  const fallback = /^claude-(opus|sonnet|fable)-/.test(opts.model)
+    ? {
+        betas: [
+          'server-side-fallback-2026-07-01',
+        ] as Anthropic.Beta.AnthropicBeta[],
+        fallbacks: 'default' as const,
+      }
+    : {};
+  const stream = opts.client.beta.messages.stream(
+    {
+      model: opts.model,
+      max_tokens: 16_000,
+      // El prompt de sistema es igual en todas las preguntas: va cacheado.
+      system: [
+        {
+          type: 'text',
+          text: opts.system,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
+      messages: opts.messages,
+      output_config: { effort: opts.effort },
+      ...fallback,
+    },
+    {
+      signal: AbortSignal.any([
+        opts.signal,
+        AbortSignal.timeout(BRAIN_TIMEOUT_MS),
+      ]),
+      maxRetries: 1,
+    },
+  );
 
-  const withEffort = opts.effort !== 'default';
-  let res = await send(withEffort);
-  if (withEffort && res.status === 400) {
-    // Un modelo sin reasoning_effort (si se cambia CLICKY_BRAIN_MODEL): se reintenta sin él.
-    const body = await res.text();
-    if (!/reasoning/i.test(body)) throw new BrainError(body.slice(0, 300), 400);
-    res = await send(false);
+  let scanner = new BeatScanner();
+  try {
+    for await (const ev of stream) {
+      if (ev.type === 'content_block_start') {
+        // Si un modelo rechazó a mitad y siguió el de respaldo, su JSON parte de cero.
+        if ((ev.content_block.type as string) === 'fallback')
+          scanner = new BeatScanner();
+      } else if (
+        ev.type === 'content_block_delta' &&
+        ev.delta.type === 'text_delta'
+      )
+        yield* scanner.push(ev.delta.text);
+    }
+    const final = await stream.finalMessage();
+    if (final.stop_reason === 'refusal')
+      throw new BrainError(
+        `${opts.model} rechazó la pregunta (${final.stop_details?.category ?? 'sin categoría'})`,
+        0,
+      );
+  } catch (err) {
+    if (err instanceof Anthropic.APIUserAbortError) {
+      const abort = new Error('Respuesta cancelada');
+      abort.name = 'AbortError';
+      throw abort;
+    }
+    if (err instanceof Anthropic.APIError)
+      throw new BrainError(err.message.slice(0, 300), err.status ?? 0);
+    throw err;
   }
-  if (!res.ok || !res.body)
-    throw new BrainError((await res.text()).slice(0, 300), res.status);
-
-  const scanner = new BeatScanner();
-  for await (const text of deltas(res.body)) yield* scanner.push(text);
 }
