@@ -37,6 +37,22 @@ export function wordStarts(alignment: Alignment): {
   return { words, duration };
 }
 
+/** ElevenLabs respondió con error: `status` es el código HTTP (0 si no hubo respuesta). */
+export class TtsError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+/**
+ * Eleven v3 y v4 (v4 Turbo incluido) solo van por Text to Dialogue; Flash y Multilingual,
+ * por Text to Speech. Los dos devuelven el audio con sus tiempos por carácter.
+ */
+export const isDialogueModel = (model: string) => /^eleven_v[34]/.test(model);
+
 export async function textToSpeech(opts: {
   key: string;
   voiceId: string;
@@ -47,25 +63,46 @@ export async function textToSpeech(opts: {
   nextText?: string;
   timeoutMs?: number;
 }): Promise<Speech> {
-  const url = `${API}/text-to-speech/${encodeURIComponent(opts.voiceId)}/with-timestamps?output_format=${encodeURIComponent(opts.format)}`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'xi-api-key': opts.key, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      text: opts.text,
-      model_id: opts.model,
-      language_code: 'es',
-      // Flash no normaliza números por defecto: "32 %" se leería mal.
-      apply_text_normalization: 'on',
-      previous_text: opts.previousText,
-      next_text: opts.nextText,
-    }),
-    signal: AbortSignal.timeout(opts.timeoutMs ?? 20_000),
-  });
-  const body = await res.text();
+  const format = `output_format=${encodeURIComponent(opts.format)}`;
+  const dialogue = isDialogueModel(opts.model);
+  const url = dialogue
+    ? `${API}/text-to-dialogue/with-timestamps?${format}`
+    : `${API}/text-to-speech/${encodeURIComponent(opts.voiceId)}/with-timestamps?${format}`;
+  const body = dialogue
+    ? {
+        // Un solo hablante: Hinty. v4 entiende "32 %" sin forzar la normalización.
+        inputs: [{ text: opts.text, voice_id: opts.voiceId }],
+        model_id: opts.model,
+        language_code: 'es',
+        previous_text: opts.previousText?.slice(-100) || undefined,
+      }
+    : {
+        text: opts.text,
+        model_id: opts.model,
+        language_code: 'es',
+        // Flash no normaliza números por defecto: "32 %" se leería mal.
+        apply_text_normalization: 'on',
+        previous_text: opts.previousText,
+        next_text: opts.nextText,
+      };
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method: 'POST',
+      headers: { 'xi-api-key': opts.key, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 20_000),
+    });
+  } catch (err) {
+    throw new TtsError(`ElevenLabs TTS: ${(err as Error).message}`, 0);
+  }
+  const text = await res.text();
   if (!res.ok)
-    throw new Error(`ElevenLabs TTS ${res.status}: ${body.slice(0, 200)}`);
-  const data = JSON.parse(body) as {
+    throw new TtsError(
+      `ElevenLabs TTS ${res.status} (${opts.model}): ${text.slice(0, 200)}`,
+      res.status,
+    );
+  const data = JSON.parse(text) as {
     audio_base64: string;
     alignment: Alignment;
   };

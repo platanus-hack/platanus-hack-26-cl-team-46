@@ -174,7 +174,13 @@ export const envSchema = z.object({
   ELEVENLABS_API_KEY: z.string().optional(),
   /** Voz de la biblioteca de ElevenLabs. Default: "Norah" (español latino, cálida y clara). */
   CLICKY_VOICE_ID: z.string().default('kcQkGnn0HAT2JRDQ4Ljp'),
-  CLICKY_TTS_MODEL: z.string().default('eleven_flash_v2_5'),
+  /**
+   * Eleven v4 Turbo: igual de rápido que Flash (~100 ms) y mucho más natural. Va por
+   * Text to Dialogue. Si no está disponible, la voz sigue con el respaldo.
+   */
+  CLICKY_TTS_MODEL: z.string().default('eleven_v4_turbo'),
+  /** Respaldo si el modelo principal falla ("" para no usar respaldo). */
+  CLICKY_TTS_FALLBACK_MODEL: z.string().default('eleven_flash_v2_5'),
   CLICKY_TTS_FORMAT: z.string().default('mp3_22050_32'),
   /** Transcripción de respaldo (se sube el audio entero al soltar espacio). */
   CLICKY_STT_MODEL: z.string().default('scribe_v3'),

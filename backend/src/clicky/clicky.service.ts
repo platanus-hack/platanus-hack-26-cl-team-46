@@ -15,6 +15,7 @@ import {
   realtimeSttUrl,
   speechToText,
   textToSpeech,
+  TtsError,
   type Speech,
 } from './elevenlabs.js';
 import { SYSTEM_PROMPT } from './prompt.js';
@@ -31,6 +32,8 @@ export type LessonEvent =
 
 /** Si la voz de un beat tarda más que esto, el beat sale sin audio (voz del navegador). */
 const TTS_TIMEOUT_MS = 8_000;
+/** El respaldo llega después de un intento fallido: tiene menos margen. */
+const FALLBACK_TTS_TIMEOUT_MS = 5_000;
 /** Duración máxima de una sesión de dictado en vivo. */
 const STT_MAX_SECONDS = 90;
 
@@ -44,6 +47,8 @@ const STT_MAX_SECONDS = 90;
 @Injectable()
 export class ClickyService {
   private readonly logger = new Logger(ClickyService.name);
+  /** El modelo de voz principal respondió un 4xx: se usa el de respaldo. */
+  private ttsPrimaryOff = false;
   /** Uso por simulación (en memoria: se reinicia con el backend, y está bien así). */
   private readonly usage = new Map<
     string,
@@ -288,19 +293,41 @@ export class ClickyService {
       return beat;
     }
     u.ttsChars += beat.say.length;
-    try {
-      const audio = await textToSpeech({
+    const say = (model: string, timeoutMs: number) =>
+      textToSpeech({
         key,
         voiceId: this.cfg('CLICKY_VOICE_ID'),
-        model: this.cfg('CLICKY_TTS_MODEL'),
+        model,
         format: this.cfg('CLICKY_TTS_FORMAT'),
         text: beat.say,
         previousText,
-        timeoutMs: TTS_TIMEOUT_MS,
+        timeoutMs,
       });
-      return { ...beat, audio };
+    const primary = this.cfg('CLICKY_TTS_MODEL');
+    const fallback = this.cfg('CLICKY_TTS_FALLBACK_MODEL');
+    const canFallBack = !!fallback && fallback !== primary;
+    if (!this.ttsPrimaryOff || !canFallBack) {
+      try {
+        return { ...beat, audio: await say(primary, TTS_TIMEOUT_MS) };
+      } catch (err) {
+        this.logger.warn(`[${simId}] TTS: ${(err as Error).message}`);
+        // Se cayó la red o se demoró demasiado: otro intento solo atrasaría más la voz.
+        if (!canFallBack || !(err instanceof TtsError) || err.status === 0)
+          return beat;
+        // Un 4xx que no es por tope (modelo no disponible, voz no compatible…) se repetiría
+        // en cada beat: el resto de la vida del proceso va directo al respaldo.
+        if (err.status >= 400 && err.status < 500 && err.status !== 429) {
+          this.ttsPrimaryOff = true;
+          this.logger.warn(
+            `${primary} no está disponible: la voz sigue con ${fallback}`,
+          );
+        }
+      }
+    }
+    try {
+      return { ...beat, audio: await say(fallback, FALLBACK_TTS_TIMEOUT_MS) };
     } catch (err) {
-      this.logger.warn(`[${simId}] TTS: ${(err as Error).message}`);
+      this.logger.warn(`[${simId}] TTS (respaldo): ${(err as Error).message}`);
       return beat;
     }
   }
