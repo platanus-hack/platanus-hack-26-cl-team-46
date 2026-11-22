@@ -1,4 +1,4 @@
-import { svgEl, htmlEl, sleep, animate, rectOf } from './geometry.js';
+import { svgEl, htmlEl, sleep, animate, rectOf, reducedMotion } from './geometry.js';
 import { THEMES } from './theme.js';
 import { checkSvg } from './icons.js';
 import { createPen } from './pen.js';
@@ -219,6 +219,7 @@ export function createClicky({
       const image = secret ? null : await capture(h);
       gesture.clear();
       const ctxText = typeof context === 'function' ? context() : context;
+      if (gen <= clearedGen) return; // «Borrar todo» llegó mientras se capturaba: no se pregunta
       const abort = answering = new AbortController();
       const res = await fetch(api + '/lesson', {
         method: 'POST',
@@ -237,6 +238,7 @@ export function createClicky({
         throw new Error([data.message].flat().join('; ') || data.error || res.statusText);
       }
       busy = false; // a new question can interrupt this answer from now on
+      if (gen <= clearedGen) return;
       show = director.start();
       const said = [];
       const reader = res.body.getReader(), decoder = new TextDecoder();
@@ -319,6 +321,56 @@ export function createClicky({
     wipe({ fast: true });
     island.idle('Guía terminada. Pregúntame cuando quieras.');
   }
+  // La X de los dibujos (como el «Cerrar (esc)» de HeyClicky): flota en la esquina de arriba a la
+  // derecha de todo lo que dibujó Hinty (marcas, etiquetas, tarjetas, pizarra) y, al apretarla o con
+  // Esc, lo hace desaparecer: el lápiz deshace los trazos, se corta la voz y la respuesta en curso, y
+  // Hinty queda prendido esperando la próxima pregunta (para apagarlo está la X de la barra).
+  let clearedGen = 0;
+  const dismiss = htmlEl('button', 'clicky-dismiss', root, `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="2.25" stroke-linecap="square"/></svg><span class="lbl">Cerrar<kbd>esc</kbd></span>`);
+  dismiss.type = 'button';
+  dismiss.setAttribute('aria-label', 'Cerrar lo que dibujó Hinty (esc)');
+  dismiss.addEventListener('pointerdown', e => e.stopPropagation());
+  dismiss.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); clearAll(); });
+  function clearAll() {
+    clearedGen = askGen;
+    ctx.walk = null;
+    pending = null;
+    nudging = null;
+    gesture.clear();
+    dim(false);
+    dismiss.removeAttribute('data-on');
+    island.idle('Listo, pantalla limpia. Pregúntame cuando quieras.');
+    wipe({ fast: reducedMotion() }).then(syncPen);
+  }
+  const hasDrawing = () => !!(ctx.items.length || ctx.strokes.length || ctx.fades.length || ctx.spotHoles.length || pending || ctx.walk);
+  // Caja que encierra todo lo dibujado (sin lo que tapa la pantalla entera, como el spotlight).
+  function drawingBox() {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const add = el => {
+      if (!el?.isConnected || el.style?.opacity === '0') return;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 && r.height < 2) return;
+      if (r.width > innerWidth * 0.9 && r.height > innerHeight * 0.9) return;
+      x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom);
+    };
+    ctx.items.forEach(add);
+    ctx.strokes.forEach(s => add(s.path));
+    return x0 === Infinity ? null : { x0, y0, x1, y1 };
+  }
+  function placeDismiss() {
+    const box = hasDrawing() && !busy ? drawingBox() : null;
+    if (!box) { dismiss.removeAttribute('data-on'); return; }
+    const S = 36, M = 12;
+    // por fuera de la esquina, sin salirse de la pantalla ni quedar bajo la barra de Hinty
+    const top = Math.max(island.el.getBoundingClientRect().bottom + M, M);
+    const x = Math.min(innerWidth - S - M, Math.max(M, box.x1 + 6));
+    const y = Math.min(innerHeight - S - M, Math.max(top, box.y0 - S - 6));
+    dismiss.style.left = x + 'px';
+    dismiss.style.top = y + 'px';
+    dismiss.dataset.side = x < 140 ? 'right' : 'left';
+    if (!dismiss.hasAttribute('data-on')) dismiss.setAttribute('data-on', '');
+  }
+  const dismissTimer = setInterval(placeDismiss, 200);
   const inStep = t => pending && t instanceof Node && (pending.el === t || pending.el.contains(t));
   const onDocClick = e => { if (inStep(e.target) && !pending.field) completeStep(); };
   const onDocChange = e => { if (inStep(e.target)) completeStep(); };
@@ -547,7 +599,7 @@ export function createClicky({
   const typing = () => ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
   const down = e => {
     if (e.key === 'Shift' && markMode) shiftDraw(true);
-    if (e.key === 'Escape' && (pending || ctx.walk) && !listening) { stopWalk(); return; }
+    if (e.key === 'Escape' && !listening && (!typing() || pending) && hasDrawing()) { clearAll(); return; }
     if (!isTalkKey(e) || e.ctrlKey || e.altKey || e.metaKey) return;
     if (listening) { e.preventDefault(); return; }
     // fn no escribe nada, así que funciona aunque el foco esté en un campo. Otra tecla (espacio) escribe,
@@ -575,6 +627,8 @@ export function createClicky({
   return {
     ask: q => ask(q),
     clear: opts => { ctx.walk = null; return wipe(opts); },
+    /** Lo mismo que «Borrar todo» en la barra: borra todo, corta la voz y vuelve a esperar. */
+    clearAll: () => clearAll(),
     setTheme,
     openInput: () => island.openInput(),
     caption: text => island.idle(text),
@@ -592,6 +646,7 @@ export function createClicky({
       mo?.disconnect();
       clearTimeout(nudgeTimer);
       clearTimeout(retry);
+      clearInterval(dismissTimer);
       removeEventListener('keydown', down);
       removeEventListener('keyup', up);
       removeEventListener('blur', lost);
