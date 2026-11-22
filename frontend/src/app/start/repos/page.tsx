@@ -1,5 +1,7 @@
 "use client";
 
+import { X } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Button, ButtonLink, GitHubIcon, StatusChip, TypedLog } from "@/components/mayday";
@@ -381,12 +383,33 @@ function SelectionPanel({
   onSend: () => void;
   onReset: () => void;
 }) {
+  const sent = send.status === "sent" ? send : null;
   return (
-    <aside ref={ref} className="scroll-mt-14 border-t border-line bg-bg-100 px-5 py-8 md:px-12 md:py-12 lg:border-t-0 lg:border-l lg:px-8">
-      <div className="flex flex-col gap-6 lg:sticky lg:top-12" aria-live="polite">
-        <div className="flex items-center justify-between gap-3">
+    // El CTA va pegado abajo: al fondo del panel y, si el panel es más alto que la pantalla, al borde inferior de ella.
+    <aside
+      ref={ref}
+      className={`flex scroll-mt-14 flex-col border-t border-line bg-bg-100 px-5 pt-8 md:px-12 md:pt-12 lg:border-t-0 lg:border-l lg:px-8 ${selected ? "" : "pb-8 md:pb-12"}`}
+    >
+      <div className="flex flex-col gap-6 pb-6 lg:sticky lg:top-12" aria-live="polite">
+        <div className="flex min-h-10 items-center justify-between gap-3">
           <h2 className="md-index">TU SANDBOX</h2>
-          {send.status === "sent" && <StatusChip tone="defense">Repo enviado</StatusChip>}
+          {sent && (
+            <div className="flex items-center gap-2">
+              {/* .md-chip trae align-self: flex-start; el span lo deja centrado con la X. */}
+              <span className="flex">
+                <StatusChip tone="defense">Repo enviado</StatusChip>
+              </span>
+              <button
+                type="button"
+                aria-label="Envía otro repo"
+                title="Envía otro repo"
+                onClick={onReset}
+                className="-mr-2 flex size-10 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-bg-200 hover:text-ink"
+              >
+                <X className="size-5" strokeWidth={1.5} aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
 
         {!selected ? (
@@ -407,7 +430,7 @@ function SelectionPanel({
               </a>
             </div>
 
-            {send.status === "sent" ? (
+            {sent ? (
               <div className="flex flex-col gap-5">
                 <p className="text-[15px] leading-[22px] text-ink-muted">
                   <span className="text-ink">Estamos preparando tu sandbox y pronto estará listo para el simulacro.</span>{" "}
@@ -415,16 +438,8 @@ function SelectionPanel({
                 </p>
                 <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 font-mono text-[13px]">
                   <dt className="text-ink-faint">SANDBOX</dt>
-                  <dd className="text-ink">{send.name}</dd>
+                  <dd className="text-ink">{sent.name}</dd>
                 </dl>
-                <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap [&>*]:justify-center">
-                  {/* El simulacro muestra el avance del deploy y parte solo cuando la app está arriba. */}
-                  <ButtonLink href={`/simulate?sandbox=${send.sandboxId}`} variant="primary">
-                    Ir al simulacro
-                  </ButtonLink>
-                  <ButtonLink href={`/deploy?sandbox=${send.sandboxId}`}>Ver el deploy</ButtonLink>
-                  <Button onClick={onReset}>Envía otro repo</Button>
-                </div>
               </div>
             ) : (
               <>
@@ -466,25 +481,41 @@ function SelectionPanel({
                   </p>
                 )}
 
-                <div className="flex flex-col gap-3">
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    onClick={onSend}
-                    disabled={send.status === "sending"}
-                    className="justify-center"
-                  >
-                    {send.status === "sending" ? "Enviando…" : "Despliega este repo"}
-                  </Button>
-                  {send.status === "error" && (
-                    <TypedLog text={send.message} />
-                  )}
-                </div>
+                {send.status === "error" && <TypedLog text={send.message} />}
               </>
             )}
           </>
         )}
       </div>
+
+      {selected && (
+        <div className="sticky bottom-0 mt-auto flex flex-col gap-3 bg-bg-100 pt-4 pb-[max(32px,env(safe-area-inset-bottom))] md:pb-12">
+          {sent ? (
+            <>
+              {/* El simulacro muestra el avance del deploy y parte solo cuando la app está arriba. */}
+              <ButtonLink href={`/simulate?sandbox=${sent.sandboxId}`} variant="primary" size="lg" className="w-full justify-center">
+                Ir al simulacro
+              </ButtonLink>
+              <Link
+                href={`/deploy?sandbox=${sent.sandboxId}`}
+                className="self-center py-1 text-[13px] text-ink-muted underline-offset-4 hover:text-ink hover:underline"
+              >
+                Ver el deploy
+              </Link>
+            </>
+          ) : (
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={onSend}
+              disabled={send.status === "sending"}
+              className="w-full justify-center"
+            >
+              {send.status === "sending" ? "Enviando…" : "Despliega este repo"}
+            </Button>
+          )}
+        </div>
+      )}
     </aside>
   );
 }
