@@ -19,8 +19,10 @@ export interface CoverageEntry {
   vuln_class: string;
   /** A la confirmó con tráfico real. */
   generic_confirmed: boolean;
-  /** B la propuso. */
+  /** B la propuso (ángulo). */
   llm_proposed: boolean;
+  /** B la confirmó con un probe generado y ejecutado (gateado). */
+  llm_confirmed: boolean;
   status: 'both' | 'generic-only' | 'llm-only';
   where?: string;
   /** Nota de completitud/comparación. */
@@ -42,5 +44,7 @@ export interface CoverageReport {
 export interface DualResult {
   generic: GenericFinding[];
   llm: Array<{ vuln_id?: string; title: string; rationale: string; where?: string; confidence: number }>;
+  /** Probes ejecutables generados por B, gateados y ejecutados. */
+  generated: import('./probe-spec.ts').GeneratedProbeResult[];
   coverage: CoverageReport;
 }

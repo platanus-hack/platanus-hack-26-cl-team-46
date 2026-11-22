@@ -61,12 +61,20 @@ async function main() {
   await writeFile(path.join(outDir, 'dual.json'), JSON.stringify(dual, null, 2));
 
   console.log('\n──── Cobertura (A genérico ∥ B LLM) ────');
-  console.log('clase                         A   B   estado');
+  console.log('clase                         A(real) B(prop) B(gen)  estado');
   for (const e of dual.coverage.entries) {
-    console.log(`${e.vuln_class.padEnd(28)}  ${e.generic_confirmed ? '✓' : '·'}   ${e.llm_proposed ? '✓' : '·'}   ${e.status}`);
+    console.log(`${e.vuln_class.padEnd(28)}  ${e.generic_confirmed ? '✓' : '·'}      ${e.llm_proposed ? '✓' : '·'}      ${e.llm_confirmed ? '✓' : '·'}     ${e.status}`);
   }
   const m = dual.coverage.metrics;
   console.log(`\nacuerdo ${m.agreement} · solo-A ${m.generic_only} · solo-B ${m.llm_only} · unión ${dual.coverage.unified.length}`);
+
+  if (dual.generated.length) {
+    console.log('\n──── Probes generados por B (gateados) ────');
+    for (const g of dual.generated) {
+      const tag = !g.gated ? 'RECHAZADO (gate)' : g.confirmed ? 'confirmado' : 'no confirmado';
+      console.log(`  ${g.spec.id} [${g.spec.vuln_class}] → ${tag} · ${g.evidence}`);
+    }
+  }
   console.log(`\n📁 ${outDir}\n`);
 }
 
