@@ -241,6 +241,7 @@ function ReadyGate({ onStart }: { sim: Simulation; onStart: StartFn }) {
       <h2 className="text-[44px] font-semibold leading-[1.08] tracking-[-0.035em] text-ink">Todos los sistemas están listos</h2>
       <Button
         variant="primary"
+        size="lg"
         disabled={starting}
         onClick={(e) => {
           setStarting(true);
