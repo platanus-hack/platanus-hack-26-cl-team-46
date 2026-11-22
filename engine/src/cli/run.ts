@@ -8,13 +8,14 @@
  * Uso:
  *   node engine/src/cli/run.ts --url https://sbx-xxxx.onrender.com [opciones]
  */
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { diagnose } from '../core/diagnose.ts';
 import { buildDiagnoses, type CodeRef } from '../core/diagnosis.ts';
 import { buildAttackPlan, toTimelineEvents } from '../core/events.ts';
 import { CostLedger } from '../core/ledger.ts';
 import { appDirOf, correlate, discoverRepo } from '../discovery/index.ts';
+import type { RepoModel } from '../discovery/index.ts';
 import { buildCascadeFromEnv } from '../providers/cascade.ts';
 import { runSemgrep } from '../providers/semgrep.ts';
 import { recon } from '../core/recon.ts';
@@ -55,6 +56,8 @@ Opciones:
   --weak-email <email>  Credencial conocida para fuerza bruta / sesión de baja privilegia
   --weak-pass <pass>    (ambos juntos; sin default, específico de la app)
   --repo <path>         Ruta al repo del target: discovery estática + correlación archivo/línea
+  --repo-model <file>   RepoModel JSON precomputado: salta discoverRepo y reutiliza ese modelo
+                        (caché de discovery por (repo, commit); ver engine/modal_app.py)
   --commit <sha>        Commit del target, para versionar el escenario y los FileRef
   --no-recon            Saltar la fase de reconocimiento
   --semgrep             Correr semgrep (SAST) sobre --repo; requiere el binario o Docker
@@ -124,9 +127,15 @@ async function main() {
 
   // Fase discovery (A): el repo participa. Correlaciona hallazgos con archivo/línea.
   const repoPath = arg('repo');
-  let repoModel;
+  const repoModelFile = arg('repo-model');
+  let repoModel: RepoModel | undefined;
   let discoveryMs = 0;
-  if (repoPath) {
+  if (repoModelFile) {
+    // RepoModel precomputado: para el MISMO (repo, commit) el discovery es
+    // determinista, así que se reutiliza (caché de Modal) en vez de re-descubrir.
+    repoModel = JSON.parse(await readFile(path.resolve(repoModelFile), 'utf8')) as RepoModel;
+    console.log(`▶ discovery (caché): ${repoModel.routes.length} rutas, ${repoModel.signals.length} señales, stack ${repoModel.stack.map((s) => s.framework ?? s.language).join('/')}`);
+  } else if (repoPath) {
     const t = Date.now();
     repoModel = await discoverRepo(path.resolve(repoPath), { commit: arg('commit') });
     discoveryMs = Date.now() - t;

@@ -26,6 +26,7 @@ import fnmatch
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import tempfile
@@ -81,6 +82,29 @@ api_image = (
 )
 
 app = modal.App(APP_NAME)
+
+# Caché de discovery por (repo, commit). El RepoModel que produce discoverRepo es
+# DETERMINISTA para un commit inmutable, así que se calcula una vez y se reutiliza
+# en corridas repetidas del mismo commit (primera pasada + cada verify), en vez de
+# re-descubrirlo en cada contenedor desechable. Persistente entre contenedores.
+discovery_cache = modal.Dict.from_name("hack26-engine-discovery", create_if_missing=True)
+
+
+def _discovery_cache_key(spec: dict) -> str | None:
+    """Clave `f"{repo}@{commit}"` SOLO si el commit es un sha inmutable.
+
+    Si no hay repo/commit, o el commit es volátil (una rama como `main`, o
+    `working-tree`), devuelve None: el RepoModel podría cambiar entre corridas,
+    así que se cae al camino normal (re-descubrir, sin cachear)."""
+    repo = spec.get("repo")
+    commit = spec.get("commit")
+    if not repo or not commit:
+        return None
+    commit = str(commit)
+    # Un sha de git es hex de 7..40 chars; ramas/tags/working-tree no cachean.
+    if not re.fullmatch(r"[0-9a-fA-F]{7,40}", commit):
+        return None
+    return f"{repo}@{commit}"
 
 
 # ───────────────────────── validación del pedido ─────────────────────────
@@ -274,10 +298,28 @@ def _execute(spec: dict, repo_dir: str | None = None) -> dict:
             repo_dir = os.path.join(work, "repo")
             _clone(str(spec["repo"]), spec.get("commit"), repo_dir)
         out_dir = os.path.join(work, "out")
+        args = _cli_args(spec, out_dir, repo_dir)
+
+        # Caché de discovery por (repo, commit): si ya descubrimos este commit,
+        # pásale el RepoModel al CLI (--repo-model) para que salte discoverRepo.
+        cache_key = _discovery_cache_key(spec) if repo_dir else None
+        cached_model = None
+        if cache_key is not None:
+            try:
+                cached_model = discovery_cache.get(cache_key)
+            except Exception as e:  # noqa: BLE001 — el caché nunca tumba la corrida
+                print(f"caché de discovery no leído: {e}", flush=True)
+        if cached_model:
+            model_file = os.path.join(work, "repo-model.json")
+            pathlib.Path(model_file).write_text(json.dumps(cached_model))
+            args += ["--repo-model", model_file]
+
         reporter = _ProgressReporter(spec.get("progress"))
         reporter.add("▶ repo clonado" if repo_dir else "▶ sin repo: solo ataque")
+        if cached_model:
+            reporter.add(f"▶ discovery servido de caché ({cache_key})")
         proc = subprocess.Popen(
-            _cli_args(spec, out_dir, repo_dir),
+            args,
             cwd=REMOTE_ENGINE,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # una sola tubería: sin riesgo de bloqueo por stderr lleno
@@ -295,13 +337,25 @@ def _execute(spec: dict, repo_dir: str | None = None) -> dict:
         code = proc.wait()
         reporter.flush(force=True)
         log = "".join(lines)
+        artifacts = _read_artifacts(out_dir) if os.path.isdir(out_dir) else {}
+
+        # Tras la primera corrida de este commit, guarda el RepoModel para que las
+        # siguientes (verify) no re-descubran. Idempotente: si ya estaba, no toca.
+        if cache_key is not None and not cached_model and code == 0:
+            model = artifacts.get("repo_model")
+            if model:
+                try:
+                    discovery_cache[cache_key] = model
+                except Exception as e:  # noqa: BLE001 — el caché nunca tumba la corrida
+                    print(f"caché de discovery no escrito: {e}", flush=True)
+
         return {
             "ok": code == 0,
             "exit_code": code,
             "duration_s": round(time.time() - started, 1),
             "log": log[-20000:],
             "stderr": "" if code == 0 else log[-5000:],
-            "artifacts": _read_artifacts(out_dir) if os.path.isdir(out_dir) else {},
+            "artifacts": artifacts,
         }
     finally:
         shutil.rmtree(work, ignore_errors=True)
