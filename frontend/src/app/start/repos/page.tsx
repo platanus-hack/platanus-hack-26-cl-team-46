@@ -7,7 +7,7 @@ import { Avatar } from "@/components/onboarding/Avatar";
 import { OnboardingShell, StepHeading } from "@/components/onboarding/OnboardingShell";
 import { api } from "@/lib/api";
 import { DEMO_REPO, timeAgo, type GitHubRepo } from "@/lib/github";
-import { listRepos, useSession, type SessionUser } from "@/lib/onboarding";
+import { listRepos, logout, useSession, type SessionUser } from "@/lib/onboarding";
 
 /**
  * Paso 3 · Elige el repo: los que el usuario compartió con la GitHub App (públicos o
@@ -62,6 +62,7 @@ function ChooseRepo() {
 
 /** `user` null = login apagado en el backend (desarrollo): solo el ejemplo y repos públicos por URL. */
 function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl: string | null }) {
+  const router = useRouter();
   const [state, setState] = useState<ReposState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [query, setQuery] = useState("");
@@ -154,6 +155,18 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
                 </a>
               </>
             )}
+            <span className="text-ink-faint max-sm:hidden">·</span>
+            {/* Cambiar de cuenta: cerrar sesión y volver al login. */}
+            <button
+              type="button"
+              onClick={async () => {
+                await logout();
+                router.replace("/start/github");
+              }}
+              className="underline-offset-4 hover:text-ink hover:underline max-sm:pl-9"
+            >
+              Cierra sesión
+            </button>
           </div>
         )}
 

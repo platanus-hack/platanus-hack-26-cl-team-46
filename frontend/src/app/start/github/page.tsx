@@ -1,11 +1,11 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense } from "react";
 import { Button, GitHubIcon, TypedLog } from "@/components/mayday";
-import { Avatar } from "@/components/onboarding/Avatar";
 import { OnboardingShell, StepHeading } from "@/components/onboarding/OnboardingShell";
-import { loginUrl, logout, useSession, type SessionUser } from "@/lib/onboarding";
+import { SkipIfLoggedIn } from "@/components/onboarding/SkipIfLoggedIn";
+import { loginUrl, useSession } from "@/lib/onboarding";
 
 /**
  * Paso 2 · Entra con GitHub (GitHub App: GitHub pide autorizar y el usuario elige qué repos
@@ -67,16 +67,8 @@ function Connect() {
     );
   }
 
-  if (user) {
-    return (
-      <div className="flex flex-col gap-8 md:gap-10">
-        <StepHeading step={2} title="Ya entraste.">
-          Sigue con esta cuenta o cierra sesión para cambiar a otra.
-        </StepHeading>
-        <ConnectedCard user={user} onContinue={() => router.push(next)} />
-      </div>
-    );
-  }
+  // Ya hay sesión: este paso sobra, se sigue directo a donde iba (por defecto, elegir el repo).
+  if (user) return <SkipIfLoggedIn to={next} />;
 
   // Login apagado en el backend (desarrollo): la API está abierta y no hay nada que autorizar.
   if (enabled === false) {
@@ -108,34 +100,6 @@ function Connect() {
           Entra con GitHub
         </a>
         <span className="text-[13px] text-ink-faint">Solo lectura, y solo de los repos que elijas.</span>
-      </div>
-    </div>
-  );
-}
-
-function ConnectedCard({ user, onContinue }: { user: SessionUser; onContinue: () => void }) {
-  const [busy, setBusy] = useState(false);
-  return (
-    <div className="flex max-w-[560px] flex-wrap items-center gap-4 rounded-md border border-line-strong bg-bg-100 p-4">
-      <Avatar src={user.avatar_url} login={user.login} size={40} />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-[15px] font-medium">{user.name ?? user.login}</span>
-        <span className="font-mono text-[13px] text-ink-muted">@{user.login}</span>
-      </div>
-      <div className="flex gap-2 max-sm:w-full max-sm:[&>*]:flex-1 max-sm:[&>*]:justify-center">
-        <Button
-          disabled={busy}
-          onClick={async () => {
-            setBusy(true);
-            await logout();
-            setBusy(false);
-          }}
-        >
-          Cierra sesión
-        </Button>
-        <Button variant="primary" onClick={onContinue}>
-          Continúa
-        </Button>
       </div>
     </div>
   );
