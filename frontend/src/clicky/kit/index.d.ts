@@ -38,7 +38,7 @@ export interface ClickyOptions {
 export interface ClickyInstance {
   ask(question: string): Promise<void>;
   clear(options?: { fast?: boolean }): Promise<void>;
-  /** «Borrar todo» de la barra: borra marcas, tarjetas, pizarra y guía, y corta la voz y la respuesta en curso. */
+  /** La X de los dibujos: borra marcas, tarjetas, pizarra y guía, y corta la voz y la respuesta en curso. */
   clearAll(): void;
   /** La × de la isla: borra marcas, tarjetas, pizarra y guía, y corta la voz y la respuesta en curso. */
   clearAll(): void;

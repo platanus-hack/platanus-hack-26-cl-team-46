@@ -85,7 +85,7 @@ export function createClicky({
   const draw = (m, s) => (marks[m.type] || ACT[m.type] || cards[m.type])?.(m, s);
 
   const talkKey = hint || (pushToTalkKey === 'Fn' ? 'fn' : pushToTalkKey === 'Space' ? 'espacio' : pushToTalkKey);
-  const island = createIsland(root, { talkKey, onType: q => typed(q), onTalk: t => talkButton(t), onMark: () => toggleMark(), onClose, onClear: () => clearAll(), talkCode: pushToTalkKey });
+  const island = createIsland(root, { talkKey, onType: q => typed(q), onTalk: t => talkButton(t), onMark: () => toggleMark(), onClose, talkCode: pushToTalkKey });
   const releaseSpotlight = () => {
     if (!ctx.spotHoles.length) return;
     ctx.spotHoles = [];
@@ -321,10 +321,16 @@ export function createClicky({
     wipe({ fast: true });
     island.idle('Guía terminada. Pregúntame cuando quieras.');
   }
-  // «Borrar todo» (botón de la barra o Esc): borra lo dibujado (marcas, tarjetas, pizarra, guía y
-  // los trazos del usuario), corta la voz y la respuesta en curso, y deja a Hinty esperando.
-  // El lápiz deshace los trazos al revés, como borrando la pizarra (con reduced-motion, se desvanece).
+  // La X de los dibujos (como el «Cerrar (esc)» de HeyClicky): flota en la esquina de arriba a la
+  // derecha de todo lo que dibujó Hinty (marcas, etiquetas, tarjetas, pizarra) y, al apretarla o con
+  // Esc, lo hace desaparecer: el lápiz deshace los trazos, se corta la voz y la respuesta en curso, y
+  // Hinty queda prendido esperando la próxima pregunta (para apagarlo está la X de la barra).
   let clearedGen = 0;
+  const dismiss = htmlEl('button', 'clicky-dismiss', root, `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" stroke-width="2.25" stroke-linecap="square"/></svg><span class="lbl">Cerrar<kbd>esc</kbd></span>`);
+  dismiss.type = 'button';
+  dismiss.setAttribute('aria-label', 'Cerrar lo que dibujó Hinty (esc)');
+  dismiss.addEventListener('pointerdown', e => e.stopPropagation());
+  dismiss.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); clearAll(); });
   function clearAll() {
     clearedGen = askGen;
     ctx.walk = null;
@@ -332,13 +338,39 @@ export function createClicky({
     nudging = null;
     gesture.clear();
     dim(false);
-    island.clearable(false);
-    island.idle('Pantalla limpia. Pregúntame cuando quieras.');
-    sounds.done?.();
+    dismiss.removeAttribute('data-on');
+    island.idle('Listo, pantalla limpia. Pregúntame cuando quieras.');
     wipe({ fast: reducedMotion() }).then(syncPen);
   }
-  const hasDrawing = () => !!(ctx.items.length || ctx.strokes.length || ctx.fades.length || ctx.spotHoles.length || pending || ctx.walk || talking || gesture.count);
-  const clearTimer = setInterval(() => island.clearable(hasDrawing()), 250);
+  const hasDrawing = () => !!(ctx.items.length || ctx.strokes.length || ctx.fades.length || ctx.spotHoles.length || pending || ctx.walk);
+  // Caja que encierra todo lo dibujado (sin lo que tapa la pantalla entera, como el spotlight).
+  function drawingBox() {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    const add = el => {
+      if (!el?.isConnected || el.style?.opacity === '0') return;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 && r.height < 2) return;
+      if (r.width > innerWidth * 0.9 && r.height > innerHeight * 0.9) return;
+      x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom);
+    };
+    ctx.items.forEach(add);
+    ctx.strokes.forEach(s => add(s.path));
+    return x0 === Infinity ? null : { x0, y0, x1, y1 };
+  }
+  function placeDismiss() {
+    const box = hasDrawing() && !busy ? drawingBox() : null;
+    if (!box) { dismiss.removeAttribute('data-on'); return; }
+    const S = 36, M = 12;
+    // por fuera de la esquina, sin salirse de la pantalla ni quedar bajo la barra de Hinty
+    const top = Math.max(island.el.getBoundingClientRect().bottom + M, M);
+    const x = Math.min(innerWidth - S - M, Math.max(M, box.x1 + 6));
+    const y = Math.min(innerHeight - S - M, Math.max(top, box.y0 - S - 6));
+    dismiss.style.left = x + 'px';
+    dismiss.style.top = y + 'px';
+    dismiss.dataset.side = x < 140 ? 'right' : 'left';
+    if (!dismiss.hasAttribute('data-on')) dismiss.setAttribute('data-on', '');
+  }
+  const dismissTimer = setInterval(placeDismiss, 200);
   const inStep = t => pending && t instanceof Node && (pending.el === t || pending.el.contains(t));
   const onDocClick = e => { if (inStep(e.target) && !pending.field) completeStep(); };
   const onDocChange = e => { if (inStep(e.target)) completeStep(); };
@@ -614,7 +646,7 @@ export function createClicky({
       mo?.disconnect();
       clearTimeout(nudgeTimer);
       clearTimeout(retry);
-      clearInterval(clearTimer);
+      clearInterval(dismissTimer);
       removeEventListener('keydown', down);
       removeEventListener('keyup', up);
       removeEventListener('blur', lost);

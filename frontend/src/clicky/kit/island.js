@@ -12,8 +12,7 @@ const step4 = v => Math.max(4, Math.min(20, Math.round(v / 4) * 4)); // alturas 
 
 // talkKey: la tecla que se mantiene para hablar (fn). onClose: la X que apaga a Hinty.
 // onTalk('down' | 'up'): el botón de hablar. onMark(): el lápiz (enciende y apaga el modo marcar; con él, shift dibuja).
-// onClear(): «Borrar todo» (marcas, tarjetas, pizarra y guía), sin apagar a Hinty.
-export function createIsland(parent, { talkKey = 'fn', onType, onTalk, onMark, onClose, onClear, talkCode = 'Fn' } = {}) {
+export function createIsland(parent, { talkKey = 'fn', onType, onTalk, onMark, onClose, talkCode = 'Fn' } = {}) {
   const kbd = k => `<kbd>${esc(k)}</kbd>`;
   // El marco cian de los bordes de la pantalla: va primero para quedar debajo de los dibujos.
   const frame = htmlEl('div', 'clicky-frame', parent);
@@ -25,14 +24,6 @@ export function createIsland(parent, { talkKey = 'fn', onType, onTalk, onMark, o
     <span class="err"></span>
     <div class="cap"><div class="cap-in"></div></div>
     <div class="hint">
-      <span class="tool clear-wrap">
-        <button type="button" class="clear" aria-label="Borrar todo lo que marcó Hinty (Esc)">${ERASE_SVG}<span>Borrar todo</span></button>
-        <span class="tip" role="tooltip">
-          <b>Borrar todo</b>
-          <span>Saca las marcas, etiquetas, tarjetas y la pizarra, y corta la explicación. ${kbd('esc')}</span>
-          <span class="m">Hinty sigue prendido: pregúntale otra cosa cuando quieras.</span>
-        </span>
-      </span>
       <span class="tool talk-wrap">
         <button type="button" class="talk" aria-label="Hablar con Hinty: mantén ${esc(talkKey)} o este botón">${micSvg(32)}</button>
         <span class="tip" role="tooltip">
@@ -153,9 +144,6 @@ export function createIsland(parent, { talkKey = 'fn', onType, onTalk, onMark, o
     onMark?.();
   });
   [talk, mark].forEach(b => b.addEventListener('click', e => e.stopPropagation()));
-  el.querySelector('.clear').addEventListener('click', e => { e.stopPropagation(); onClear?.(); });
-  // «Borrar todo» solo se ve cuando hay algo que borrar.
-  function clearable(on) { el.toggleAttribute('data-clearable', !!on); }
   el.querySelector('.close')?.addEventListener('click', e => { e.stopPropagation(); onClose?.(); });
   el.querySelector('.hint').addEventListener('click', e => e.stopPropagation());
 
@@ -166,13 +154,10 @@ export function createIsland(parent, { talkKey = 'fn', onType, onTalk, onMark, o
   }
 
   return {
-    el, frame, state, level, word, idle, openInput, marking, clearable,
+    el, frame, state, level, word, idle, openInput, marking,
     closeInput: () => closeInput(),
     caption(text, opts) { caption(text, opts); },
   };
 }
-
-// Una × dentro de un recuadro de pixeles: "borrar lo dibujado", distinta de la X que cierra a Hinty.
-const ERASE_SVG = '<svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true"><rect x="1.5" y="1.5" width="15" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/><path d="M6 6l6 6M12 6l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="square"/></svg>';
 
 function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

@@ -127,6 +127,23 @@ export function HintyPreview() {
                 </div>
               ))}
             </div>
+
+            {/* La X de los dibujos (kit/index.js › dismiss): en la esquina de lo dibujado, con su etiqueta */}
+            <button
+              type="button"
+              className="clicky-dismiss"
+              data-on=""
+              data-side="left"
+              aria-label="Cerrar lo que dibujó Hinty (esc)"
+              style={{ position: "absolute", left: BOARD.x + BOARD.w + 6, top: BOARD.y - 42, animation: "none" }}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M3.5 3.5l9 9M12.5 3.5l-9 9" stroke="currentColor" strokeWidth="2.25" strokeLinecap="square" />
+              </svg>
+              <span className="lbl">
+                Cerrar<kbd>esc</kbd>
+              </span>
+            </button>
           </div>
 
           {/* Capa de arriba: el blip, sobre la pizarra (como layers.top del kit) */}
@@ -137,7 +154,7 @@ export function HintyPreview() {
           </svg>
 
           {/* Isla hablando: la palabra recién dicha en cian, las que faltan no se muestran */}
-          <div className="clicky-island" data-state="speaking" data-clearable="" style={{ position: "absolute", left: 0, right: 0, top: 0, animation: "none" }}>
+          <div className="clicky-island" data-state="speaking" style={{ position: "absolute", left: 0, right: 0, top: 0, animation: "none" }}>
             <div className="av" dangerouslySetInnerHTML={{ __html: headsetSvg(16, { mic: true }) }} />
             <div className="wave">
               {[8, 16, 20, 12, 8].map((h, i) => (
@@ -438,22 +455,6 @@ function Island({
 function TalkHint() {
   return (
     <div className="hint">
-      <span className="tool clear-wrap">
-        <button type="button" className="clear" aria-label="Borrar todo lo que marcó Hinty (Esc)" style={{ animation: "none" }}>
-          <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
-            <rect x="1.5" y="1.5" width="15" height="15" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2" />
-            <path d="M6 6l6 6M12 6l-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />
-          </svg>
-          <span>Borrar todo</span>
-        </button>
-        <span className="tip" role="tooltip">
-          <b>Borrar todo</b>
-          <span>
-            Saca las marcas, etiquetas, tarjetas y la pizarra, y corta la explicación. <kbd>esc</kbd>
-          </span>
-          <span className="m">Hinty sigue prendido: pregúntale otra cosa cuando quieras.</span>
-        </span>
-      </span>
       <span className="tool talk-wrap">
         <button type="button" className="talk" aria-label="Hablar con Hinty: mantén fn o este botón" dangerouslySetInnerHTML={{ __html: micSvg(32) }} />
         <span className="tip" role="tooltip">
