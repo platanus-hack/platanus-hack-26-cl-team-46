@@ -227,6 +227,28 @@ export class SandboxesService
     return this.store.list();
   }
 
+  /**
+   * Busca un sandbox ya desplegado y "ready" para reusar entre simulacros del
+   * mismo repo (evita re-desplegar en Render). Con owner, solo considera los
+   * suyos. Si se pasa ref, exige que coincida. Devuelve el más reciente.
+   */
+  findReusable(opts: {
+    repo_url: string;
+    owner?: { github_id: number };
+    ref?: string;
+  }): SandboxRecord | undefined {
+    return this.store
+      .list()
+      .filter(
+        (s) =>
+          s.status === 'ready' &&
+          s.repo_url === opts.repo_url &&
+          (opts.ref ? s.ref === opts.ref : true) &&
+          (opts.owner ? s.owner?.github_id === opts.owner.github_id : true),
+      )
+      .sort((a, b) => b.updated_at.localeCompare(a.updated_at))[0];
+  }
+
   /** Org de GitHub de los mirrors (para clasificar repos de origen). */
   get org(): string {
     return this.git.org;
