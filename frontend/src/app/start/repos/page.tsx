@@ -264,7 +264,7 @@ function RepoPicker({ user, installUrl }: { user: SessionUser | null; installUrl
           <Button
             variant="primary"
             onClick={() => panelRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}
-            className="h-11 shrink-0 justify-center px-5 text-[15px]"
+            className="h-11! shrink-0 justify-center px-5! text-[15px]!"
           >
             Continúa
           </Button>
@@ -497,7 +497,8 @@ function PublicRepoInput({ disabled, onPick }: { disabled: boolean; onPick: (c: 
       <label htmlFor="public-repo" className="text-[13px] text-ink-muted">
         ¿Otro repo público? Pega su URL
       </label>
-      <div className="flex gap-2">
+      {/* Mobile: input y botón apilados, a todo el ancho. */}
+      <div className="flex flex-col gap-2 sm:flex-row">
         <input
           id="public-repo"
           value={value}
@@ -506,12 +507,13 @@ function PublicRepoInput({ disabled, onPick }: { disabled: boolean; onPick: (c: 
             setValue(e.target.value);
             setError(null);
           }}
-          placeholder="https://github.com/dueño/repo"
+          placeholder="github.com/dueño/repo"
           autoComplete="off"
           spellCheck={false}
-          className="h-10 min-w-0 flex-1 rounded-md border border-line-strong bg-bg-100 px-3 font-mono text-[13px] text-ink outline-none placeholder:text-ink-faint focus:border-defense"
+          // 16 px en mobile: con menos, iOS hace zoom al enfocar. flex-none: en columna, flex-1 le pisa el alto.
+          className="h-12 min-w-0 flex-none rounded-md border border-line-strong bg-bg-100 px-4 font-mono text-[16px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] sm:h-10 sm:flex-1 sm:px-3 sm:text-[13px]"
         />
-        <Button type="submit" disabled={disabled || !value.trim()}>
+        <Button type="submit" disabled={disabled || !value.trim()} className="justify-center max-sm:h-12! max-sm:text-[15px]!">
           Usar este
         </Button>
       </div>
