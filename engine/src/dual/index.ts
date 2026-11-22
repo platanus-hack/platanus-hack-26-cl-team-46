@@ -35,8 +35,20 @@ export async function runDualPath(
     runGenericSuite(target, repo, { seed: opts.seed, log }),
     (async () => {
       if (!opts.provider) return { llm: [], generated: [] };
-      const llm = await runLlmAngles(opts.provider, { repo, recon: opts.recon, scopeOrigins });
-      const specs = generateProbes(llm, repo);
+      const provider = opts.provider;
+      const llm = await runLlmAngles(provider, { repo, recon: opts.recon, scopeOrigins });
+      // Generación REAL por el LLM (structured output) si el provider la soporta;
+      // si falla o no está, fallback al generador determinista. El gate valida igual.
+      let specs = generateProbes(llm, repo);
+      if (provider.generateProbes) {
+        const slim = { stack: repo.stack, routes: repo.routes.map((r) => ({ method: r.method, path: r.path, auth: r.auth, params: r.params })), signals: repo.signals.map((s) => ({ kind: s.kind, ref: `${s.ref.file}:${s.ref.line ?? ''}` })) };
+        try {
+          const llmSpecs = await provider.generateProbes({ repo: slim, angles: llm, scopeOrigins });
+          if (llmSpecs.length) specs = llmSpecs;
+        } catch (e) {
+          log(`  [B-gen] generación LLM falló, uso el generador determinista: ${e instanceof Error ? e.message : e}`);
+        }
+      }
       const generated = await runGeneratedProbes(target, specs, { seed: opts.seed, log });
       return { llm, generated };
     })(),

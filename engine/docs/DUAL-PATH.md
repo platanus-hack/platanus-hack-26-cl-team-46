@@ -52,8 +52,11 @@ del `RepoModel`, así que corre contra cualquier app desplegada + su repo.
   open-redirect, **mass-assignment, SSRF, reflected-XSS** — todas derivadas del
   `RepoModel`, confirmadas con tráfico real (probadas contra Apuntes y contra una
   2ª app distinta).
-- **B (LLM):** propone ángulos **y genera ProbeSpecs ejecutables gateados** (mock
-  offline / cascada real).
+- **B (LLM):** propone ángulos **y genera ProbeSpecs ejecutables gateados**. La
+  generación real va por **`provider.generateProbes` (structured output)** en
+  Anthropic/DeepSeek/GLM/cascada (prompt + parser en `providers/probe-prompt.ts`);
+  offline/mock cae al generador determinista (`generate.ts`). El **gate valida
+  siempre** lo que emita el LLM (no se confía en su autolimitación).
 - Comparación/cobertura (A-real / B-prop / B-gen) + CLI + tests (`test/dual.test.ts`).
-- Pendiente: condición de éxito de open-redirect en el ProbeSpec, más plantillas
-  de generación, y que la generación real pase por `provider.adapt` (structured output).
+- Pendiente menor: condición de éxito de open-redirect en el ProbeSpec y más
+  plantillas/plantillas de generación.

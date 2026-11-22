@@ -118,3 +118,24 @@ test('B: probes generados — el gate rechaza fuera de scope y ejecuta los váli
     await fx.close();
   }
 });
+
+test('B: la generación real usa provider.generateProbes (structured output) + gate', async () => {
+  const fx = await startDestructiveFixture();
+  try {
+    const target: TargetConfig = { url: fx.url, seed_users: [] };
+    const repo = repoModel([{ method: 'GET', path: '/echo', ref: { file: 'app.js', line: 20, commit: 't' }, source: 'express' }]);
+    // Provider que implementa generateProbes (stand-in del LLM real; sin key).
+    const provider: any = {
+      id: 'fake', free: true,
+      analyze: async () => [{ title: 'xss', rationale: 'reflejo', confidence: 0.6, vuln_id: 'reflected-xss' }],
+      generateProbes: async () => [{ id: 'llm-xss', vuln_class: 'reflected-xss', method: 'GET', path: '/echo', query: { q: '<svg/onload=1>abc' }, success: { reflects_query: 'q' } }],
+    };
+    const dual = await runDualPath(target, repo, { provider });
+    const g = dual.generated.find((x) => x.spec.id === 'llm-xss')!;
+    assert.ok(g, 'no usó el probe del provider');
+    assert.ok(g.gated && g.confirmed, 'el probe del LLM debería pasar el gate y confirmarse');
+    assert.equal(dual.coverage.entries.find((e) => e.vuln_class === 'reflected-xss')!.llm_confirmed, true);
+  } finally {
+    await fx.close();
+  }
+});

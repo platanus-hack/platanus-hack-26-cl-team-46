@@ -8,24 +8,9 @@ import { decodeJwt, RecordingClient } from '../core/http.ts';
 import { randomIdentity } from '../core/evasion.ts';
 import { makeRng, realClock } from '../core/rng.ts';
 import type { TargetConfig } from '../core/types.ts';
+import type { ProbeSpec } from '../providers/types.ts';
 
-export interface ProbeSpec {
-  id: string;
-  vuln_class: string;
-  method: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
-  path: string; // relativo (debe empezar con '/')
-  query?: Record<string, string>;
-  body?: Record<string, unknown>;
-  needs_auth?: boolean;
-  /** Condición de éxito (todas las presentes deben cumplirse). */
-  success: {
-    status_eq?: number;
-    status_gte?: number;
-    body_matches?: string; // regex (i)
-    reflects_query?: string; // clave de query cuyo valor debe aparecer sin escapar en HTML
-  };
-  note?: string;
-}
+export type { ProbeSpec } from '../providers/types.ts';
 
 export interface GateResult {
   ok: boolean;

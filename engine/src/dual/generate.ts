@@ -4,9 +4,8 @@
  * salida estructurada (provider.adapt). Todo ProbeSpec pasa por el gate antes de
  * ejecutarse (probe-spec.ts), así B "genera módulos ejecutables" sin ejecución libre.
  */
-import type { ProposedAngle } from '../providers/types.ts';
+import type { ProbeSpec, ProposedAngle } from '../providers/types.ts';
 import type { RepoModel, RouteDef } from '../discovery/types.ts';
-import type { ProbeSpec } from './probe-spec.ts';
 
 export function generateProbes(angles: ProposedAngle[], repo: RepoModel): ProbeSpec[] {
   const getNoParam = repo.routes.filter((r) => r.method === 'GET' && !(r.params ?? []).length);
