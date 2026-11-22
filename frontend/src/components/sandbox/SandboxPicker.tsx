@@ -102,9 +102,13 @@ export function SandboxPicker({
           ? "flex min-h-0 flex-1 items-start justify-center px-4 pt-[8vh] pb-6"
           : "fixed inset-0 z-50 flex items-start justify-center bg-bg-000/70 px-4 pt-[14vh] backdrop-blur-[2px]"
       }
-      onMouseDown={(e) => {
-        if (!inline && dismissable && e.target === e.currentTarget) onClose();
-      }}
+      onMouseDown={
+        inline
+          ? undefined
+          : (e) => {
+              if (dismissable && e.target === e.currentTarget) onClose();
+            }
+      }
     >
       <div
         role={inline ? "region" : "dialog"}

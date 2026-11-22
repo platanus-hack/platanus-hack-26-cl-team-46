@@ -133,7 +133,7 @@ export function BrowserWindow({
             tabIndex={0}
             onClick={() => setActive(t.id)}
             onKeyDown={(e) => e.key === "Enter" && setActive(t.id)}
-            className={`md-tab group cursor-default !w-52 ${t.id === current?.id ? "is-active" : "hover:bg-sim-100/50"}`}
+            className={`md-tab group cursor-pointer !w-52 ${t.id === current?.id ? "is-active" : "hover:bg-sim-100/50"}`}
           >
             {fav(t)}
             <span className={`min-w-0 flex-1 truncate ${(t.kind === "chat" && chatUnread) || (t.kind === "mail" && mailUnread) ? "font-semibold text-sim-ink" : ""}`}>
