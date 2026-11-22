@@ -2,14 +2,14 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { Button, Select, type SelectOption } from "@/components/mayday";
-import { api, type Sandbox, type SandboxMode, type SimEvent } from "@/lib/api";
+import { api, type Sandbox, type SimEvent } from "@/lib/api";
 import { simApi, type SimStatus, type Simulation } from "@/lib/sim-api";
 import { AgentPanel } from "@/components/sandbox/AgentPanel";
 
 /**
  * Consola de desarrollo del servicio de deploy. No es la UI del simulador:
- * sirve para probar repo → Render → URL y las acciones (env, restart, redeploy).
+ * sirve para seguir repo → Render → URL y las acciones (env, restart, redeploy).
+ * Los sandboxes se crean solo desde el onboarding (Nuevo sandbox, /start); acá no hay formulario.
  */
 export default function DeployConsolePage() {
   return (
@@ -19,16 +19,8 @@ export default function DeployConsolePage() {
   );
 }
 
-const MODE_OPTIONS: SelectOption<SandboxMode>[] = [
-  { value: "agent", label: "IA (recomendado)", description: "Un agente analiza el repo y lo despliega" },
-  { value: "manifest", label: "Solo manifest, sin IA", description: "Usa .sandbox/manifest.json tal cual" },
-  { value: "auto", label: "Determinista → IA", description: "Intenta sin IA y, si falla, entra el agente" },
-];
-
 function DeployConsole() {
   const searchParams = useSearchParams();
-  const [repoUrl, setRepoUrl] = useState("");
-  const [mode, setMode] = useState<SandboxMode>("agent");
   const [sandboxes, setSandboxes] = useState<Sandbox[]>([]);
   const [sims, setSims] = useState<Simulation[]>([]);
   // ?sandbox=<id> preselecciona un sandbox (para enlazar directo desde otras pantallas).
@@ -112,29 +104,6 @@ function DeployConsole() {
       <h1 className="text-2xl font-semibold">Servicio de deploy</h1>
       <p className="mb-6 text-sm text-ink-muted">Repo de GitHub → sandbox en Render → URL</p>
 
-      <form
-        className="mb-6 flex flex-col gap-2 sm:flex-row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          run(async () => {
-            const s = await api.createSandbox(repoUrl.trim(), { mode });
-            setSelected(s.sandbox_id);
-            setRepoUrl("");
-          });
-        }}
-      >
-        <input
-          className="h-12 min-w-0 flex-none rounded-md border border-line-strong bg-bg-100 px-4 text-[16px] text-ink outline-none! transition-[border-color,box-shadow] duration-150 placeholder:text-ink-faint focus:border-defense focus:shadow-[0_0_0_1px_var(--defense),0_0_24px_#2EE6FF33] sm:h-10 sm:flex-1 sm:text-[13px]"
-          placeholder="https://github.com/usuario/repo"
-          value={repoUrl}
-          onChange={(e) => setRepoUrl(e.target.value)}
-          required
-        />
-        <Select aria-label="Modo de deploy" value={mode} options={MODE_OPTIONS} onChange={setMode} className="w-full sm:w-[300px]" />
-        <Button type="submit" variant="primary" disabled={busy} className="justify-center disabled:cursor-not-allowed disabled:opacity-50 max-sm:h-12!">
-          Desplegar
-        </Button>
-      </form>
 
       {error && <p className="mb-4 rounded-md border border-attack bg-attack-soft p-3 text-sm text-attack-strong">{error}</p>}
 
@@ -230,7 +199,7 @@ function DeployConsole() {
             <div ref={bottomRef} />
           </section>
         ) : (
-          <p className="text-sm text-ink-muted">Selecciona o crea un sandbox.</p>
+          <p className="text-sm text-ink-muted">Selecciona un sandbox. Los nuevos se crean desde Nuevo sandbox.</p>
         )}
       </div>
     </main>
@@ -353,7 +322,7 @@ const ACTIVE_SIM: SimStatus[] = ["starting", "ready", "running", "paused"];
 /**
  * Puente al simulacro: se habilita cuando el despliegue terminó (sandbox ready).
  * Si el sandbox ya tiene una simulación viva, la abre; si no, la crea y abre /simulate?sim=…
- * (crear una simulación levanta un workspace de Conductor, así que no se duplica).
+ * (crear una simulación levanta un entorno de agentes nuevo, así que no se duplica).
  */
 function SimulateButton({ sandbox, sim }: { sandbox: Sandbox; sim?: Simulation }) {
   const router = useRouter();

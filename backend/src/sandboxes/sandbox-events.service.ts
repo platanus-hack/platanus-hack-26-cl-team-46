@@ -1,4 +1,8 @@
 import {
+  scrubProviderRaw,
+  scrubProviderText,
+} from '../conductor/public-text.js';
+import {
   Injectable,
   Logger,
   OnApplicationShutdown,
@@ -144,8 +148,14 @@ export class SandboxEventsService
   sseStream(sandboxId: string): ReadableStream<string> {
     let unsubscribe = () => {};
     let heartbeat: NodeJS.Timeout;
+    // Salida pública: sin rastros del proveedor de agentes (también en eventos viejos ya guardados).
     const format = (e: SandboxEvent) =>
-      `event: ${e.source}\ndata: ${JSON.stringify(e)}\n\n`;
+      `event: ${e.source}\ndata: ${JSON.stringify({
+        ...e,
+        title: scrubProviderText(e.title),
+        body: scrubProviderText(e.body),
+        raw: scrubProviderRaw(e.raw),
+      })}\n\n`;
     return new ReadableStream<string>({
       start: (controller) => {
         controller.enqueue(': connected\n\n');

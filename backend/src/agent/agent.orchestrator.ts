@@ -70,8 +70,12 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
   assertConfigured() {
     const problems = this.problems();
     if (problems.length) {
+      // Los nombres de las variables (y del proveedor) van al log, no a la respuesta.
+      this.logger.error(
+        `Agente de deploy sin configurar. Falta: ${problems.join(', ')}`,
+      );
       throw new ServiceUnavailableException(
-        `El agente de deploy no está configurado. Falta: ${problems.join(', ')}`,
+        'El agente de deploy no está disponible en este momento',
       );
     }
   }
@@ -133,12 +137,8 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
       id,
       'info',
       'Agente trabajando',
-      'Una VM de Conductor está analizando el repo.',
-      {
-        workspace_id: ws.workspaceId,
-        session_id: ws.sessionId,
-        deep_link: ws.deepLink,
-      },
+      'Un agente de IA está analizando el repo.',
+      {},
       'agent',
     );
   }
@@ -331,7 +331,11 @@ export class AgentOrchestrator implements OnModuleInit, OnModuleDestroy {
         // Si la VM no llegó a existir (p. ej. falló el clone del repo base) o la borraron, no hay agente.
         const ws = await this.conductor.workspaceStatus(agent.workspace_id);
         if (ws.status === 'deleted' || ws.status === 'archived') {
-          const why = `La VM del agente quedó en estado ${ws.status}${ws.errorMessage ? `: ${ws.errorMessage}` : ''}`;
+          // El detalle (proveedor, estado, error) va al log; al usuario, un texto neutro.
+          this.logger.warn(
+            `[${s.sandbox_id}] entorno del agente ${ws.status}: ${ws.errorMessage ?? ''}`,
+          );
+          const why = 'El entorno del agente se detuvo antes de terminar';
           if (s.status === 'ready')
             await this.finish(
               s.sandbox_id,

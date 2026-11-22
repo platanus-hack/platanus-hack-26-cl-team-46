@@ -1,3 +1,4 @@
+import { scrubProviderText } from '../conductor/public-text.js';
 import {
   BadRequestException,
   BeforeApplicationShutdown,
@@ -375,8 +376,17 @@ export class SandboxesService
    */
   async toContract(s: SandboxRecord): Promise<SandboxContract> {
     const agent = s.agent
-      ? (({ idle_since: _i, nudged: _n, ...rest }) => ({
+      ? (({
+          idle_since: _i,
+          nudged: _n,
+          workspace_id: _w,
+          session_id: _s,
+          deep_link: _d,
+          ...rest
+        }) => ({
           ...rest,
+          reason: scrubProviderText(rest.reason),
+          summary: scrubProviderText(rest.summary) ?? undefined,
           active: !rest.finished_at,
         }))(s.agent)
       : null;
@@ -393,7 +403,7 @@ export class SandboxesService
       },
       status: s.status,
       mode: s.mode,
-      error: s.error ?? null,
+      error: scrubProviderText(s.error) ?? null,
       logs_url: `/sandboxes/${s.sandbox_id}/logs`,
       events_url: `/sandboxes/${s.sandbox_id}/events`,
       render_service_id: s.render?.service_id ?? null,

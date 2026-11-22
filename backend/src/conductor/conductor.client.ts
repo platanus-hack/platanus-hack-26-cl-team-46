@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../config/env.js';
 
@@ -19,6 +19,7 @@ export interface CreateWorkspaceInput {
  */
 @Injectable()
 export class ConductorClient {
+  private readonly logger = new Logger(ConductorClient.name);
   private readonly baseUrl: string;
   private readonly apiKey?: string;
 
@@ -105,7 +106,12 @@ export class ConductorClient {
     path: string,
     body?: unknown,
   ): Promise<T> {
-    if (!this.apiKey) throw new Error('CONDUCTOR_API_KEY no está configurada');
+    // Estos mensajes pueden terminar en pantalla (error del sandbox o de la simulación): nunca
+    // nombran al proveedor. El detalle completo queda en el log.
+    if (!this.apiKey) {
+      this.logger.error('CONDUCTOR_API_KEY no está configurada');
+      throw new Error('El servicio de agentes no está configurado');
+    }
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
       headers: {
@@ -115,8 +121,12 @@ export class ConductorClient {
       body: body !== undefined ? JSON.stringify(body) : undefined,
     });
     const text = await res.text();
-    if (!res.ok)
-      throw new Error(`Conductor ${method} ${path} → ${res.status}: ${text}`);
+    if (!res.ok) {
+      this.logger.error(`${method} ${path} → ${res.status}: ${text}`);
+      throw new Error(
+        `El servicio de agentes respondió con un error (HTTP ${res.status})`,
+      );
+    }
     return (text ? JSON.parse(text) : undefined) as T;
   }
 }

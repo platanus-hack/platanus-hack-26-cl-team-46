@@ -35,8 +35,8 @@ function threadsText(v: PromptVars): string {
   const backend = SIM_ROLES.filter((r) => !here.includes(r));
   const list = (rs: readonly string[]) => rs.map((r) => `**${r}**`).join(', ');
   return backend.length
-    ? `La simulación tiene 5 roles. En este workspace de Conductor corren como threads: ${list(here)}. Los roles ${list(backend)} corren dentro de nuestro backend, pero publican y leen el mismo timeline con los mismos tipos de evento. Ningún rol habla directamente con otro: todos se coordinan por el **timeline** de la simulación.`
-    : `Este workspace de Conductor tiene 5 threads, cada uno un agente con un rol: **infra, hacker, observer, generator y coder**. No se hablan directamente: se coordinan por el **timeline** de la simulación, que vive en nuestro backend.`;
+    ? `La simulación tiene 5 roles. En este entorno corren como agentes: ${list(here)}. Los roles ${list(backend)} corren dentro de nuestro backend, pero publican y leen el mismo timeline con los mismos tipos de evento. Ningún rol habla directamente con otro: todos se coordinan por el **timeline** de la simulación.`
+    : `Este entorno tiene 5 agentes, cada uno con un rol: **infra, hacker, observer, generator y coder**. No se hablan directamente: se coordinan por el **timeline** de la simulación, que vive en nuestro backend.`;
 }
 
 const ROLE_TITLES: Record<SimRole, string> = {

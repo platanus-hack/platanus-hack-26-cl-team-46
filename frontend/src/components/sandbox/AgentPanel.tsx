@@ -83,7 +83,7 @@ export function AgentPanel({ sandbox, events }: { sandbox: Sandbox; events: SimE
   const step = working || failed ? currentStep(events) : STEPS.length;
   const plansMax = maxPlans(events);
   const last = [...events].reverse().find((e) => e.title);
-  const liveText = last ? `${last.title}${last.body ? ` — ${last.body}` : ""}` : "Preparando la VM del agente…";
+  const liveText = last ? `${last.title}${last.body ? ` — ${last.body}` : ""}` : "Preparando al agente…";
   const typed = useTypewriter(working ? liveText : "");
 
   const title = working ? "Agente de IA trabajando" : failed ? "El agente de IA se rindió" : "Agente de IA terminó";
@@ -94,7 +94,7 @@ export function AgentPanel({ sandbox, events }: { sandbox: Sandbox; events: SimE
         failed ? "border-attack bg-attack-soft" : "border-defense-deep bg-defense-soft"
       } ${working ? "md-agent-sweep" : ""}`}
     >
-      {/* Encabezado: estado + cronómetro + Conductor */}
+      {/* Encabezado: estado + cronómetro */}
       <div className="relative flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="relative grid size-3 place-items-center" aria-hidden>
           {working && <span className="md-agent-ping absolute inset-0 rounded-full bg-defense" />}
@@ -109,9 +109,6 @@ export function AgentPanel({ sandbox, events }: { sandbox: Sandbox; events: SimE
             {elapsed}
           </span>
         )}
-        <a className="ml-auto text-ink-muted underline hover:text-ink" href={agent.deep_link}>
-          Abrir en Conductor ↗
-        </a>
       </div>
       <p className="relative mt-1 text-ink-muted">{agent.reason}</p>
 

@@ -118,10 +118,10 @@ export class SimulationDispatcher implements OnModuleInit, OnModuleDestroy {
     const st = await this.conductor
       .workspaceStatus(s.workspace_id!)
       .catch(() => undefined);
-    this.sims.fail(
-      s.sim_id,
-      `El workspace de Conductor no está disponible (${st?.status ?? '?'}): ${st?.errorMessage ?? ''}`.trim(),
+    this.logger.warn(
+      `[${s.sim_id}] entorno de agentes ${st?.status ?? '?'}: ${st?.errorMessage ?? ''}`,
     );
+    this.sims.fail(s.sim_id, 'El entorno de los agentes se detuvo');
   }
 
   private async maybeWake(s: SimulationRecord, t: SimThread) {

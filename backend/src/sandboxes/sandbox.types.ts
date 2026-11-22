@@ -149,8 +149,12 @@ export interface SandboxContract {
   mirror_repo_url: string | null;
   manifest_source: SandboxRecord['manifest_source'] | null;
   current_deploy: SandboxDeployInfo | null;
+  /** Sin ids ni links del proveedor de agentes: el contrato público no lo nombra. */
   agent:
-    | (Omit<SandboxAgentInfo, 'idle_since' | 'nudged'> & { active: boolean })
+    | (Omit<
+        SandboxAgentInfo,
+        'idle_since' | 'nudged' | 'workspace_id' | 'session_id' | 'deep_link'
+      > & { active: boolean })
     | null;
   pending_inputs: InputRequest[];
   created_at: string;

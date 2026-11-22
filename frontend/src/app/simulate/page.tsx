@@ -476,13 +476,8 @@ function InternalPanel({ sim, run }: { sim: Simulation; run: (fn: () => Promise<
             app
           </a>
         )}
-        {sim.workspace_link && (
-          <a className="underline" href={sim.workspace_link}>
-            workspace en Conductor
-          </a>
-        )}
         <span>
-          threads:{" "}
+          agentes:{" "}
           {sim.threads
             .map((t) =>
               t.mode === "api"

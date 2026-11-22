@@ -14,9 +14,6 @@ export type SandboxStatus =
 export type SandboxMode = "auto" | "manifest" | "agent";
 
 export interface SandboxAgent {
-  workspace_id: string;
-  session_id: string;
-  deep_link: string;
   reason: string;
   started_at: string;
   plans_submitted: number;

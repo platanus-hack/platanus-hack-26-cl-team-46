@@ -35,13 +35,10 @@ export interface Simulation {
     preview_url?: string | null;
     seed_users: unknown[];
   };
-  workspace_link: string | null;
   threads: {
     role: SimRole;
-    /** conductor: thread en la VM · api: corre en el backend con la API de Claude · external: motor externo */
-    mode: "conductor" | "api" | "external";
-    session_id: string | null;
-    deep_link: string | null;
+    /** agent: agente con su propio entorno · api: corre en el backend con la API de Claude · external: motor externo */
+    mode: "agent" | "api" | "external";
     wakes: number;
     model?: string | null;
     last_ms?: number | null;

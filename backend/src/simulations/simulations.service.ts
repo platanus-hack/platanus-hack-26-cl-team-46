@@ -1,3 +1,4 @@
+import { scrubProviderText } from '../conductor/public-text.js';
 import {
   BadRequestException,
   ConflictException,
@@ -141,7 +142,7 @@ export class SimulationsService implements OnModuleInit {
     return {
       sim_id: s.sim_id,
       status: s.status,
-      error: s.error ?? null,
+      error: scrubProviderText(s.error) ?? null,
       repo_url: s.repo_url,
       sandbox: sbx
         ? {
@@ -168,14 +169,11 @@ export class SimulationsService implements OnModuleInit {
           },
       hacker_mode: s.hacker_mode,
       engine_driven: Boolean(s.engine_driven),
-      workspace_id: s.workspace_id ?? null,
-      workspace_link: s.workspace_link ?? null,
+      // Vista pública: sin ids, links ni nombres del proveedor de agentes (quedan en el store).
       threads: s.threads.map(
         ({
           role,
           mode,
-          session_id,
-          deep_link,
           wakes,
           cursor,
           create_error,
@@ -184,12 +182,10 @@ export class SimulationsService implements OnModuleInit {
           last_error,
         }) => ({
           role,
-          mode,
-          session_id: session_id ?? null,
-          deep_link: deep_link ?? null,
+          mode: mode === 'conductor' ? 'agent' : mode,
           wakes,
           cursor,
-          create_error: create_error ?? null,
+          create_error: create_error ? 'No se pudo preparar este agente' : null,
           model: model ?? null,
           last_ms: last_ms ?? null,
           last_error: last_error ?? null,
@@ -346,19 +342,13 @@ export class SimulationsService implements OnModuleInit {
           t.session_id = ws.sessionId;
           t.deep_link = ws.deepLink;
         });
-        this.system(
-          simId,
-          'agent.note',
-          'Workspace de Conductor creado',
-          ws.deepLink,
-          { workspace_id: ws.workspaceId },
-        );
+        this.system(simId, 'agent.note', 'Agentes listos', '', {});
       }
       await this.createMissingThreads(simId);
     } catch (err) {
       this.logger.error(`[${simId}] launch: ${(err as Error).message}`);
       this.store.update(simId, {
-        error: `No se pudo crear el workspace: ${(err as Error).message}`,
+        error: 'No se pudieron preparar los agentes de la simulación',
       });
     } finally {
       this.launching.delete(simId);
