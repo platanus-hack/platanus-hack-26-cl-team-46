@@ -8,7 +8,12 @@ import type { ExecutionContext } from '@nestjs/common';
 import { describe, expect, it, vi } from 'vitest';
 import { ClickyAccessGuard } from './clicky-access.guard.js';
 import { lessonSchema } from './clicky.schemas.js';
-import { BeatScanner, isClaudeModel, toClaudeRequest } from './brain.js';
+import {
+  BeatScanner,
+  isClaudeModel,
+  streamBeats,
+  toClaudeRequest,
+} from './brain.js';
 import {
   buildMessages,
   ClickyService,
@@ -366,6 +371,65 @@ describe('toClaudeRequest', () => {
   it('elige el proveedor por el nombre del modelo', () => {
     expect(isClaudeModel('claude-sonnet-5-5')).toBe(true);
     expect(isClaudeModel('gpt-6-luna')).toBe(false);
+  });
+});
+
+describe('streamBeats con OpenAI', () => {
+  const sse = (text: string) =>
+    new Response(
+      `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\ndata: [DONE]\n\n`,
+    );
+  const run = async () => {
+    const out: unknown[] = [];
+    for await (const b of streamBeats({
+      key: 'k',
+      model: 'gpt-6.1-sol',
+      effort: 'medium',
+      tier: 'fast',
+      messages: [{ role: 'user', content: 'hola' }],
+      signal: new AbortController().signal,
+    }))
+      out.push(b);
+    return out;
+  };
+
+  it('pide Fast mode y el esfuerzo', async () => {
+    const fetchMock = vi.fn(async () => sse('{"beats":[{"say":"hola"}]}'));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      expect(await run()).toEqual([{ say: 'hola' }]);
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1]
+          .body as string,
+      );
+      expect(body).toMatchObject({
+        model: 'gpt-6.1-sol',
+        reasoning_effort: 'medium',
+        service_tier: 'fast',
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('si el modelo no acepta Fast mode, reintenta sin él', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response('{"error":{"param":"service_tier"}}', { status: 400 }),
+      )
+      .mockResolvedValueOnce(sse('{"beats":[{"say":"ok"}]}'));
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      expect(await run()).toEqual([{ say: 'ok' }]);
+      const second = JSON.parse(
+        (fetchMock.mock.calls[1] as [string, RequestInit])[1].body as string,
+      );
+      expect(second.service_tier).toBeUndefined();
+      expect(second.reasoning_effort).toBe('medium');
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 
