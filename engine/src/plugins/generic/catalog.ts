@@ -115,6 +115,29 @@ export const CATALOG: Record<string, VulnMeta> = {
     fix_wrong: ['Ocultarlo solo en el frontend.'],
     teaching: 'El cliente recibe "algo falló"; los detalles, solo tus logs.',
   },
+  // ----- clases destructivas (solo corren en modo agresivo / --destructive) -----
+  dos: {
+    id: 'dos', title: 'Denegación de servicio (sin rate limit)', severity: 'high', difficulty: 2, order: 20,
+    cwe: ['CWE-770 Allocation of Resources Without Limits', 'CWE-400 Uncontrolled Resource Consumption'],
+    owasp: ['A05:2021 Security Misconfiguration'],
+    mitre_attack: ['T1499 — Endpoint Denial of Service'], d3fend: ['Rate limiting', 'Timeouts y backpressure', 'Autoscaling con tope'],
+    code_location: 'Endpoint costoso sin límite de tasa/concurrencia',
+    real_case: 'Un endpoint sin límite satura el pool de la base de datos: un solo cliente tumba el servicio.',
+    fix_correct: 'Rate limit por IP/cuenta, timeouts, paginación y backpressure.',
+    fix_wrong: ['Subir recursos sin límite (amplifica el costo).'],
+    teaching: 'Todo recurso necesita un límite: sin rate limit, un cliente te tumba.',
+  },
+  'ssrf-secrets': {
+    id: 'ssrf-secrets', title: 'SSRF → acceso a secrets del cloud', severity: 'critical', difficulty: 3, order: 21,
+    cwe: ['CWE-918 Server-Side Request Forgery'], owasp: ['A10:2021 Server-Side Request Forgery'],
+    mitre_attack: ['T1190 — Exploit Public-Facing Application', 'T1552.005 — Cloud Instance Metadata API'],
+    d3fend: ['Allowlist de destinos de fetch', 'Bloquear IPs internas/metadata', 'IMDSv2'],
+    code_location: 'Endpoint que hace fetch de una URL controlada por el usuario',
+    real_case: 'Capital One (2019): un SSRF leyó el metadata endpoint de AWS y exfiltró datos de ~100M de personas.',
+    fix_correct: 'Allowlist de hosts, bloquear 169.254/localhost, IMDSv2 y rotar las credenciales que el SSRF pudo leer.',
+    fix_wrong: ['Filtrar solo "http://" (se evade).'],
+    teaching: 'Si tu servidor hace fetch de URLs del usuario, puede ser obligado a leer tus propios secretos.',
+  },
 };
 
 export const STORYLINES: Record<string, StorylineBeat[]> = {
@@ -129,4 +152,6 @@ export const STORYLINES: Record<string, StorylineBeat[]> = {
   'weak-password-no-rate-limit': [{ phase: 'exploit', fact: 'Ráfaga de logins fallidos contra una cuenta.', channel: 'datadog', symptom: 'Cientos de 401 en /login desde una IP.' }],
   'user-enumeration': [{ phase: 'recon', fact: 'Prueba de emails en el login.', channel: 'datadog', symptom: 'Muchos logins fallidos con emails distintos.' }],
   'verbose-errors': [{ phase: 'recon', fact: 'Requests malformados para provocar errores.', channel: 'sentry', symptom: 'Errores 500 por JSON inválido.' }],
+  dos: [{ phase: 'impact', fact: 'Ráfaga de peticiones a un endpoint sin límite.', channel: 'datadog', symptom: 'Pico de CPU/latencia y timeouts; el servicio se cae.' }],
+  'ssrf-secrets': [{ phase: 'impact', fact: 'El servidor fue forzado a leer el metadata endpoint.', channel: 'sentry', symptom: 'Peticiones salientes a 169.254.169.254 y uso de credenciales desde una IP nueva.' }],
 };
