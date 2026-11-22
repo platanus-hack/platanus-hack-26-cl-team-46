@@ -127,7 +127,13 @@ def validate_spec(spec: dict) -> dict:
     if profile not in PROFILES:
         raise SpecError(f"perfil desconocido: {profile}")
     if spec.get("destructive") and os.environ.get("ENGINE_ALLOW_DESTRUCTIVE") != "1":
-        raise SpecError("modo destructivo deshabilitado (ENGINE_ALLOW_DESTRUCTIVE=1 en el secret)")
+        # El agresivo es el modo por defecto del producto; el daño real solo se
+        # habilita con el flag de ops. Sin él, degradamos a no-destructivo en vez
+        # de abortar la corrida: la simulación corre igual, solo sin DoS/SSRF.
+        # Es el único sentido de degradación (nunca sube la agresividad), así que
+        # es seguro para disponibilidad sin tocar el scope guard de hosts.
+        print("[engine] destructive solicitado sin ENGINE_ALLOW_DESTRUCTIVE=1: se degrada a no-destructivo")
+        spec["destructive"] = False
 
     repo = spec.get("repo")
     if repo is not None:

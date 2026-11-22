@@ -520,6 +520,10 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       plugin: this.config.get('ENGINE_PLUGIN', { infer: true }),
       profile: 'fast',
       seed: s.sim_id,
+      // Modo agresivo por defecto: el motor corre también los destructivos. El
+      // único control es el flag de ops del motor en Modal (ENGINE_ALLOW_DESTRUCTIVE=1
+      // + contenedor desechable); sin él, Modal degrada la corrida a no-destructiva.
+      destructive: true,
       ...(weak ? { weak_login: { email: weak.email, password: weak.password } } : {}),
     };
   }
