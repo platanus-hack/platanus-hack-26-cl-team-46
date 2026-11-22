@@ -1,4 +1,5 @@
 import { htmlEl, rectOf, sleep, animate, reducedMotion } from './geometry.js';
+import { leavesSimulation } from './harvest.js';
 
 // Hinty usa la página por el usuario, como el computer use de HeyClicky: vuela al control, lo
 // aprieta, escribe o hace scroll de verdad. Y guía paso a paso: marca el control que toca
@@ -7,6 +8,8 @@ import { htmlEl, rectOf, sleep, animate, reducedMotion } from './geometry.js';
 // - Lo irreversible (borrar, terminar, rotar, enviar…) se confirma antes con un chip Sí / No.
 // - Lo que escribe queda como borrador: nunca envía un formulario.
 // - Nunca escribe en un campo de clave ni de secretos.
+// - Nunca saca al usuario de la simulación: no aprieta enlaces a otra página, pestaña o sitio, ni
+//   lo marcado con data-clicky-exit; y si un clic igual cambia la página, vuelve atrás.
 const RISKY = /(\btermina(r)?\b|\belimina(r)?\b|\bborra(r)?\b|\breinicia(r)?\b|\brota(r)?\b|\brevoca(r)?\b|\benv[ií]a(r)?\b|\bdesplega(r)?\b|\bdespliega\b|\bpublica(r)?\b|\bdetene(r)?\b|\bdet[eé]n\b|\bapaga(r)?\b|cerrar sesi|\bpaga(r)?\b|\bconfirma(r)?\b|\bacepta(r)?\b|\bdelete\b|\bremove\b|\bkill\b|\bstop\b|\bsend\b|\bsubmit\b|\breset\b|\brotate\b|\brevoke\b|\bdeploy\b|log ?out|sign out|\bpay\b)/i;
 const SECRET = /(pass|secret|token|api[-_ ]?key|clave|contrase|credencial|private)/i;
 const FIELD = 'input:not([type=hidden]):not([type=checkbox]):not([type=radio]):not([type=submit]):not([type=button]), textarea, [contenteditable=""], [contenteditable=true]';
@@ -16,7 +19,6 @@ export const isSecretField = el => !!el && (el.type === 'password' || SECRET.tes
 export function isRisky(el, label = '') {
   if (RISKY.test(textOf(el) + ' ' + label)) return true;
   if (el.type === 'submit' || (el.tagName === 'BUTTON' && el.form && el.type !== 'button')) return true; // envía un formulario
-  if (el.tagName === 'A' && el.href) { try { return new URL(el.href).origin !== location.origin; } catch { return true; } } // sale de la app
   return false;
 }
 
@@ -84,6 +86,7 @@ export function createActions(ctx, { onStep } = {}) {
     await reveal(el);
     const b = rectOf(el);
     await pen.travel(b.x + Math.min(b.w / 2, 40), b.y + b.h / 2, 0.4 * s);
+    if (leavesSimulation(el)) { note(b, 'Eso te saca de la simulación: aquí no lo aprieto'); return false; }
     if (confirmFirst || isRisky(el, label)) {
       const ok = await confirm(el, label || textOf(el) || 'este control');
       if (!ok) { note(b, 'No lo hice'); return false; }
@@ -92,9 +95,28 @@ export function createActions(ctx, { onStep } = {}) {
     pulse(b);
     sound().click?.();
     el.focus?.({ preventScroll: true });
-    el.click();
-    await sleep(360);
+    await fenced(() => el.click(), b);
     return true;
+  }
+
+  // El clic va con cerco: nada de ventanas nuevas mientras dura, y si la página igual cambió de
+  // ruta (un botón que navega por código), vuelve atrás y lo dice.
+  async function fenced(act, b) {
+    const here = location.pathname + location.search, open = window.open;
+    window.open = () => null;
+    try {
+      act();
+      for (let t = 0; t < 1200; t += 120) {
+        await sleep(120);
+        if (location.pathname + location.search !== here) {
+          history.back();
+          note(b, 'Eso salía de la simulación: te dejé donde estabas');
+          break;
+        }
+      }
+    } finally {
+      window.open = open;
+    }
   }
 
   return {
@@ -143,6 +165,7 @@ export function createActions(ctx, { onStep } = {}) {
     // [Hazlo tú] y Esc para salir. La espera (el clic del usuario) la maneja index.js.
     async step({ target, label }, s = 1) {
       const el = find(target); if (!el) return;
+      if (leavesSimulation(el)) { await reveal(el); note(rectOf(el), 'Eso está fuera de la simulación'); return; }
       await reveal(el);
       const A = ctx.anchor(el), b = rectOf(el, 6);
       await pen.travel(b.x + b.w, b.y + b.h, 0.35 * s);

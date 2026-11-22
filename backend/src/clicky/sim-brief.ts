@@ -106,6 +106,21 @@ function findingsOf(plan: BriefSim['attack_plan']): Map<string, Finding> {
   return new Map(list.map((f) => [f.vuln_id, f]));
 }
 
+/**
+ * De qué se trata el ataque del simulacro, en pocas palabras (título y cómo se explota cada
+ * falla del plan): con eso se buscan sus técnicas en la copia local de MITRE ATT&CK.
+ */
+export function attackTopics(s: Pick<BriefSim, 'attack_plan'>): string {
+  return [...findingsOf(s.attack_plan).values()]
+    .map((f) =>
+      [f.vuln_id.replace(/[-_]+/g, ' '), f.title, clip(f.exploit_summary, 240)]
+        .filter(Boolean)
+        .join('. '),
+    )
+    .filter(Boolean)
+    .join('\n');
+}
+
 function channelsOf(s: BriefSim): string[] {
   const tools = (s.tools_detected ?? []).filter((t) =>
     (NOTIFY_CHANNELS as readonly string[]).includes(t),

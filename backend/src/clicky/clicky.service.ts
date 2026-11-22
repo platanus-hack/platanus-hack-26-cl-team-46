@@ -19,8 +19,9 @@ import {
   type Speech,
 } from './elevenlabs.js';
 import { SYSTEM_PROMPT } from './prompt.js';
-import { cleanBeat, newBudget, type Beat } from './protocol.js';
-import { simBrief, type BriefSim } from './sim-brief.js';
+import { attackReference } from './attack/attack-kb.js';
+import { cleanBeat, newBudget, type Beat, type ScreenIds } from './protocol.js';
+import { attackTopics, simBrief, type BriefSim } from './sim-brief.js';
 
 export type SpokenBeat = Beat & { audio?: Speech };
 
@@ -102,7 +103,8 @@ export class ClickyService {
 
     const t0 = Date.now();
     const abort = new AbortController();
-    const ids = new Set(input.elements.map((e) => e.id));
+    const ids: ScreenIds = new Set(input.elements.map((e) => e.id));
+    ids.exits = new Set(input.elements.filter((e) => e.exit).map((e) => e.id));
     const budget = newBudget();
     const source = this.cfg('CLICKY_MOCK')
       ? mockBeats(input)
@@ -115,6 +117,7 @@ export class ClickyService {
             input,
             simStatus,
             typeof sim === 'string' ? '' : this.brief(simId, sim),
+            this.attack(simId, input, sim),
           ),
           signal: abort.signal,
         });
@@ -206,6 +209,29 @@ export class ClickyService {
       this.logger.warn(
         `[${simId}] no se pudo registrar la pregunta a Hinty: ${(err as Error).message}`,
       );
+    }
+  }
+
+  /**
+   * Lo que dice MITRE ATT&CK (copia local) de la pregunta y del ataque del simulacro. Si la base no
+   * carga, Hinty responde igual, sin esa referencia.
+   */
+  private attack(
+    simId: string,
+    input: LessonBody,
+    sim: BriefSim | string,
+  ): string {
+    try {
+      const asked = [input.walk?.goal ?? input.question, input.interrupted]
+        .filter(Boolean)
+        .join(' ');
+      return attackReference(
+        asked,
+        typeof sim === 'string' ? '' : attackTopics(sim),
+      );
+    } catch (err) {
+      this.logger.warn(`[${simId}] ATT&CK: ${(err as Error).message}`);
+      return '';
     }
   }
 
@@ -386,7 +412,11 @@ export function phaseNote(simStatus: string): string {
 /** Un elemento de la lista, con su caja: "- e7 (botón) [120 340 160×32] Rotar clave". */
 function elementLine(e: LessonBody['elements'][number]): string {
   const box = e.box ? ` [${e.box[0]} ${e.box[1]} ${e.box[2]}×${e.box[3]}]` : '';
-  const flags = [e.attack && '[atacante]', e.disabled && '[deshabilitado]']
+  const flags = [
+    e.attack && '[atacante]',
+    e.disabled && '[deshabilitado]',
+    e.exit && '[sale de la simulación: no lo aprietes]',
+  ]
     .filter(Boolean)
     .join(' ');
   return `- ${e.id} (${e.kind})${box}${flags ? ' ' + flags : ''}: ${e.text}`;
@@ -415,10 +445,13 @@ export function buildMessages(
   input: LessonBody,
   simStatus = 'running',
   brief = '',
+  /** Lo que calza de MITRE ATT&CK (attack/attack-kb.ts). */
+  attack = '',
 ): unknown[] {
   const screen = input.elements.map(elementLine).join('\n');
   const text = [
     brief,
+    attack,
     input.context && `Contexto de la app: ${input.context}`,
     phaseNote(simStatus),
     `Página: ${input.page.title} (${input.page.path})` +

@@ -155,7 +155,14 @@ const num = (v: unknown) => (Number.isFinite(Number(v)) ? Number(v) : null);
 export type Mark = Record<string, any> & { type: string };
 export type Beat = { say: string; marks: Mark[] };
 
-function cleanMark(m: any, ids: Set<string>): Mark | null {
+/**
+ * Los ids de la pantalla. `exits`: los que sacan de la simulación (otra página, otra pestaña);
+ * se pueden señalar, pero Hinty nunca los aprieta, ni escribe en ellos, ni los pone como paso.
+ */
+export type ScreenIds = Set<string> & { exits?: Set<string> };
+const ACTS = new Set(['click', 'type', 'step']);
+
+function cleanMark(m: any, ids: ScreenIds): Mark | null {
   if (!m || !MARKS[m.type]) return null;
   if (m.type === 'board' || m.type === 'node' || m.type === 'edge')
     return { type: m.type };
@@ -179,6 +186,7 @@ function cleanMark(m: any, ids: Set<string>): Mark | null {
   ];
   if (needsTarget.includes(m.type)) {
     if (!ids.has(m.target)) return null;
+    if (ACTS.has(m.type) && ids.exits?.has(m.target)) return null;
     if (m.type === 'type') {
       const value = str(m.value, 200);
       return value ? { type: 'type', target: m.target, value } : null;
@@ -394,11 +402,7 @@ export function anchorWord(say: string, at: unknown): number {
 /** Una explicación completa, como las de HeyClicky, no un resumen de 3 frases. */
 export const MAX_BEATS = 10;
 
-export function cleanBeat(
-  b: any,
-  ids: Set<string>,
-  budget: Budget,
-): Beat | null {
+export function cleanBeat(b: any, ids: ScreenIds, budget: Budget): Beat | null {
   if (
     typeof b?.say !== 'string' ||
     !b.say.trim() ||
@@ -467,7 +471,7 @@ export function cleanBeat(
   };
 }
 
-export function cleanLesson(plan: any, ids: Set<string>): Beat[] {
+export function cleanLesson(plan: any, ids: ScreenIds): Beat[] {
   const budget = newBudget();
   return (Array.isArray(plan?.beats) ? plan.beats : [])
     .map((b: any) => cleanBeat(b, ids, budget))
