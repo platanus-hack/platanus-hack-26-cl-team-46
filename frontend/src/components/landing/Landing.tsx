@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowDown } from "lucide-react";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { ScrollToPlugin } from "gsap/ScrollToPlugin";
 import { useGSAP } from "@gsap/react";
 import {
   AttackTerminal,
@@ -26,7 +27,7 @@ import { AfterClose } from "./AfterClose";
 import { IntroHack } from "./intro/IntroHack";
 import { useIntroGate } from "./intro/useIntroGate";
 
-gsap.registerPlugin(ScrollTrigger, useGSAP);
+gsap.registerPlugin(ScrollTrigger, ScrollToPlugin, useGSAP);
 
 /**
  * Landing de Mayday (DESIGN.md › "La landing, escena por escena").
@@ -117,6 +118,19 @@ export function Landing() {
     const el = questionRef.current;
     const top = pin ? pin.end - 2 : el ? el.getBoundingClientRect().top + window.scrollY : 0;
     window.scrollTo({ top, behavior: scrollBehavior() });
+  }, []);
+
+  // "Baja para empezar": recorre el pin hasta la pregunta a un ritmo que deja ver las cortinas.
+  // Si el usuario scrollea a mitad de camino, manda él (autoKill).
+  const startFromHint = useCallback(() => {
+    const pin = pinRef.current;
+    const el = questionRef.current;
+    const top = pin ? pin.end - 2 : el ? el.getBoundingClientRect().top + window.scrollY : 0;
+    if (scrollBehavior() === "instant") {
+      window.scrollTo({ top, behavior: "instant" });
+      return;
+    }
+    gsap.to(window, { scrollTo: { y: top, autoKill: true }, duration: 1.8, ease: "power2.inOut" });
   }, []);
 
   useGSAP(
@@ -234,6 +248,7 @@ export function Landing() {
               secondRef={secondRef}
               overlayRef={overlayRef}
               cta={<LandingEnterButton />}
+              onScrollHint={startFromHint}
             >
               <CurtainPixels ref={curtain} firstRef={firstRef} secondRef={secondRef} />
             </HeroSplit>
