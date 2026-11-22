@@ -54,6 +54,8 @@ export interface IncidentFacts {
   started_t?: string;
   /** Última notificación o pulso: cuándo fue lo último que "le llegó" al developer. */
   last_signal_t?: string;
+  /** Último control.start/next: cuándo partió el ataque en curso. */
+  last_command_t?: string;
 }
 
 interface PlanFinding {
@@ -129,6 +131,7 @@ export function computeFacts(
       case 'control.start':
       case 'control.next':
         facts.last_command_seq = e.seq;
+        facts.last_command_t = e.t;
         if (id) vuln(id).attacked_seq ??= e.seq;
         break;
       case 'attack.step':
@@ -186,6 +189,12 @@ export function computeFacts(
   );
   facts.attack_in_progress = facts.last_command_seq > facts.last_done_seq;
   return facts;
+}
+
+function later(a?: string, b?: string): string | undefined {
+  if (!a) return b;
+  if (!b) return a;
+  return Date.parse(a) >= Date.parse(b) ? a : b;
 }
 
 /** Lectura arbitraria de la base (SQLi, dump) o el hacker declara que ya la sacó entera. */
@@ -249,7 +258,7 @@ export function attackedVulns(f: IncidentFacts): string[] {
 export type DirectorAction =
   | { type: 'verify'; vuln_id: string; reason: string }
   | { type: 'next'; vuln_id: string; reason: string }
-  | { type: 'pulse'; reason: string }
+  | { type: 'pulse'; reason: string; attacking?: boolean }
   | { type: 'finish'; reason: string };
 
 export interface DirectorOptions {
@@ -257,11 +266,14 @@ export interface DirectorOptions {
   attackGapMs: number;
   /** Con el atacante adentro y sin nada nuevo, cada cuánto le llega una consecuencia al developer. */
   pulseMs: number;
+  /** Durante un ataque largo, si no le llegó nada al developer en este tiempo, un pulso muestra cómo avanza. */
+  attackPulseMs: number;
 }
 
 export const DEFAULT_DIRECTOR: DirectorOptions = {
   attackGapMs: 45_000,
   pulseMs: 75_000,
+  attackPulseMs: 40_000,
 };
 
 /**
@@ -316,7 +328,18 @@ export function direct(
     }
   }
   if (s.status !== 'running' || actions.length) return actions;
-  if (f.attack_in_progress || f.pending_verifies.length) return actions;
+  // Un ataque en curso no deja la pantalla en silencio: si no llegó nada en un rato, un pulso.
+  if (f.attack_in_progress) {
+    const quiet = activeElapsedMs(
+      s.timeline,
+      later(f.last_signal_t, f.last_command_t),
+      now,
+    );
+    return quiet >= opts.attackPulseMs
+      ? [{ type: 'pulse', reason: 'El ataque sigue en curso', attacking: true }]
+      : [];
+  }
+  if (f.pending_verifies.length) return actions;
 
   const attacked = attackedVulns(f);
   const active = activeVulns(f);

@@ -30,6 +30,7 @@ import {
   type StopBody,
   type TimelineQuery,
 } from './simulations.schemas.js';
+import { SimulationBrain } from './brain/simulation.brain.js';
 import { SimulationsService } from './simulations.service.js';
 import { EngineHacker } from './engine/engine.hacker.js';
 import { TimelineService } from './timeline.service.js';
@@ -54,6 +55,7 @@ export class SimulationsController {
     private readonly auth: AuthService,
     private readonly sandboxes: SandboxesService,
     private readonly engine: EngineHacker,
+    private readonly brain: SimulationBrain,
   ) {}
 
   @Get()
@@ -133,14 +135,18 @@ export class SimulationsController {
 
   @Post(':id/start')
   @HttpCode(200)
-  start(
+  async start(
     @Param('id') id: string,
     @CurrentUser() user: AuthUser | null,
     @Body({ schema: startSchema }) body: StartBody,
   ) {
     this.owned(id, user);
     // Con el motor real, el developer elige los incidentes (en orden) desde el informe.
-    if (body?.vulns?.length) this.engine.select(id, body.vulns);
+    if (body?.vulns?.length) {
+      this.engine.select(id, body.vulns);
+      // Si cambió el primero, las alertas de apertura eran de otro ataque.
+      await this.brain.ensureOpeningForFirst(id);
+    }
     return this.sims.start(id);
   }
 

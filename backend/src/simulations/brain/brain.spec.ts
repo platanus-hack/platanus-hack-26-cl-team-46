@@ -14,7 +14,7 @@ import {
 import type { SimLlm } from './llm.client.js';
 import { generatorSchema, type ObserverOutput } from './schemas.js';
 import { openingEvents, SimulationBrain } from './simulation.brain.js';
-import { toIncidentState } from './tasks.js';
+import { isNoiseAlert, toIncidentState } from './tasks.js';
 
 const T0 = Date.parse('2026-11-21T20:00:00.000Z');
 const PLAN = {
@@ -149,9 +149,11 @@ describe('director', () => {
     ]);
   });
 
-  it('no escala mientras hay un ataque en curso', () => {
+  it('no escala mientras hay un ataque en curso (a lo más un pulso)', () => {
     const inProgress = [...attacked, ev(6, 'observer', 'control.next')];
-    expect(direct(sim(inProgress), now(30))).toEqual([]);
+    expect(direct(sim(inProgress), now(30)).map((a) => a.type)).toEqual([
+      'pulse',
+    ]);
   });
 
   it('las pausas (Hinty abierto) detienen el reloj del atacante', () => {
@@ -716,5 +718,162 @@ describe('alertas de apertura', () => {
 
   it('sin plan no hay apertura', () => {
     expect(openingEvents(base)).toEqual([]);
+  });
+});
+
+describe('pulso durante un ataque largo', () => {
+  const now = (min: number) => T0 + min * 60_000;
+  // control.start en el minuto 0,2 y el ataque sigue (sin attack.done).
+  const attacking = attacked.slice(0, 3);
+
+  it('si no llega nada en 40 s, un pulso muestra que el ataque sigue', () => {
+    expect(direct(sim(attacking), now(0.8))).toEqual([]);
+    expect(direct(sim(attacking), now(0.9))).toEqual([
+      expect.objectContaining({ type: 'pulse', attacking: true }),
+    ]);
+  });
+
+  it('una notificación reciente lo posterga', () => {
+    const t = [...attacking, ev(4, 'generator', 'notify', { min: 0.7 })];
+    expect(direct(sim(t), now(0.9))).toEqual([]);
+  });
+});
+
+describe('alertas que no alertan', () => {
+  it('descarta una request suelta o tráfico normal en los monitores', () => {
+    const n = (channel: string, title: string, body = '') => ({
+      channel,
+      title,
+      body,
+    });
+    expect(
+      isNoiseAlert(
+        n(
+          'render',
+          'GET /api/users/me: 1 request con status 200 desde 198.51.100.63',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isNoiseAlert(
+        n(
+          'render',
+          'POST /api/users/me/password: 1 request con 200 desde 198.51.100.80',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      isNoiseAlert(
+        n(
+          'datadog',
+          'Ruta /api/notes',
+          'Tráfico total del servicio en la ventana: 10 requests (normal)',
+        ),
+      ),
+    ).toBe(true);
+    // Las que cruzan un umbral se quedan.
+    expect(
+      isNoiseAlert(
+        n('render', 'Alerta: CPU al 92% en sbx-1 (umbral 80%, últimos 5 min)'),
+      ),
+    ).toBe(false);
+    expect(
+      isNoiseAlert(
+        n(
+          'render',
+          'POST /api/auth/login: 8 respuestas en 1 s desde 198.51.100.174 (7 con 401)',
+        ),
+      ),
+    ).toBe(false);
+    // Una persona sí puede contar lo que ningún monitor ve.
+    expect(
+      isNoiseAlert(
+        n('email', 'Me llegó un aviso de inicio de sesión: 1 request'),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('apertura del primer incidente elegido', () => {
+  it('si el developer cambió el primero, se reescribe para ese ataque', async () => {
+    const record = {
+      sim_id: 'sim-1',
+      status: 'ready',
+      timeline: [],
+      context: { summary: 'Apuntes' },
+      tools_detected: [],
+      // El informe dejó idor primero (select reescribe el plan).
+      attack_plan: { findings: [{ vuln_id: 'idor', order: 1, title: 'IDOR' }] },
+      threads: [{ role: 'generator', mode: 'api', cursor: 0, wakes: 0 }],
+      opening: { status: 'ready', vuln_id: W, notifications: [] },
+    } as unknown as SimulationRecord;
+    const store = {
+      get: () => record,
+      list: () => [record],
+      update: (
+        _id: string,
+        fn: ((r: SimulationRecord) => void) | Partial<SimulationRecord>,
+      ) => {
+        if (typeof fn === 'function') fn(record);
+        else Object.assign(record, fn);
+        return record;
+      },
+    };
+    const brain = new SimulationBrain(
+      {
+        get: (k: string) =>
+          k === 'ANTHROPIC_API_KEY'
+            ? undefined
+            : k.startsWith('SIM_EFFORT')
+              ? 'low'
+              : 30,
+      } as never,
+      {
+        channels: () => ['email'],
+        checkReady: () => {},
+        postFromAgent: () => {},
+      } as never,
+      store as never,
+      new TimelineService(store as never),
+      {
+        get: () => ({
+          render: { url: 'https://x' },
+          manifest: { seed_users: [] },
+        }),
+      } as never,
+    );
+    const structured = vi.fn(async (call: { prompt: string }) => ({
+      data: {
+        notifications: [
+          {
+            channel: 'email',
+            title: 'Veo notas que no son mías',
+            body: '…',
+            from: 'Fernanda <f@x.cl>',
+            severity: 'warning',
+            vuln_id: 'idor',
+          },
+        ],
+      },
+      model: 'm',
+      ms: 1,
+      usage: {
+        input_tokens: 1,
+        output_tokens: 1,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+      prompt: call.prompt,
+    }));
+    brain.useLlm({ structured } as unknown as SimLlm);
+    await brain.ensureOpeningForFirst('sim-1');
+    expect(record.opening?.vuln_id).toBe('idor');
+    expect(record.opening?.notifications[0].title).toBe(
+      'Veo notas que no son mías',
+    );
+    expect(structured.mock.calls[0][0].prompt).toContain('apertura');
+    // Si ya calza, no vuelve a llamar al modelo.
+    await brain.ensureOpeningForFirst('sim-1');
+    expect(structured).toHaveBeenCalledTimes(1);
   });
 });

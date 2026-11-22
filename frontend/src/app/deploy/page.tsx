@@ -6,6 +6,7 @@ import { api, type Sandbox, type SimEvent } from "@/lib/api";
 import { simApi, type SimStatus, type Simulation } from "@/lib/sim-api";
 import { AgentPanel } from "@/components/sandbox/AgentPanel";
 import { UnsupportedApp } from "@/components/sandbox/UnsupportedApp";
+import { useConfirm } from "@/components/mayday";
 
 /**
  * Consola de desarrollo del servicio de deploy. No es la UI del simulador:
@@ -26,9 +27,18 @@ function DeployConsole() {
   const [sims, setSims] = useState<Simulation[]>([]);
   // ?sandbox=<id> preselecciona un sandbox (para enlazar directo desde otras pantallas).
   const [selected, setSelected] = useState<string | null>(() => searchParams.get("sandbox"));
+  // Con cacheComponents la página queda escondida (Activity) al salir y conserva el estado: si vuelves
+  // con otro ?sandbox= (p. ej. "Ver el deploy" desde el paso 3), se selecciona ese.
+  const urlSandbox = searchParams.get("sandbox");
+  const [seenUrlSandbox, setSeenUrlSandbox] = useState(urlSandbox);
+  if (seenUrlSandbox !== urlSandbox) {
+    setSeenUrlSandbox(urlSandbox);
+    if (urlSandbox) setSelected(urlSandbox);
+  }
   const [eventLog, setEventLog] = useState<{ id: string | null; list: SimEvent[] }>({ id: null, list: [] });
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const confirm = useConfirm();
 
   const refresh = useCallback(async () => {
     try {
@@ -81,6 +91,8 @@ function DeployConsole() {
 
   // Sigue el despliegue hacia abajo: con cada evento nuevo (y al final, con el resumen y los
   // usuarios de prueba) baja la página, salvo que el usuario haya subido a mirar algo.
+  // Al elegir un sandbox de la lista no se sigue: la página se queda donde está hasta que el
+  // usuario baje por su cuenta al final del log.
   const bottomRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   useEffect(() => {
@@ -91,9 +103,6 @@ function DeployConsole() {
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
-  useEffect(() => {
-    stick.current = true;
-  }, [selected]);
   useEffect(() => {
     if (!stick.current || !bottomRef.current) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -113,7 +122,10 @@ function DeployConsole() {
           {sandboxes.map((s) => (
             <li key={s.sandbox_id}>
               <button
-                onClick={() => setSelected(s.sandbox_id)}
+                onClick={() => {
+                  stick.current = false;
+                  setSelected(s.sandbox_id);
+                }}
                 className={`w-full rounded border p-3 text-left text-sm ${
                   s.sandbox_id === selected ? "border-ink bg-bg-200" : "border-line hover:bg-bg-100"
                 }`}
@@ -176,7 +188,17 @@ function DeployConsole() {
                 </Action>
                 <Action
                   disabled={busy}
-                  onClick={() => confirm(`¿Borrar ${current.sandbox_id}?`) && run(() => api.deleteSandbox(current.sandbox_id))}
+                  onClick={async () => {
+                    const id = current.sandbox_id;
+                    const ok = await confirm({
+                      label: "Borrar sandbox",
+                      title: `¿Borrar ${id}?`,
+                      description: "Se apaga el deploy y se borra su base de datos y su mirror. No se puede deshacer.",
+                      confirmLabel: "Borra el sandbox",
+                      destructive: true,
+                    });
+                    if (ok) run(() => api.deleteSandbox(id));
+                  }}
                 >
                   Borrar
                 </Action>

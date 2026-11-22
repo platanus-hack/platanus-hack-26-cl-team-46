@@ -54,7 +54,10 @@ const OBSERVER_SIGNIFICANT =
 /** Eventos que pueden producir una notificación. */
 const GENERATOR_SIGNIFICANT = /^(attack\.|state\.update|incident\.pulse)/;
 /** Separación entre las alertas de apertura al partir (la primera sale casi al tiro). */
-const OPENING_STAGGER_MS = [800, 7_000, 14_000];
+const OPENING_STAGGER_MS = [800, 20_000, 40_000];
+/** Lo que se le pide al generador para la apertura: que escale, no una sola alerta. */
+const OPENING_INSTRUCTION =
+  'Es la apertura del incidente: devuelve 2 o 3 notificaciones que se lean en orden y escalen (por ejemplo, un contador que sube o un segundo canal que nota lo mismo). La primera sale apenas parte el simulacro y las otras unos 20 y 40 segundos después. Respeta las reglas: solo síntomas observables y alertas que cruzan un umbral.';
 /** Una pausa por Hinty no puede dejar la simulación congelada: se reanuda sola pasado esto. */
 const MAX_HINTY_PAUSE_MS = 10 * 60_000;
 
@@ -119,6 +122,7 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
     this.director = {
       attackGapMs: config.get('SIM_ATTACK_GAP_SECONDS', { infer: true }) * 1000,
       pulseMs: config.get('SIM_PULSE_SECONDS', { infer: true }) * 1000,
+      attackPulseMs: 40_000,
     };
   }
 
@@ -425,7 +429,9 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
           type: 'incident.pulse',
           title: a.reason,
           body: st?.summary ?? '',
-          raw: { attacker_active: true, compromised: st?.compromised ?? [] },
+          raw: a.attacking
+            ? { attacking: true, vuln_id: st?.current_vuln ?? null }
+            : { attacker_active: true, compromised: st?.compromised ?? [] },
         });
         continue;
       }
@@ -448,10 +454,11 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
    * ataque del plan (los pasos reales del motor, o el hallazgo del plan). Salen apenas
    * el developer parte: así no espera a que el atacante avance para ver algo.
    */
-  async prepareOpening(simId: string) {
+  async prepareOpening(simId: string, opts: { force?: boolean } = {}) {
     const s = this.store.get(simId);
-    if (!s || s.status !== 'starting' || s.opening || this.preparing.has(simId))
-      return;
+    if (!s || this.preparing.has(simId)) return;
+    if (!opts.force && (s.status !== 'starting' || s.opening)) return;
+    if (opts.force && !['starting', 'ready'].includes(s.status)) return;
     if (!s.attack_plan || !s.context || !s.tools_detected) return;
     if (!this.llm || !this.isApi(s, 'generator')) {
       this.setOpening(simId, { status: 'skipped', notifications: [] });
@@ -462,8 +469,13 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
       this.setOpening(simId, { status: 'skipped', notifications: [] });
       return;
     }
+    const vulnId = pending[0].vuln_id ?? undefined;
     this.preparing.add(simId);
-    this.setOpening(simId, { status: 'preparing', notifications: [] });
+    this.setOpening(simId, {
+      status: 'preparing',
+      vuln_id: vulnId,
+      notifications: [],
+    });
     try {
       const channels = this.sims.channels(s);
       const res = await runGenerator(
@@ -473,10 +485,13 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
         channels,
         this.app(s),
         pending,
+        undefined,
+        OPENING_INSTRUCTION,
       );
       this.record(simId, 'generator', res);
       this.setOpening(simId, {
         status: 'ready',
+        vuln_id: vulnId,
         notifications: res.data.notifications
           .filter((n) => channels.includes(n.channel))
           .map((n) => ({
@@ -495,12 +510,37 @@ export class SimulationBrain implements OnModuleInit, OnModuleDestroy {
       );
       this.setOpening(simId, {
         status: 'failed',
+        vuln_id: vulnId,
         notifications: [],
         error: (err as Error).message.slice(0, 300),
       });
     } finally {
       this.preparing.delete(simId);
     }
+  }
+
+  /**
+   * Si el developer cambió el primer incidente en el informe, la apertura escrita era de
+   * otro ataque: se reescribe antes de partir (la transición de pixeles cubre la espera).
+   * Con un tope: si tarda, se parte sin apertura y el generador sigue en vivo.
+   */
+  async ensureOpeningForFirst(simId: string, timeoutMs = 20_000) {
+    const s = this.store.get(simId);
+    if (!s?.opening || s.opening.status === 'skipped') return;
+    const first = planOrder(s.attack_plan)[0];
+    if (!first || s.opening.vuln_id === first) return;
+    const done = this.prepareOpening(simId, { force: true });
+    let timer: NodeJS.Timeout | undefined;
+    const timeout = new Promise<'timeout'>((r) => {
+      timer = setTimeout(() => r('timeout'), timeoutMs);
+    });
+    const result = await Promise.race([done, timeout]);
+    clearTimeout(timer);
+    if (result === 'timeout')
+      this.store.update(simId, (r) => {
+        if (r.opening && r.opening.vuln_id !== first)
+          r.opening.status = 'failed';
+      });
   }
 
   private setOpening(simId: string, opening: SimOpening) {

@@ -396,13 +396,14 @@ function SelectionPanel({
   const sent = send.status === "sent" ? send : null;
   return (
     // El CTA va pegado abajo: al fondo del panel y, si el panel es más alto que la pantalla, al borde inferior de ella.
-    // En desktop el panel acompaña el scroll de la lista, pero nunca pasa del alto de la pantalla: si no cabe,
-    // el contenido scrollea por dentro y el CTA queda visible debajo (si no, el CTA tapaba el final y no había cómo verlo).
+    // En desktop el panel acompaña el scroll de la lista y mide justo el alto de la pantalla (no solo como máximo):
+    // así el CTA queda siempre al borde inferior aunque haya poco contenido, y si no cabe, el contenido scrollea
+    // por dentro y el CTA sigue visible debajo.
     <aside
       ref={ref}
       className={`flex scroll-mt-14 flex-col border-t border-line bg-bg-100 px-5 pt-8 md:px-12 md:pt-12 lg:border-t-0 lg:border-l lg:px-8 ${selected ? "" : "pb-8 md:pb-12"}`}
     >
-      <div className="flex flex-1 flex-col lg:sticky lg:top-[104px] lg:max-h-[calc(100dvh-104px)] lg:flex-none">
+      <div className="flex flex-1 flex-col lg:sticky lg:top-[104px] lg:h-[calc(100dvh-104px)] lg:flex-none">
         <div className="flex flex-col gap-6 pb-6 lg:-mx-3 lg:min-h-0 lg:overflow-y-auto lg:px-3" aria-live="polite">
           <div className="flex min-h-10 items-center justify-between gap-3">
             <h2 className="md-index">TU SANDBOX</h2>

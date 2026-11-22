@@ -152,13 +152,14 @@ export const envSchema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   CLICKY_BRAIN_MODEL: z.string().default('gpt-6-luna'),
   /**
-   * Cuánto razona el cerebro antes de responder. gpt-6-luna razona "medium" si no se
-   * le dice nada, y eso se nota en la espera: "low" responde mucho antes y alcanza para
-   * leer la pantalla. "none" es aún más rápido; "default" no manda el parámetro.
+   * Cuánto razona el cerebro antes de responder. "medium": mejores explicaciones a
+   * cambio de una primera frase un poco más tardía. "low" responde antes y "none" aún
+   * más rápido; "high" alarga la espera sin una mejora clara para leer la pantalla.
+   * "default" no manda el parámetro.
    */
   CLICKY_BRAIN_EFFORT: z
     .enum(['default', 'none', 'low', 'medium', 'high'])
-    .default('low'),
+    .default('medium'),
   /** Voz de Clicky (texto a voz) y reconocimiento de lo que dice el usuario. */
   ELEVENLABS_API_KEY: z.string().optional(),
   /** Voz de la biblioteca de ElevenLabs. Default: "Norah" (español latino, cálida y clara). */
@@ -206,6 +207,8 @@ export const envSchema = z.object({
   ENGINE_MODAL_SECRET: z.string().optional(),
   /** Segundos entre pasos del atacante al repetir el ataque real en el simulacro. */
   ENGINE_REPLAY_STEP_SECONDS: z.coerce.number().min(1).default(30),
+  /** Duración total de la repetición de un ataque: los pasos se reparten en este tiempo (tope: ENGINE_REPLAY_STEP_SECONDS por paso). */
+  ENGINE_REPLAY_VULN_SECONDS: z.coerce.number().min(10).default(75),
   /** Tiempo activo entre un ataque y el siguiente (la simulación es continua). */
   SIM_ATTACK_GAP_SECONDS: z.coerce.number().min(5).default(45),
   /** Con el atacante adentro y sin ataques nuevos, cada cuánto llega una consecuencia. */

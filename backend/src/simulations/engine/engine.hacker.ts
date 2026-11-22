@@ -40,6 +40,8 @@ interface Queue {
   paused: boolean;
   /** Pasos que todavía van con el ritmo rápido de la apertura. */
   fast: number;
+  /** Pasos totales del ataque (para repartirlos en ENGINE_REPLAY_VULN_SECONDS). */
+  total: number;
 }
 
 /**
@@ -320,6 +322,7 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
       events: [...events],
       paused: false,
       fast: opening ? OPENING_FAST_STEPS : 0,
+      total: events.length,
     };
     this.queues.set(simId, q);
     this.schedule(simId, q, opening ? OPENING_FIRST_MS : FIRST_STEP_MS);
@@ -358,7 +361,7 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     if (q.events.length) {
       const fast = q.fast > 0;
       if (fast) q.fast -= 1;
-      this.schedule(simId, q, fast ? OPENING_STEP_MS : this.stepMs());
+      this.schedule(simId, q, fast ? OPENING_STEP_MS : this.stepMs(q.total));
     } else this.queues.delete(simId);
   }
 
@@ -378,9 +381,18 @@ export class EngineHacker implements OnModuleInit, OnModuleDestroy {
     void this.verify(simId, q.vuln, changeSeq, true);
   }
 
-  private stepMs() {
-    const base =
+  /**
+   * Ritmo humano, pero sin que un ataque largo se coma minutos: los pasos se reparten
+   * en ENGINE_REPLAY_VULN_SECONDS (la fuerza bruta tiene 10 pasos; a 30 s cada uno,
+   * eran 3,5 min sin nada nuevo que mostrar).
+   */
+  private stepMs(total = 1) {
+    const cap =
       this.config.get('ENGINE_REPLAY_STEP_SECONDS', { infer: true }) * 1000;
+    const budget =
+      (this.config.get('ENGINE_REPLAY_VULN_SECONDS', { infer: true }) ?? 75) *
+      1000;
+    const base = Math.min(cap, budget / Math.max(1, total - 1));
     return Math.round(base * (0.7 + Math.random() * 0.6));
   }
 

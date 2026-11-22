@@ -199,6 +199,7 @@ export function generatorPrompts(
   app: AppInfo,
   pending: TimelineEvent[],
   now = new Date().toISOString(),
+  instruction = 'Devuelve entre 0 y 3 notificaciones nuevas.',
 ) {
   const firstNew = pending[0]?.seq ?? Infinity;
   const stable = [
@@ -246,9 +247,27 @@ export function generatorPrompts(
       'Eventos nuevos',
       pending.map((e) => fmtEvent(e, { body: 800, raw: 1200 })),
     ),
-    'Devuelve entre 0 y 3 notificaciones nuevas.',
+    instruction,
   ].join('\n\n');
   return { stable, prompt };
+}
+
+/**
+ * "Alertas" de monitoreo que no alertan nada: una request suelta o tráfico normal
+ * convertido en notificación ("GET /api/users/me: 1 request con 200… (normal)").
+ * Ninguna herramienta real avisa eso; solo confunde. Se descartan.
+ */
+export function isNoiseAlert(n: {
+  channel: string;
+  title: string;
+  body: string;
+}): boolean {
+  if (!['render', 'datadog'].includes(n.channel)) return false;
+  return (
+    /:\s*1\s+request\b/i.test(n.title) ||
+    /\b1\s+request(\s+con)?\s+(status\s+)?2\d\d\b/i.test(n.title) ||
+    /tr[áa]fico total[^\n]*\(normal\)/i.test(n.body)
+  );
 }
 
 export async function runGenerator(
@@ -259,8 +278,16 @@ export async function runGenerator(
   app: AppInfo,
   pending: TimelineEvent[],
   now?: string,
+  instruction?: string,
 ): Promise<StructuredResult<GeneratorOutput>> {
-  const { stable, prompt } = generatorPrompts(s, channels, app, pending, now);
+  const { stable, prompt } = generatorPrompts(
+    s,
+    channels,
+    app,
+    pending,
+    now,
+    instruction,
+  );
   const res = await llm.structured({
     model,
     system: GENERATOR_SYSTEM,
@@ -268,7 +295,9 @@ export async function runGenerator(
     prompt,
     schema: generatorSchema(channels),
   });
-  res.data.notifications = res.data.notifications.slice(0, 3);
+  res.data.notifications = res.data.notifications
+    .filter((n) => !isNoiseAlert(n))
+    .slice(0, 3);
   return res;
 }
 

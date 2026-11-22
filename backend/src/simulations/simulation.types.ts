@@ -515,6 +515,8 @@ export interface EngineRecord {
 
 export interface SimOpening {
   status: 'preparing' | 'ready' | 'failed' | 'skipped';
+  /** El incidente para el que se escribieron (el primero del plan en ese momento). */
+  vuln_id?: string;
   notifications: Array<{
     channel: string;
     title: string;
