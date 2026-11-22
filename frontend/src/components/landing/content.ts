@@ -128,8 +128,9 @@ export type OptionId = "A" | "B" | "C";
 export const QUESTION = {
   label: "INCIDENTE · APUNTES",
   title: "El atacante sigue entrando.",
-  context:
-    "Te hackearon el login de Apuntes, tu app de notas. Ya le cambiaste la contraseña al admin, pero en los logs su sesión sigue activa. ¿Qué haces?",
+  /** Va en negritas, antes del resto del contexto. */
+  contextLead: "Te hackearon el login de Apuntes, tu app de notas.",
+  context: "Ya le cambiaste la contraseña al admin, pero en los logs su sesión sigue activa. ¿Qué haces?",
   code: [
     { time: "03:41:08", text: "password_changed  user=admin@apuntes.dev" },
     { time: "03:47:12", text: "GET /api/admin/users  200  ", mark: "token_iat=03:12:44" },

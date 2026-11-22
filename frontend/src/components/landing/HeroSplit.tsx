@@ -60,7 +60,7 @@ export function HeroSplit({
           </span>
           <PixelRotator phrases={HERO.titlePhrases} className="w-full text-attack-strong" />
         </h1>
-        <span className="md-index flex items-center gap-2">
+        <span className="md-index mt-6 flex items-center gap-2 rounded-full border border-line-strong bg-bg-100/70 px-4 py-2 text-ink-muted backdrop-blur-sm md:mt-12">
           {HERO.scrollHint}
           <span aria-hidden="true">↓</span>
         </span>
